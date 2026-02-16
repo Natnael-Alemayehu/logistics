@@ -1,4 +1,4 @@
-.PHONY: run dev build test clean migrate-up migrate-down sqlc docker-up docker-down
+.PHONY: run dev build test clean migrate-up migrate-down seed sqlc docker-up docker-down
 
 GOCMD=go
 GOBUILD=$(GOCMD) build
@@ -40,6 +40,11 @@ migrate-up:
 
 migrate-down:
 	goose -dir migrations postgres "$(DB_URL)" down
+
+# Seed development database with test data
+seed:
+	@echo "Seeding development database..."
+	$(GOCMD) run scripts/seed.go "$(DB_URL)"
 
 migrate-create:
 	@read -p "Enter migration name: " name; \
