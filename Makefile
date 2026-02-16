@@ -1,4 +1,4 @@
-.PHONY: run build test clean migrate-up migrate-down sqlc docker-up docker-down
+.PHONY: run dev build test clean migrate-up migrate-down sqlc docker-up docker-down
 
 GOCMD=go
 GOBUILD=$(GOCMD) build
@@ -12,11 +12,18 @@ BINARY_UNIX=$(BINARY_NAME)_unix
 
 DB_URL=postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable
 
+# Build the binary
 build:
 	$(GOBUILD) -o bin/$(BINARY_NAME) ./cmd/api
 
+# Run without live reload (production/simple run)
 run:
 	$(GOCMD) run ./cmd/api
+
+# Run with Air live reload for development
+dev:
+	@which air > /dev/null || (echo "Installing air..." && go install github.com/air-verse/air@latest)
+	air -c .air.toml
 
 test:
 	$(GOTEST) -v ./...
