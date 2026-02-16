@@ -1,0 +1,60 @@
+.PHONY: run build test clean migrate-up migrate-down sqlc docker-up docker-down
+
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOGET=$(GOCMD) get
+GOMOD=$(GOCMD) mod
+
+BINARY_NAME=logistics-api
+BINARY_UNIX=$(BINARY_NAME)_unix
+
+DB_URL=postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable
+
+build:
+	$(GOBUILD) -o bin/$(BINARY_NAME) ./cmd/api
+
+run:
+	$(GOCMD) run ./cmd/api
+
+test:
+	$(GOTEST) -v ./...
+
+test-integration:
+	$(GOTEST) -v -tags=integration ./tests/integration/...
+
+clean:
+	$(GOCLEAN)
+	rm -rf bin/
+
+migrate-up:
+	goose -dir migrations postgres "$(DB_URL)" up
+
+migrate-down:
+	goose -dir migrations postgres "$(DB_URL)" down
+
+migrate-create:
+	@read -p "Enter migration name: " name; \
+	goose -dir migrations create "$$name" sql
+
+sqlc:
+	sqlc generate
+
+docker-up:
+	docker compose up -d
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f api
+
+setup: docker-up sleep migrate-up
+	@echo "Development environment ready!"
+
+sleep:
+	sleep 5
+
+build-linux:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o bin/$(BINARY_UNIX) ./cmd/api
