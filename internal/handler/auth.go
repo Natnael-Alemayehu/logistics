@@ -124,7 +124,11 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.Auth.RefreshToken(r.Context(), input.RefreshToken)
 	if err != nil {
-		response.ErrorJSON(w, r, http.StatusUnauthorized, "UNAUTHORIZED", err.Error())
+		if err == service.ErrSessionRevoked || err == service.ErrSessionNotFound {
+			response.ErrorJSON(w, r, http.StatusUnauthorized, response.CodeSessionRevoked, err.Error())
+			return
+		}
+		response.ErrorJSON(w, r, http.StatusUnauthorized, response.CodeUnauthorized, err.Error())
 		return
 	}
 
@@ -154,7 +158,11 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.Auth.Logout(r.Context(), input.RefreshToken); err != nil {
-		response.ErrorJSON(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to logout")
+		if err == service.ErrSessionNotFound {
+			response.ErrorJSON(w, r, http.StatusNotFound, response.CodeSessionNotFound, err.Error())
+			return
+		}
+		response.ErrorJSON(w, r, http.StatusInternalServerError, response.CodeInternalError, "Failed to logout")
 		return
 	}
 

@@ -18,6 +18,8 @@ const (
 	CodePasswordResetRequired = "PASSWORD_RESET_REQUIRED"
 	CodeInvalidRequest        = "INVALID_REQUEST"
 	CodeConflict              = "CONFLICT"
+	CodeSessionRevoked        = "SESSION_REVOKED"
+	CodeSessionNotFound       = "SESSION_NOT_FOUND"
 )
 
 type Response struct {
