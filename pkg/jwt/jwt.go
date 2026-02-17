@@ -58,12 +58,16 @@ func (m *JWTManager) GenerateAccessToken(userID, tenantID, role, phone, email st
 
 func (m *JWTManager) GenerateRefreshToken(userID, tenantID string) (string, error) {
 	now := time.Now()
-	claims := jwt.RegisteredClaims{
-		Issuer:    m.issuer,
-		Subject:   userID,
-		ExpiresAt: jwt.NewNumericDate(now.Add(m.refreshTTL)),
-		IssuedAt:  jwt.NewNumericDate(now),
-		NotBefore: jwt.NewNumericDate(now),
+	claims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    m.issuer,
+			Subject:   userID,
+			ExpiresAt: jwt.NewNumericDate(now.Add(m.refreshTTL)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+		},
+		TenantID: tenantID,
+		UserID:   userID,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
