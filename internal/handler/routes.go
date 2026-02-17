@@ -9,6 +9,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/middleware"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
 	"github.com/rs/zerolog"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager) *chi.Mux {
@@ -23,6 +24,10 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager) *chi
 	r.Use(middleware.CORS())
 	r.Get("/health", h.Health)
 
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+	))
+
 	r.Group(func(r chi.Router) {
 		r.Post("/auth/login/driver", h.DriverLogin)
 		r.Post("/auth/login/dispatcher", h.DispatcherLogin)
@@ -35,6 +40,10 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager) *chi
 
 		r.Post("/auth/logout", h.Logout)
 
+		r.Get("/sessions", h.ListSessions)
+		r.Delete("/sessions/{id}", h.RevokeSession)
+		r.Delete("/sessions/others", h.RevokeOtherSessions)
+
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireDriver())
 			r.Post("/sync", h.Sync)
@@ -46,18 +55,29 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager) *chi
 
 			r.Post("/shipments", h.CreateShipment)
 			r.Get("/shipments", h.ListShipments)
+			r.Get("/shipments/search", h.SearchShipments)
 			r.Get("/shipments/{id}", h.GetShipment)
+			r.Put("/shipments/{id}", h.UpdateShipment)
 			r.Put("/shipments/{id}/assign", h.AssignDriver)
 			r.Put("/shipments/{id}/status", h.UpdateShipmentStatus)
+			r.Post("/shipments/{id}/cancel", h.CancelShipment)
 
 			r.Get("/drivers", h.ListDrivers)
 			r.Post("/drivers", h.CreateDriver)
+
+			r.Get("/vehicles", h.ListVehicles)
+			r.Get("/vehicles/active", h.ListActiveVehicles)
+			r.Post("/vehicles", h.CreateVehicle)
+			r.Get("/vehicles/{id}", h.GetVehicle)
+			r.Put("/vehicles/{id}", h.UpdateVehicle)
 		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAdmin())
 			r.Get("/users", h.ListUsers)
 			r.Post("/users", h.CreateUser)
+
+			r.Delete("/vehicles/{id}", h.DeleteVehicle)
 		})
 	})
 

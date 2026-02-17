@@ -14,15 +14,29 @@ import (
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
 )
 
+const (
+	MaxFailedAttempts = 5
+	LockoutDuration   = 15 * time.Minute
+)
+
+var (
+	ErrAccountLocked         = errors.New("account is locked")
+	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrAccountInactive       = errors.New("account is inactive")
+	ErrPasswordResetRequired = errors.New("password reset required")
+)
+
 type AuthService struct {
-	queries    *db.Queries
-	jwtManager *jwt.JWTManager
+	queries      *db.Queries
+	jwtManager   *jwt.JWTManager
+	auditService *AuditService
 }
 
-func NewAuthService(queries *db.Queries, jwtManager *jwt.JWTManager) *AuthService {
+func NewAuthService(queries *db.Queries, jwtManager *jwt.JWTManager, auditService *AuditService) *AuthService {
 	return &AuthService{
-		queries:    queries,
-		jwtManager: jwtManager,
+		queries:      queries,
+		jwtManager:   jwtManager,
+		auditService: auditService,
 	}
 }
 
@@ -42,37 +56,84 @@ type LoginOutput struct {
 	User         *model.User `json:"user"`
 }
 
-func (s *AuthService) DriverLogin(ctx context.Context, input DriverLoginInput) (*LoginOutput, error) {
+type SessionOutput struct {
+	ID        string `json:"id"`
+	DeviceID  string `json:"device_id,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
+	IPAddress string `json:"ip_address,omitempty"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at"`
+	IsCurrent bool   `json:"is_current"`
+}
+
+func (s *AuthService) DriverLogin(ctx context.Context, input DriverLoginInput, ipAddress, userAgent string) (*LoginOutput, error) {
 	phone := input.Phone
 	user, err := s.queries.GetUserByPhone(ctx, &phone)
 	if err != nil {
-		return nil, errors.New("invalid phone or PIN")
+		s.auditService.Log(ctx, AuditLogInput{
+			Action:     model.ActionLoginFailed,
+			EntityType: model.EntityUser,
+			IPAddress:  ipAddress,
+			UserAgent:  userAgent,
+		})
+		return nil, ErrInvalidCredentials
 	}
 
 	if user.IsActive == nil || !*user.IsActive {
-		return nil, errors.New("account is inactive")
+		return nil, ErrAccountInactive
 	}
 
-	if user.Role != "driver" {
-		return nil, errors.New("invalid login type for this endpoint")
+	if user.LockedUntil.Valid && user.LockedUntil.Time.After(time.Now()) {
+		s.auditService.Log(ctx, AuditLogInput{
+			TenantID:   user.TenantID.String(),
+			UserID:     user.ID.String(),
+			Action:     model.ActionLoginFailed,
+			EntityType: model.EntityUser,
+			EntityID:   user.ID.String(),
+			IPAddress:  ipAddress,
+			UserAgent:  userAgent,
+		})
+		return nil, ErrAccountLocked
 	}
 
 	if user.PinHash == nil || !hash.CheckPIN(input.PIN, *user.PinHash) {
-		return nil, errors.New("invalid phone or PIN")
+		s.handleFailedLogin(ctx, user.ID, ipAddress, userAgent)
+		return nil, ErrInvalidCredentials
 	}
 
-	return s.generateTokens(ctx, &user)
+	s.queries.ResetFailedLoginAttempts(ctx, user.ID)
+
+	return s.generateTokens(ctx, &user, ipAddress, userAgent)
 }
 
-func (s *AuthService) DispatcherLogin(ctx context.Context, input DispatcherLoginInput) (*LoginOutput, error) {
+func (s *AuthService) DispatcherLogin(ctx context.Context, input DispatcherLoginInput, ipAddress, userAgent string) (*LoginOutput, error) {
 	email := input.Email
 	user, err := s.queries.GetUserByEmail(ctx, &email)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		s.auditService.Log(ctx, AuditLogInput{
+			Action:     model.ActionLoginFailed,
+			EntityType: model.EntityUser,
+			IPAddress:  ipAddress,
+			UserAgent:  userAgent,
+		})
+		return nil, ErrInvalidCredentials
 	}
 
 	if user.IsActive == nil || !*user.IsActive {
-		return nil, errors.New("account is inactive")
+		return nil, ErrAccountInactive
+	}
+
+	if user.LockedUntil.Valid && user.LockedUntil.Time.After(time.Now()) {
+		s.auditService.Log(ctx, AuditLogInput{
+			TenantID:   user.TenantID.String(),
+			UserID:     user.ID.String(),
+			Action:     model.ActionLoginFailed,
+			EntityType: model.EntityUser,
+			EntityID:   user.ID.String(),
+			IPAddress:  ipAddress,
+			UserAgent:  userAgent,
+		})
+		return nil, ErrAccountLocked
 	}
 
 	if user.Role == "driver" {
@@ -80,10 +141,39 @@ func (s *AuthService) DispatcherLogin(ctx context.Context, input DispatcherLogin
 	}
 
 	if user.PasswordHash == nil || !hash.CheckPassword(input.Password, *user.PasswordHash) {
-		return nil, errors.New("invalid email or password")
+		s.handleFailedLogin(ctx, user.ID, ipAddress, userAgent)
+		return nil, ErrInvalidCredentials
 	}
 
-	return s.generateTokens(ctx, &user)
+	if user.PasswordResetRequired != nil && *user.PasswordResetRequired {
+		return nil, ErrPasswordResetRequired
+	}
+
+	s.queries.ResetFailedLoginAttempts(ctx, user.ID)
+
+	return s.generateTokens(ctx, &user, ipAddress, userAgent)
+}
+
+func (s *AuthService) handleFailedLogin(ctx context.Context, userID pgtype.UUID, ipAddress, userAgent string) {
+	user, _ := s.queries.IncrementFailedLoginAttempts(ctx, userID)
+
+	if user.FailedLoginAttempts != nil && *user.FailedLoginAttempts >= MaxFailedAttempts {
+		lockUntil := time.Now().Add(LockoutDuration)
+		s.queries.LockUserAccount(ctx, db.LockUserAccountParams{
+			ID:          userID,
+			LockedUntil: pgtype.Timestamptz{Time: lockUntil, Valid: true},
+		})
+	}
+
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   user.TenantID.String(),
+		UserID:     user.ID.String(),
+		Action:     model.ActionLoginFailed,
+		EntityType: model.EntityUser,
+		EntityID:   user.ID.String(),
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
 }
 
 func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*LoginOutput, error) {
@@ -101,10 +191,14 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*L
 	}
 
 	if user.IsActive == nil || !*user.IsActive {
-		return nil, errors.New("account is inactive")
+		return nil, ErrAccountInactive
 	}
 
-	return s.generateTokens(ctx, &user)
+	if user.LockedUntil.Valid && user.LockedUntil.Time.After(time.Now()) {
+		return nil, ErrAccountLocked
+	}
+
+	return s.generateTokens(ctx, &user, "", "")
 }
 
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
@@ -119,7 +213,73 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	return s.queries.RevokeSession(ctx, session.ID)
 }
 
-func (s *AuthService) generateTokens(ctx context.Context, user *db.User) (*LoginOutput, error) {
+func (s *AuthService) ListSessions(ctx context.Context, userID string) ([]model.Session, error) {
+	sessions, err := s.queries.ListActiveSessionsByUser(ctx, toUUID(userID))
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]model.Session, len(sessions))
+	for i, sess := range sessions {
+		result[i] = *dbSessionToModel(&sess)
+	}
+
+	return result, nil
+}
+
+func (s *AuthService) RevokeSession(ctx context.Context, userID, sessionID string) error {
+	return s.queries.RevokeSessionByUser(ctx, db.RevokeSessionByUserParams{
+		ID:     toUUID(sessionID),
+		UserID: toUUID(userID),
+	})
+}
+
+func (s *AuthService) RevokeOtherSessions(ctx context.Context, userID, currentSessionID string) error {
+	return s.queries.RevokeOtherUserSessions(ctx, db.RevokeOtherUserSessionsParams{
+		UserID: toUUID(userID),
+		ID:     toUUID(currentSessionID),
+	})
+}
+
+func (s *AuthService) UnlockAccount(ctx context.Context, userID string) error {
+	return s.queries.UnlockUserAccount(ctx, toUUID(userID))
+}
+
+func (s *AuthService) UpdatePassword(ctx context.Context, userID, newPassword string) (*model.User, error) {
+	passwordHash, err := hash.Password(newPassword)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := s.queries.UpdatePassword(ctx, db.UpdatePasswordParams{
+		ID:           toUUID(userID),
+		PasswordHash: &passwordHash,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return dbUserToModel(&user), nil
+}
+
+func (s *AuthService) UpdatePIN(ctx context.Context, userID, newPIN string) (*model.User, error) {
+	pinHash, err := hash.PIN(newPIN)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := s.queries.UpdatePIN(ctx, db.UpdatePINParams{
+		ID:      toUUID(userID),
+		PinHash: &pinHash,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return dbUserToModel(&user), nil
+}
+
+func (s *AuthService) generateTokens(ctx context.Context, user *db.User, ipAddress, userAgent string) (*LoginOutput, error) {
 	var phone, email string
 	if user.Phone != nil {
 		phone = *user.Phone
@@ -155,22 +315,71 @@ func (s *AuthService) generateTokens(ctx context.Context, user *db.User) (*Login
 		TenantID:         user.TenantID,
 		RefreshTokenHash: tokenHashStr,
 		ExpiresAt:        pgtype.Timestamptz{Time: time.Now().Add(s.jwtManager.RefreshTTL()), Valid: true},
+		IpAddress:        toText(ipAddress),
+		UserAgent:        toText(userAgent),
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   user.TenantID.String(),
+		UserID:     user.ID.String(),
+		Action:     model.ActionLogin,
+		EntityType: model.EntitySession,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
 	return &LoginOutput{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		User: &model.User{
-			ID:       user.ID.String(),
-			TenantID: user.TenantID.String(),
-			Role:     user.Role,
-			FullName: user.FullName,
-			Phone:    phone,
-			Email:    email,
-			IsActive: *user.IsActive,
-		},
+		User:         dbUserToModel(user),
 	}, nil
+}
+
+func dbUserToModel(u *db.User) *model.User {
+	m := &model.User{
+		ID:        u.ID.String(),
+		TenantID:  u.TenantID.String(),
+		Role:      u.Role,
+		FullName:  u.FullName,
+		IsActive:  *u.IsActive,
+		CreatedAt: u.CreatedAt.Time,
+		UpdatedAt: u.UpdatedAt.Time,
+	}
+
+	if u.Phone != nil {
+		m.Phone = *u.Phone
+	}
+	if u.Email != nil {
+		m.Email = *u.Email
+	}
+
+	return m
+}
+
+func dbSessionToModel(s *db.Session) *model.Session {
+	m := &model.Session{
+		ID:        s.ID.String(),
+		UserID:    s.UserID.String(),
+		TenantID:  s.TenantID.String(),
+		ExpiresAt: s.ExpiresAt.Time,
+		CreatedAt: s.CreatedAt.Time,
+	}
+
+	if s.DeviceID != nil {
+		m.DeviceID = *s.DeviceID
+	}
+	if s.UserAgent != nil {
+		m.UserAgent = *s.UserAgent
+	}
+	if s.IpAddress != nil {
+		m.IPAddress = *s.IpAddress
+	}
+	if s.RevokedAt.Valid {
+		m.RevokedAt = &s.RevokedAt.Time
+	}
+
+	return m
 }

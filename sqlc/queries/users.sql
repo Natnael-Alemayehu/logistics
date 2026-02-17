@@ -58,3 +58,36 @@ SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true;
 
 -- name: CountDriversByTenant :one
 SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND role = 'driver' AND is_active = true;
+
+-- name: IncrementFailedLoginAttempts :one
+UPDATE users
+SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1
+WHERE id = $1
+RETURNING *;
+
+-- name: ResetFailedLoginAttempts :exec
+UPDATE users
+SET failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1;
+
+-- name: LockUserAccount :exec
+UPDATE users
+SET locked_until = $2
+WHERE id = $1;
+
+-- name: UnlockUserAccount :exec
+UPDATE users
+SET failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1;
+
+-- name: UpdatePassword :one
+UPDATE users
+SET password_hash = $2, password_reset_required = false, failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdatePIN :one
+UPDATE users
+SET pin_hash = $2, failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1
+RETURNING *;

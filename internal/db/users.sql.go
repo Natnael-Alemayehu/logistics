@@ -37,7 +37,7 @@ const createUser = `-- name: CreateUser :one
 INSERT INTO users (
     tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
 `
 
 type CreateUserParams struct {
@@ -75,6 +75,9 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
 	)
 	return i, err
 }
@@ -96,7 +99,7 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
 WHERE email = $1
 `
 
@@ -115,12 +118,15 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email *string) (User, erro
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
 	)
 	return i, err
 }
 
 const getUserByEmailAndTenant = `-- name: GetUserByEmailAndTenant :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
 WHERE email = $1 AND tenant_id = $2
 `
 
@@ -144,12 +150,15 @@ func (q *Queries) GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmai
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -173,12 +182,15 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
 WHERE phone = $1
 `
 
@@ -197,12 +209,15 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone *string) (User, erro
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
 	)
 	return i, err
 }
 
 const getUserByPhoneAndTenant = `-- name: GetUserByPhoneAndTenant :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
 WHERE phone = $1 AND tenant_id = $2
 `
 
@@ -226,12 +241,44 @@ func (q *Queries) GetUserByPhoneAndTenant(ctx context.Context, arg GetUserByPhon
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
+	)
+	return i, err
+}
+
+const incrementFailedLoginAttempts = `-- name: IncrementFailedLoginAttempts :one
+UPDATE users
+SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1
+WHERE id = $1
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
+`
+
+func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, incrementFailedLoginAttempts, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Role,
+		&i.FullName,
+		&i.Phone,
+		&i.Email,
+		&i.PasswordHash,
+		&i.PinHash,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
 	)
 	return i, err
 }
 
 const listDriversByTenant = `-- name: ListDriversByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
 WHERE tenant_id = $1 AND role = 'driver'
 ORDER BY full_name
 LIMIT $2 OFFSET $3
@@ -264,6 +311,9 @@ func (q *Queries) ListDriversByTenant(ctx context.Context, arg ListDriversByTena
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FailedLoginAttempts,
+			&i.LockedUntil,
+			&i.PasswordResetRequired,
 		); err != nil {
 			return nil, err
 		}
@@ -276,7 +326,7 @@ func (q *Queries) ListDriversByTenant(ctx context.Context, arg ListDriversByTena
 }
 
 const listUsersByTenant = `-- name: ListUsersByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
 WHERE tenant_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -309,6 +359,9 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FailedLoginAttempts,
+			&i.LockedUntil,
+			&i.PasswordResetRequired,
 		); err != nil {
 			return nil, err
 		}
@@ -318,6 +371,112 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockUserAccount = `-- name: LockUserAccount :exec
+UPDATE users
+SET locked_until = $2
+WHERE id = $1
+`
+
+type LockUserAccountParams struct {
+	ID          pgtype.UUID        `db:"id" json:"id"`
+	LockedUntil pgtype.Timestamptz `db:"locked_until" json:"locked_until"`
+}
+
+func (q *Queries) LockUserAccount(ctx context.Context, arg LockUserAccountParams) error {
+	_, err := q.db.Exec(ctx, lockUserAccount, arg.ID, arg.LockedUntil)
+	return err
+}
+
+const resetFailedLoginAttempts = `-- name: ResetFailedLoginAttempts :exec
+UPDATE users
+SET failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1
+`
+
+func (q *Queries) ResetFailedLoginAttempts(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, resetFailedLoginAttempts, id)
+	return err
+}
+
+const unlockUserAccount = `-- name: UnlockUserAccount :exec
+UPDATE users
+SET failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1
+`
+
+func (q *Queries) UnlockUserAccount(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, unlockUserAccount, id)
+	return err
+}
+
+const updatePIN = `-- name: UpdatePIN :one
+UPDATE users
+SET pin_hash = $2, failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
+`
+
+type UpdatePINParams struct {
+	ID      pgtype.UUID `db:"id" json:"id"`
+	PinHash *string     `db:"pin_hash" json:"pin_hash"`
+}
+
+func (q *Queries) UpdatePIN(ctx context.Context, arg UpdatePINParams) (User, error) {
+	row := q.db.QueryRow(ctx, updatePIN, arg.ID, arg.PinHash)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Role,
+		&i.FullName,
+		&i.Phone,
+		&i.Email,
+		&i.PasswordHash,
+		&i.PinHash,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
+	)
+	return i, err
+}
+
+const updatePassword = `-- name: UpdatePassword :one
+UPDATE users
+SET password_hash = $2, password_reset_required = false, failed_login_attempts = 0, locked_until = NULL
+WHERE id = $1
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
+`
+
+type UpdatePasswordParams struct {
+	ID           pgtype.UUID `db:"id" json:"id"`
+	PasswordHash *string     `db:"password_hash" json:"password_hash"`
+}
+
+func (q *Queries) UpdatePassword(ctx context.Context, arg UpdatePasswordParams) (User, error) {
+	row := q.db.QueryRow(ctx, updatePassword, arg.ID, arg.PasswordHash)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Role,
+		&i.FullName,
+		&i.Phone,
+		&i.Email,
+		&i.PasswordHash,
+		&i.PinHash,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
+	)
+	return i, err
 }
 
 const updateUser = `-- name: UpdateUser :one
@@ -330,7 +489,7 @@ SET
     pin_hash = COALESCE($7, pin_hash),
     is_active = COALESCE($8, is_active)
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
 `
 
 type UpdateUserParams struct {
@@ -368,6 +527,9 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailedLoginAttempts,
+		&i.LockedUntil,
+		&i.PasswordResetRequired,
 	)
 	return i, err
 }

@@ -64,11 +64,11 @@ func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req m
 	}
 
 	for _, status := range req.Statuses {
-		_, err := s.shipment.UpdateStatus(ctx, tenantID, status.ShipmentID, UpdateStatusInput{
+		_, err := s.shipment.UpdateStatus(ctx, tenantID, driverID, status.ShipmentID, UpdateStatusInput{
 			Status:       status.Status,
 			StatusNote:   status.Note,
 			StatusReason: status.Reason,
-		})
+		}, "", "")
 		if err == nil {
 			eventsReceived++
 		}

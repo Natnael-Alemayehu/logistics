@@ -11,6 +11,90 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advancedSearchShipments = `-- name: AdvancedSearchShipments :many
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+WHERE tenant_id = $1
+  AND ($2::text IS NULL OR status = $2)
+  AND ($3::uuid IS NULL OR driver_id = $3)
+  AND ($4::timestamptz IS NULL OR created_at >= $4)
+  AND ($5::timestamptz IS NULL OR created_at <= $5)
+  AND ($6::text IS NULL OR origin_address ILIKE '%' || $6 || '%')
+  AND ($7::text IS NULL OR destination_address ILIKE '%' || $7 || '%')
+  AND ($8::text IS NULL OR tracking_number ILIKE '%' || $8 || '%'
+       OR customer_name ILIKE '%' || $8 || '%'
+       OR customer_phone ILIKE '%' || $8 || '%')
+ORDER BY created_at DESC
+LIMIT $9 OFFSET $10
+`
+
+type AdvancedSearchShipmentsParams struct {
+	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Column2  string             `db:"column_2" json:"column_2"`
+	Column3  pgtype.UUID        `db:"column_3" json:"column_3"`
+	Column4  pgtype.Timestamptz `db:"column_4" json:"column_4"`
+	Column5  pgtype.Timestamptz `db:"column_5" json:"column_5"`
+	Column6  string             `db:"column_6" json:"column_6"`
+	Column7  string             `db:"column_7" json:"column_7"`
+	Column8  string             `db:"column_8" json:"column_8"`
+	Limit    int32              `db:"limit" json:"limit"`
+	Offset   int32              `db:"offset" json:"offset"`
+}
+
+func (q *Queries) AdvancedSearchShipments(ctx context.Context, arg AdvancedSearchShipmentsParams) ([]Shipment, error) {
+	rows, err := q.db.Query(ctx, advancedSearchShipments,
+		arg.TenantID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.Column7,
+		arg.Column8,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Shipment{}
+	for rows.Next() {
+		var i Shipment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.OriginAddress,
+			&i.OriginCoordinates,
+			&i.DestinationAddress,
+			&i.DestinationCoordinates,
+			&i.CustomerName,
+			&i.CustomerPhone,
+			&i.CargoDescription,
+			&i.CargoWeight,
+			&i.CargoValue,
+			&i.SpecialInstructions,
+			&i.DriverID,
+			&i.VehicleID,
+			&i.Status,
+			&i.StatusNote,
+			&i.StatusReason,
+			&i.EstimatedDelivery,
+			&i.ActualDelivery,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CreatedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const assignDriverToShipment = `-- name: AssignDriverToShipment :one
 UPDATE shipments
 SET driver_id = $1, status = 'assigned', updated_at = NOW()
@@ -26,6 +110,50 @@ type AssignDriverToShipmentParams struct {
 
 func (q *Queries) AssignDriverToShipment(ctx context.Context, arg AssignDriverToShipmentParams) (Shipment, error) {
 	row := q.db.QueryRow(ctx, assignDriverToShipment, arg.DriverID, arg.ID, arg.TenantID)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.OriginCoordinates,
+		&i.DestinationAddress,
+		&i.DestinationCoordinates,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+	)
+	return i, err
+}
+
+const cancelShipment = `-- name: CancelShipment :one
+UPDATE shipments
+SET status = 'cancelled', status_reason = $2, updated_at = NOW()
+WHERE id = $1 AND tenant_id = $3
+RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
+`
+
+type CancelShipmentParams struct {
+	ID           pgtype.UUID `db:"id" json:"id"`
+	StatusReason *string     `db:"status_reason" json:"status_reason"`
+	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) CancelShipment(ctx context.Context, arg CancelShipmentParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, cancelShipment, arg.ID, arg.StatusReason, arg.TenantID)
 	var i Shipment
 	err := row.Scan(
 		&i.ID,
@@ -595,18 +723,21 @@ func (q *Queries) SearchShipments(ctx context.Context, arg SearchShipmentsParams
 const updateShipment = `-- name: UpdateShipment :one
 UPDATE shipments
 SET
-    destination_address = COALESCE($3, destination_address),
-    customer_name = COALESCE($4, customer_name),
-    customer_phone = COALESCE($5, customer_phone),
-    cargo_description = COALESCE($6, cargo_description),
-    cargo_weight = COALESCE($7, cargo_weight),
-    special_instructions = COALESCE($8, special_instructions),
-    driver_id = COALESCE($9, driver_id),
-    vehicle_id = COALESCE($10, vehicle_id),
-    status = COALESCE($11, status),
-    status_note = COALESCE($12, status_note),
-    status_reason = COALESCE($13, status_reason),
-    actual_delivery = COALESCE($14, actual_delivery)
+    origin_address = COALESCE($3, origin_address),
+    destination_address = COALESCE($4, destination_address),
+    customer_name = COALESCE($5, customer_name),
+    customer_phone = COALESCE($6, customer_phone),
+    cargo_description = COALESCE($7, cargo_description),
+    cargo_weight = COALESCE($8, cargo_weight),
+    cargo_value = COALESCE($9, cargo_value),
+    special_instructions = COALESCE($10, special_instructions),
+    driver_id = COALESCE($11, driver_id),
+    vehicle_id = COALESCE($12, vehicle_id),
+    status = COALESCE($13, status),
+    status_note = COALESCE($14, status_note),
+    status_reason = COALESCE($15, status_reason),
+    estimated_delivery = COALESCE($16, estimated_delivery),
+    actual_delivery = COALESCE($17, actual_delivery)
 WHERE id = $1 AND tenant_id = $2
 RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
 `
@@ -614,17 +745,20 @@ RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, de
 type UpdateShipmentParams struct {
 	ID                  pgtype.UUID        `db:"id" json:"id"`
 	TenantID            pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	OriginAddress       *string            `db:"origin_address" json:"origin_address"`
 	DestinationAddress  *string            `db:"destination_address" json:"destination_address"`
 	CustomerName        *string            `db:"customer_name" json:"customer_name"`
 	CustomerPhone       *string            `db:"customer_phone" json:"customer_phone"`
 	CargoDescription    *string            `db:"cargo_description" json:"cargo_description"`
 	CargoWeight         pgtype.Numeric     `db:"cargo_weight" json:"cargo_weight"`
+	CargoValue          pgtype.Numeric     `db:"cargo_value" json:"cargo_value"`
 	SpecialInstructions *string            `db:"special_instructions" json:"special_instructions"`
 	DriverID            pgtype.UUID        `db:"driver_id" json:"driver_id"`
 	VehicleID           pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
 	Status              *string            `db:"status" json:"status"`
 	StatusNote          *string            `db:"status_note" json:"status_note"`
 	StatusReason        *string            `db:"status_reason" json:"status_reason"`
+	EstimatedDelivery   pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
 	ActualDelivery      pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
 }
 
@@ -632,17 +766,20 @@ func (q *Queries) UpdateShipment(ctx context.Context, arg UpdateShipmentParams) 
 	row := q.db.QueryRow(ctx, updateShipment,
 		arg.ID,
 		arg.TenantID,
+		arg.OriginAddress,
 		arg.DestinationAddress,
 		arg.CustomerName,
 		arg.CustomerPhone,
 		arg.CargoDescription,
 		arg.CargoWeight,
+		arg.CargoValue,
 		arg.SpecialInstructions,
 		arg.DriverID,
 		arg.VehicleID,
 		arg.Status,
 		arg.StatusNote,
 		arg.StatusReason,
+		arg.EstimatedDelivery,
 		arg.ActualDelivery,
 	)
 	var i Shipment
