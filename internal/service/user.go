@@ -124,22 +124,3 @@ func (s *UserService) ListUsers(ctx context.Context, tenantID string, page, perP
 
 	return result, int(total), nil
 }
-
-func dbUserToModel(u *db.User) *model.User {
-	m := &model.User{
-		ID:       u.ID.String(),
-		TenantID: u.TenantID.String(),
-		Role:     u.Role,
-		FullName: u.FullName,
-	}
-	if u.Phone != nil {
-		m.Phone = *u.Phone
-	}
-	if u.Email != nil {
-		m.Email = *u.Email
-	}
-	if u.IsActive != nil {
-		m.IsActive = *u.IsActive
-	}
-	return m
-}

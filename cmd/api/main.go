@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/natnael-alemayehu/logistics/docs"
 	"github.com/natnael-alemayehu/logistics/internal/config"
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/handler"
@@ -17,6 +18,20 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// @title Ethiopian Logistics Tracking Platform API
+// @version 1.0
+// @description API for managing logistics operations including shipments, drivers, vehicles, and tracking
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.email support@logistics.et
+
+// @host localhost:8080
+// @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 func main() {
 	cfg := config.Load()
 
@@ -56,12 +71,14 @@ func main() {
 	jwtManager := jwt.NewManager(privateKey, publicKey, cfg.JWTIssuer, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
 
 	queries := db.New(pool)
-	authService := service.NewAuthService(queries, jwtManager)
-	shipmentService := service.NewShipmentService(queries)
+	auditService := service.NewAuditService(queries)
+	authService := service.NewAuthService(queries, jwtManager, auditService)
+	shipmentService := service.NewShipmentService(queries, auditService)
 	syncService := service.NewSyncService(queries, shipmentService)
 	userService := service.NewUserService(queries)
+	vehicleService := service.NewVehicleService(queries)
 
-	h := handler.New(authService, shipmentService, syncService, userService)
+	h := handler.New(authService, shipmentService, syncService, userService, vehicleService)
 
 	router := h.Routes(logger, jwtManager)
 

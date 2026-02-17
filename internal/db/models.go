@@ -120,17 +120,20 @@ type TrackingEvent struct {
 }
 
 type User struct {
-	ID           pgtype.UUID        `db:"id" json:"id"`
-	TenantID     pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	Role         string             `db:"role" json:"role"`
-	FullName     string             `db:"full_name" json:"full_name"`
-	Phone        *string            `db:"phone" json:"phone"`
-	Email        *string            `db:"email" json:"email"`
-	PasswordHash *string            `db:"password_hash" json:"password_hash"`
-	PinHash      *string            `db:"pin_hash" json:"pin_hash"`
-	IsActive     *bool              `db:"is_active" json:"is_active"`
-	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                    pgtype.UUID        `db:"id" json:"id"`
+	TenantID              pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Role                  string             `db:"role" json:"role"`
+	FullName              string             `db:"full_name" json:"full_name"`
+	Phone                 *string            `db:"phone" json:"phone"`
+	Email                 *string            `db:"email" json:"email"`
+	PasswordHash          *string            `db:"password_hash" json:"password_hash"`
+	PinHash               *string            `db:"pin_hash" json:"pin_hash"`
+	IsActive              *bool              `db:"is_active" json:"is_active"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	FailedLoginAttempts   *int32             `db:"failed_login_attempts" json:"failed_login_attempts"`
+	LockedUntil           pgtype.Timestamptz `db:"locked_until" json:"locked_until"`
+	PasswordResetRequired *bool              `db:"password_reset_required" json:"password_reset_required"`
 }
 
 type Vehicle struct {

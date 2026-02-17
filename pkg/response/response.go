@@ -7,6 +7,19 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+const (
+	CodeValidationError       = "VALIDATION_ERROR"
+	CodeNotFound              = "NOT_FOUND"
+	CodeUnauthorized          = "UNAUTHORIZED"
+	CodeForbidden             = "FORBIDDEN"
+	CodeRateLimited           = "RATE_LIMITED"
+	CodeInternalError         = "INTERNAL_ERROR"
+	CodeAccountLocked         = "ACCOUNT_LOCKED"
+	CodePasswordResetRequired = "PASSWORD_RESET_REQUIRED"
+	CodeInvalidRequest        = "INVALID_REQUEST"
+	CodeConflict              = "CONFLICT"
+)
+
 type Response struct {
 	Data  interface{} `json:"data,omitempty"`
 	Error *Error      `json:"error,omitempty"`
@@ -70,4 +83,40 @@ func PaginatedJSON(w http.ResponseWriter, r *http.Request, status int, data inte
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(resp)
+}
+
+func ValidationErrors(w http.ResponseWriter, r *http.Request, errors any) {
+	ErrorJSON(w, r, http.StatusBadRequest, CodeValidationError, "Validation failed", errors)
+}
+
+func NotFound(w http.ResponseWriter, r *http.Request, message string) {
+	if message == "" {
+		message = "Resource not found"
+	}
+	ErrorJSON(w, r, http.StatusNotFound, CodeNotFound, message)
+}
+
+func Unauthorized(w http.ResponseWriter, r *http.Request, message string) {
+	if message == "" {
+		message = "Unauthorized"
+	}
+	ErrorJSON(w, r, http.StatusUnauthorized, CodeUnauthorized, message)
+}
+
+func Forbidden(w http.ResponseWriter, r *http.Request, message string) {
+	if message == "" {
+		message = "Forbidden"
+	}
+	ErrorJSON(w, r, http.StatusForbidden, CodeForbidden, message)
+}
+
+func RateLimited(w http.ResponseWriter, r *http.Request) {
+	ErrorJSON(w, r, http.StatusTooManyRequests, CodeRateLimited, "Rate limit exceeded")
+}
+
+func InternalError(w http.ResponseWriter, r *http.Request, message string) {
+	if message == "" {
+		message = "Internal server error"
+	}
+	ErrorJSON(w, r, http.StatusInternalServerError, CodeInternalError, message)
 }

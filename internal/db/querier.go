@@ -11,21 +11,29 @@ import (
 )
 
 type Querier interface {
+	AdvancedSearchShipments(ctx context.Context, arg AdvancedSearchShipmentsParams) ([]Shipment, error)
 	AssignDriverToShipment(ctx context.Context, arg AssignDriverToShipmentParams) (Shipment, error)
+	CancelShipment(ctx context.Context, arg CancelShipmentParams) (Shipment, error)
+	CountActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
 	CountDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountShipmentsByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountTrackingEventsByShipment(ctx context.Context, shipmentID pgtype.UUID) (int64, error)
 	CountUsersByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
 	CreatePOD(ctx context.Context, arg CreatePODParams) (ProofOfDelivery, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (TrackingEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
+	DeleteVehicle(ctx context.Context, arg DeleteVehicleParams) error
 	GetActiveSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
 	GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error)
+	GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error)
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
 	GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams) (Shipment, error)
 	GetShipmentByTrackingNumber(ctx context.Context, trackingNumber string) (Shipment, error)
@@ -39,23 +47,43 @@ type Querier interface {
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	GetUserByPhone(ctx context.Context, phone *string) (User, error)
 	GetUserByPhoneAndTenant(ctx context.Context, arg GetUserByPhoneAndTenantParams) (User, error)
+	GetVehicleByID(ctx context.Context, arg GetVehicleByIDParams) (Vehicle, error)
+	HardDeleteVehicle(ctx context.Context, arg HardDeleteVehicleParams) error
+	IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error)
+	ListActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error)
 	ListActiveShipmentsByDriver(ctx context.Context, arg ListActiveShipmentsByDriverParams) ([]Shipment, error)
+	ListActiveVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) ([]Vehicle, error)
+	ListAuditLogsByAction(ctx context.Context, arg ListAuditLogsByActionParams) ([]AuditLog, error)
+	ListAuditLogsByDateRange(ctx context.Context, arg ListAuditLogsByDateRangeParams) ([]AuditLog, error)
+	ListAuditLogsByEntity(ctx context.Context, arg ListAuditLogsByEntityParams) ([]AuditLog, error)
+	ListAuditLogsByTenant(ctx context.Context, arg ListAuditLogsByTenantParams) ([]AuditLog, error)
+	ListAuditLogsByUser(ctx context.Context, arg ListAuditLogsByUserParams) ([]AuditLog, error)
 	ListDriversByTenant(ctx context.Context, arg ListDriversByTenantParams) ([]User, error)
+	ListSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error)
 	ListShipmentsByDriver(ctx context.Context, arg ListShipmentsByDriverParams) ([]Shipment, error)
 	ListShipmentsByStatus(ctx context.Context, arg ListShipmentsByStatusParams) ([]Shipment, error)
 	ListShipmentsByTenant(ctx context.Context, arg ListShipmentsByTenantParams) ([]Shipment, error)
 	ListTrackingEventsByDriver(ctx context.Context, arg ListTrackingEventsByDriverParams) ([]ListTrackingEventsByDriverRow, error)
 	ListTrackingEventsByShipment(ctx context.Context, arg ListTrackingEventsByShipmentParams) ([]ListTrackingEventsByShipmentRow, error)
 	ListUsersByTenant(ctx context.Context, arg ListUsersByTenantParams) ([]User, error)
+	ListVehiclesByTenant(ctx context.Context, arg ListVehiclesByTenantParams) ([]Vehicle, error)
+	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
 	MarkTrackingEventsSynced(ctx context.Context, dollar_1 []pgtype.UUID) error
+	ResetFailedLoginAttempts(ctx context.Context, id pgtype.UUID) error
 	RevokeAllUserSessions(ctx context.Context, userID pgtype.UUID) error
+	RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) error
 	RevokeSession(ctx context.Context, id pgtype.UUID) error
+	RevokeSessionByUser(ctx context.Context, arg RevokeSessionByUserParams) error
 	SearchShipments(ctx context.Context, arg SearchShipmentsParams) ([]Shipment, error)
+	UnlockUserAccount(ctx context.Context, id pgtype.UUID) error
+	UpdatePIN(ctx context.Context, arg UpdatePINParams) (User, error)
 	UpdatePODSyncedAt(ctx context.Context, id pgtype.UUID) error
+	UpdatePassword(ctx context.Context, arg UpdatePasswordParams) (User, error)
 	UpdateShipment(ctx context.Context, arg UpdateShipmentParams) (Shipment, error)
 	UpdateShipmentStatus(ctx context.Context, arg UpdateShipmentStatusParams) (Shipment, error)
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
+	UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error)
 }
 
 var _ Querier = (*Queries)(nil)

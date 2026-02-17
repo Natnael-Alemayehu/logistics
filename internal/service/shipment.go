@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
 )
 
 type ShipmentService struct {
-	queries *db.Queries
+	queries      *db.Queries
+	auditService *AuditService
 }
 
-func NewShipmentService(queries *db.Queries) *ShipmentService {
-	return &ShipmentService{queries: queries}
+func NewShipmentService(queries *db.Queries, auditService *AuditService) *ShipmentService {
+	return &ShipmentService{queries: queries, auditService: auditService}
 }
 
 type CreateShipmentInput struct {
@@ -30,6 +32,20 @@ type CreateShipmentInput struct {
 	VehicleID           string  `json:"vehicle_id"`
 }
 
+type UpdateShipmentInput struct {
+	OriginAddress       string     `json:"origin_address"`
+	DestinationAddress  string     `json:"destination_address"`
+	CustomerName        string     `json:"customer_name"`
+	CustomerPhone       string     `json:"customer_phone"`
+	CargoDescription    string     `json:"cargo_description"`
+	CargoWeight         float64    `json:"cargo_weight"`
+	CargoValue          float64    `json:"cargo_value"`
+	SpecialInstructions string     `json:"special_instructions"`
+	DriverID            string     `json:"driver_id"`
+	VehicleID           string     `json:"vehicle_id"`
+	EstimatedDelivery   *time.Time `json:"estimated_delivery"`
+}
+
 type UpdateStatusInput struct {
 	Status       string `json:"status" validate:"required,oneof=pending assigned in_transit delayed arrived delivered issue cancelled"`
 	StatusNote   string `json:"status_note"`
@@ -40,7 +56,23 @@ type AssignDriverInput struct {
 	DriverID string `json:"driver_id" validate:"required,uuid"`
 }
 
-func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string, input CreateShipmentInput) (*model.Shipment, error) {
+type CancelShipmentInput struct {
+	Reason string `json:"reason" validate:"required"`
+}
+
+type SearchShipmentsInput struct {
+	Status      string
+	DriverID    string
+	DateFrom    *time.Time
+	DateTo      *time.Time
+	Origin      string
+	Destination string
+	Query       string
+	Page        int
+	PerPage     int
+}
+
+func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string, input CreateShipmentInput, ipAddress, userAgent string) (*model.Shipment, error) {
 	trackingNumber := generateTrackingNumber()
 
 	shipment, err := s.queries.CreateShipment(ctx, db.CreateShipmentParams{
@@ -62,6 +94,17 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 	if err != nil {
 		return nil, fmt.Errorf("failed to create shipment: %w", err)
 	}
+
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     createdBy,
+		Action:     model.ActionShipmentCreated,
+		EntityType: model.EntityShipment,
+		EntityID:   shipment.ID.String(),
+		NewValue:   shipment,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
 
 	return dbShipmentToModel(&shipment), nil
 }
@@ -129,7 +172,63 @@ func (s *ShipmentService) ListActiveByDriver(ctx context.Context, tenantID, driv
 	return result, nil
 }
 
-func (s *ShipmentService) AssignDriver(ctx context.Context, tenantID, shipmentID, driverID string) (*model.Shipment, error) {
+func (s *ShipmentService) Update(ctx context.Context, tenantID, userID, shipmentID string, input UpdateShipmentInput, ipAddress, userAgent string) (*model.Shipment, error) {
+	oldShipment, err := s.queries.GetShipmentByID(ctx, db.GetShipmentByIDParams{
+		ID:       toUUID(shipmentID),
+		TenantID: toUUID(tenantID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("shipment not found: %w", err)
+	}
+
+	var estimatedDelivery pgtype.Timestamptz
+	if input.EstimatedDelivery != nil {
+		estimatedDelivery = pgtype.Timestamptz{Time: *input.EstimatedDelivery, Valid: true}
+	}
+
+	shipment, err := s.queries.UpdateShipment(ctx, db.UpdateShipmentParams{
+		ID:                  toUUID(shipmentID),
+		TenantID:            toUUID(tenantID),
+		OriginAddress:       toText(input.OriginAddress),
+		DestinationAddress:  toText(input.DestinationAddress),
+		CustomerName:        toText(input.CustomerName),
+		CustomerPhone:       toText(input.CustomerPhone),
+		CargoDescription:    toText(input.CargoDescription),
+		CargoWeight:         toNumeric(input.CargoWeight),
+		CargoValue:          toNumeric(input.CargoValue),
+		SpecialInstructions: toText(input.SpecialInstructions),
+		DriverID:            toUUID(input.DriverID),
+		VehicleID:           toUUID(input.VehicleID),
+		EstimatedDelivery:   estimatedDelivery,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update shipment: %w", err)
+	}
+
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     userID,
+		Action:     model.ActionShipmentUpdated,
+		EntityType: model.EntityShipment,
+		EntityID:   shipment.ID.String(),
+		OldValue:   oldShipment,
+		NewValue:   shipment,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
+	return dbShipmentToModel(&shipment), nil
+}
+
+func (s *ShipmentService) AssignDriver(ctx context.Context, tenantID, userID, shipmentID, driverID string, ipAddress, userAgent string) (*model.Shipment, error) {
+	oldShipment, err := s.queries.GetShipmentByID(ctx, db.GetShipmentByIDParams{
+		ID:       toUUID(shipmentID),
+		TenantID: toUUID(tenantID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("shipment not found: %w", err)
+	}
+
 	shipment, err := s.queries.AssignDriverToShipment(ctx, db.AssignDriverToShipmentParams{
 		DriverID: toUUID(driverID),
 		ID:       toUUID(shipmentID),
@@ -139,10 +238,30 @@ func (s *ShipmentService) AssignDriver(ctx context.Context, tenantID, shipmentID
 		return nil, fmt.Errorf("failed to assign driver: %w", err)
 	}
 
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     userID,
+		Action:     model.ActionDriverAssigned,
+		EntityType: model.EntityShipment,
+		EntityID:   shipment.ID.String(),
+		OldValue:   oldShipment,
+		NewValue:   shipment,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
 	return dbShipmentToModel(&shipment), nil
 }
 
-func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, shipmentID string, input UpdateStatusInput) (*model.Shipment, error) {
+func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, userID, shipmentID string, input UpdateStatusInput, ipAddress, userAgent string) (*model.Shipment, error) {
+	oldShipment, err := s.queries.GetShipmentByID(ctx, db.GetShipmentByIDParams{
+		ID:       toUUID(shipmentID),
+		TenantID: toUUID(tenantID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("shipment not found: %w", err)
+	}
+
 	shipment, err := s.queries.UpdateShipmentStatus(ctx, db.UpdateShipmentStatusParams{
 		Status:       input.Status,
 		StatusNote:   toText(input.StatusNote),
@@ -154,7 +273,114 @@ func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, shipmentID
 		return nil, fmt.Errorf("failed to update status: %w", err)
 	}
 
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     userID,
+		Action:     model.ActionStatusChanged,
+		EntityType: model.EntityShipment,
+		EntityID:   shipment.ID.String(),
+		OldValue:   oldShipment,
+		NewValue:   shipment,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
 	return dbShipmentToModel(&shipment), nil
+}
+
+func (s *ShipmentService) Cancel(ctx context.Context, tenantID, userID, shipmentID string, input CancelShipmentInput, ipAddress, userAgent string) (*model.Shipment, error) {
+	oldShipment, err := s.queries.GetShipmentByID(ctx, db.GetShipmentByIDParams{
+		ID:       toUUID(shipmentID),
+		TenantID: toUUID(tenantID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("shipment not found: %w", err)
+	}
+
+	if oldShipment.Status == "cancelled" {
+		return nil, fmt.Errorf("shipment already cancelled")
+	}
+	if oldShipment.Status == "delivered" {
+		return nil, fmt.Errorf("cannot cancel delivered shipment")
+	}
+
+	shipment, err := s.queries.CancelShipment(ctx, db.CancelShipmentParams{
+		ID:           toUUID(shipmentID),
+		StatusReason: toText(input.Reason),
+		TenantID:     toUUID(tenantID),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to cancel shipment: %w", err)
+	}
+
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     userID,
+		Action:     model.ActionShipmentCancelled,
+		EntityType: model.EntityShipment,
+		EntityID:   shipment.ID.String(),
+		OldValue:   oldShipment,
+		NewValue:   shipment,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
+	return dbShipmentToModel(&shipment), nil
+}
+
+func (s *ShipmentService) Search(ctx context.Context, tenantID string, input SearchShipmentsInput) ([]model.Shipment, int, error) {
+	offset := (input.Page - 1) * input.PerPage
+
+	var dateFrom, dateTo pgtype.Timestamptz
+	if input.DateFrom != nil {
+		dateFrom = pgtype.Timestamptz{Time: *input.DateFrom, Valid: true}
+	}
+	if input.DateTo != nil {
+		dateTo = pgtype.Timestamptz{Time: *input.DateTo, Valid: true}
+	}
+
+	status := ""
+	if input.Status != "" {
+		status = input.Status
+	}
+
+	query := ""
+	if input.Query != "" {
+		query = input.Query
+	}
+
+	origin := ""
+	if input.Origin != "" {
+		origin = input.Origin
+	}
+
+	destination := ""
+	if input.Destination != "" {
+		destination = input.Destination
+	}
+
+	shipments, err := s.queries.AdvancedSearchShipments(ctx, db.AdvancedSearchShipmentsParams{
+		TenantID: toUUID(tenantID),
+		Column2:  status,
+		Column3:  toUUID(input.DriverID),
+		Column4:  dateFrom,
+		Column5:  dateTo,
+		Column6:  origin,
+		Column7:  destination,
+		Column8:  query,
+		Limit:    int32(input.PerPage),
+		Offset:   int32(offset),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to search shipments: %w", err)
+	}
+
+	result := make([]model.Shipment, len(shipments))
+	for i, sh := range shipments {
+		result[i] = *dbShipmentToModel(&sh)
+	}
+
+	return result, len(result), nil
 }
 
 func dbShipmentToModel(sh *db.Shipment) *model.Shipment {
