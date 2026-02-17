@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/natnael-alemayehu/logistics/pkg/response"
 )
@@ -15,11 +16,9 @@ func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 				return
 			}
 
-			for _, allowed := range allowedRoles {
-				if role == allowed {
-					next.ServeHTTP(w, r)
-					return
-				}
+			if slices.Contains(allowedRoles, role) {
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			response.ErrorJSON(w, r, http.StatusForbidden, "FORBIDDEN", "Insufficient permissions")

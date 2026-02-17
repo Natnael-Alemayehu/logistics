@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/natnael-alemayehu/logistics/internal/middleware"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
 	"github.com/rs/zerolog"
@@ -15,9 +18,9 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager) *chi
 	r.Use(chiMiddleware.RealIP)
 	r.Use(middleware.Logger(logger))
 	r.Use(chiMiddleware.Recoverer)
+	r.Use(httprate.LimitByIP(100, time.Minute))
 	r.Use(chiMiddleware.Throttle(100))
 	r.Use(middleware.CORS())
-
 	r.Get("/health", h.Health)
 
 	r.Group(func(r chi.Router) {
