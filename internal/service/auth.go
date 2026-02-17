@@ -24,6 +24,8 @@ var (
 	ErrInvalidCredentials    = errors.New("invalid credentials")
 	ErrAccountInactive       = errors.New("account is inactive")
 	ErrPasswordResetRequired = errors.New("password reset required")
+	ErrSessionRevoked        = errors.New("session has been revoked")
+	ErrSessionNotFound       = errors.New("session not found")
 )
 
 type AuthService struct {
@@ -177,11 +179,27 @@ func (s *AuthService) handleFailedLogin(ctx context.Context, userID pgtype.UUID,
 }
 
 func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*LoginOutput, error) {
+	// 1. Validate JWT signature and expiration
 	claims, err := s.jwtManager.Validate(refreshToken)
 	if err != nil {
 		return nil, errors.New("invalid refresh token")
 	}
 
+	// 2. Check if session exists and is active
+	tokenHash := sha256.Sum256([]byte(refreshToken))
+	tokenHashStr := hex.EncodeToString(tokenHash[:])
+
+	session, err := s.queries.GetActiveSessionByTokenHash(ctx, tokenHashStr)
+	if err != nil {
+		return nil, ErrSessionRevoked
+	}
+
+	// 3. Verify session belongs to the user in the token
+	if session.UserID.String() != claims.UserID {
+		return nil, errors.New("token session mismatch")
+	}
+
+	// 4. Get user and verify account status
 	user, err := s.queries.GetUserByID(ctx, db.GetUserByIDParams{
 		ID:       toUUID(claims.UserID),
 		TenantID: toUUID(claims.TenantID),
@@ -198,6 +216,10 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*L
 		return nil, ErrAccountLocked
 	}
 
+	// 5. Revoke the old session
+	s.queries.RevokeSession(ctx, session.ID)
+
+	// 6. Generate new tokens (creates new session)
 	return s.generateTokens(ctx, &user, "", "")
 }
 
@@ -207,7 +229,7 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 
 	session, err := s.queries.GetActiveSessionByTokenHash(ctx, tokenHashStr)
 	if err != nil {
-		return nil
+		return ErrSessionNotFound
 	}
 
 	return s.queries.RevokeSession(ctx, session.ID)

@@ -459,9 +459,6 @@ info:
     name: API Support
   description: API for managing logistics operations including shipments, drivers,
     vehicles, and tracking
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
   title: Ethiopian Logistics Tracking Platform API
   version: "1.0"
