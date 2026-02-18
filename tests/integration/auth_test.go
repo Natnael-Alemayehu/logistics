@@ -1,5 +1,4 @@
 //go:build integration
-// +build integration
 
 package integration
 
@@ -713,7 +712,7 @@ func TestLogout_HTTP(t *testing.T) {
 
 	ctx := context.Background()
 	tenant := env.CreateTestTenant(ctx, "logout-http")
-	dispatcher := env.CreateTestDispatcher(ctx, tenant.ID.String(), "logout-http@test.com")
+	_ = env.CreateTestDispatcher(ctx, tenant.ID.String(), "logout-http@test.com")
 
 	authService := env.GetAuthService()
 	loginResult, _ := authService.DispatcherLogin(ctx, service.DispatcherLoginInput{
