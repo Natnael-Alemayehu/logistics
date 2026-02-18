@@ -139,29 +139,21 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 // @Summary Logout user
 // @Description Logout and revoke the current session
 // @Tags auth
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param input body map[string]string true "Refresh token"
 // @Success 200 {object} map[string]string
-// @Failure 400 {object} response.Response
 // @Failure 401 {object} response.Response
 // @Router /auth/logout [post]
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		RefreshToken string `json:"refresh_token" validate:"required"`
-	}
+	userID := middleware.GetUserID(r.Context())
+	sessionID := middleware.GetSessionID(r.Context())
 
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		response.ErrorJSON(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+	if userID == "" || sessionID == "" {
+		response.ErrorJSON(w, r, http.StatusUnauthorized, response.CodeUnauthorized, "Invalid session")
 		return
 	}
 
-	if err := h.Auth.Logout(r.Context(), input.RefreshToken); err != nil {
-		if err == service.ErrSessionNotFound {
-			response.ErrorJSON(w, r, http.StatusNotFound, response.CodeSessionNotFound, err.Error())
-			return
-		}
+	if err := h.Auth.Logout(r.Context(), userID, sessionID); err != nil {
 		response.ErrorJSON(w, r, http.StatusInternalServerError, response.CodeInternalError, "Failed to logout")
 		return
 	}
