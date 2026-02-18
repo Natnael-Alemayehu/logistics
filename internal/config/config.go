@@ -36,6 +36,14 @@ type Config struct {
 	EthioTelecomAPIKey   string
 	EthioTelecomSenderID string
 	TrackingURLBase      string
+
+	RedisURL      string
+	RedisPassword string
+	RedisDB       int
+
+	RateLimitIP   int
+	RateLimitUser int
+	RateLimitAuth int
 }
 
 func Load() *Config {
@@ -65,6 +73,12 @@ func Load() *Config {
 		EthioTelecomAPIKey:   getEnv("ETHIO_TELECOM_API_KEY", ""),
 		EthioTelecomSenderID: getEnv("ETHIO_TELECOM_SENDER_ID", ""),
 		TrackingURLBase:      getEnv("TRACKING_URL_BASE", "https://track.logistics.et"),
+		RedisURL:             getEnv("REDIS_URL", "localhost:6379"),
+		RedisPassword:        getEnv("REDIS_PASSWORD", ""),
+		RedisDB:              getIntEnv("REDIS_DB", 0),
+		RateLimitIP:          getIntEnv("RATE_LIMIT_IP", 100),
+		RateLimitUser:        getIntEnv("RATE_LIMIT_USER", 200),
+		RateLimitAuth:        getIntEnv("RATE_LIMIT_AUTH", 10),
 	}
 }
 
@@ -91,6 +105,15 @@ func getBoolEnv(key string, defaultValue bool) bool {
 			return defaultValue
 		}
 		return b
+	}
+	return defaultValue
+}
+
+func getIntEnv(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
 	}
 	return defaultValue
 }

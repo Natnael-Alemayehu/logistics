@@ -156,7 +156,7 @@ func (e *TestEnv) setupServices() {
 	trackingService := service.NewTrackingService(e.queries, auditService)
 
 	e.handler = handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, nil, nil)
-	e.router = e.handler.Routes(zerolog.Nop(), e.jwtManager)
+	e.router = e.handler.Routes(zerolog.Nop(), e.jwtManager, nil)
 }
 
 func (e *TestEnv) Cleanup() {

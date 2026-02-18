@@ -1,3 +1,4 @@
+// Package middleware handles the midlewares for requests
 package middleware
 
 import (

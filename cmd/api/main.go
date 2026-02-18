@@ -12,8 +12,10 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/config"
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/handler"
+	"github.com/natnael-alemayehu/logistics/internal/middleware"
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
+	"github.com/natnael-alemayehu/logistics/pkg/redis"
 	"github.com/natnael-alemayehu/logistics/pkg/validation"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 	"github.com/rs/zerolog"
@@ -28,7 +30,7 @@ import (
 // @contact.email support@logistics.et
 
 // @host localhost:8080
-// @BasePath /
+// @BasePath /api/v1
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
@@ -71,6 +73,22 @@ func main() {
 
 	jwtManager := jwt.NewManager(privateKey, publicKey, cfg.JWTIssuer, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
 
+	var redisClient *redis.Client
+	if cfg.RedisURL != "" {
+		var err error
+		redisClient, err = redis.NewClient(redis.Config{
+			Addr:     cfg.RedisURL,
+			Password: cfg.RedisPassword,
+			DB:       cfg.RedisDB,
+		})
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to connect to Redis, continuing without caching")
+		} else {
+			defer redisClient.Close()
+			logger.Info().Msg("Connected to Redis")
+		}
+	}
+
 	queries := db.New(pool)
 	auditService := service.NewAuditService(queries)
 	authService := service.NewAuthService(queries, jwtManager, auditService)
@@ -92,7 +110,12 @@ func main() {
 
 	h := handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, wsHandler, dashboardService)
 
-	router := h.Routes(logger, jwtManager)
+	var rateLimiter *middleware.RateLimiter
+	if redisClient != nil {
+		rateLimiter = middleware.NewRateLimiter(redisClient, cfg.RateLimitIP, cfg.RateLimitUser, cfg.RateLimitAuth)
+	}
+
+	router := h.Routes(logger, jwtManager, rateLimiter)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
