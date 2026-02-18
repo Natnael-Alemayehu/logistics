@@ -1,3 +1,4 @@
+// Package websocket handles the websocket connections of this project.
 package websocket
 
 import (
