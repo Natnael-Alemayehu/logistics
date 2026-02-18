@@ -183,6 +183,60 @@ func (q *Queries) CancelShipment(ctx context.Context, arg CancelShipmentParams) 
 	return i, err
 }
 
+const countActiveShipmentsByTenant = `-- name: CountActiveShipmentsByTenant :one
+SELECT COUNT(*) FROM shipments 
+WHERE tenant_id = $1 
+  AND status = ANY($2::text[])
+`
+
+type CountActiveShipmentsByTenantParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Column2  []string    `db:"column_2" json:"column_2"`
+}
+
+func (q *Queries) CountActiveShipmentsByTenant(ctx context.Context, arg CountActiveShipmentsByTenantParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveShipmentsByTenant, arg.TenantID, arg.Column2)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countDeliveriesToday = `-- name: CountDeliveriesToday :one
+SELECT COUNT(*) FROM shipments 
+WHERE tenant_id = $1 
+  AND status = 'delivered' 
+  AND actual_delivery >= $2
+`
+
+type CountDeliveriesTodayParams struct {
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ActualDelivery pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
+}
+
+func (q *Queries) CountDeliveriesToday(ctx context.Context, arg CountDeliveriesTodayParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countDeliveriesToday, arg.TenantID, arg.ActualDelivery)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countShipmentsByStatus = `-- name: CountShipmentsByStatus :one
+SELECT COUNT(*) FROM shipments 
+WHERE tenant_id = $1 AND status = $2
+`
+
+type CountShipmentsByStatusParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Status   string      `db:"status" json:"status"`
+}
+
+func (q *Queries) CountShipmentsByStatus(ctx context.Context, arg CountShipmentsByStatusParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countShipmentsByStatus, arg.TenantID, arg.Status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countShipmentsByTenant = `-- name: CountShipmentsByTenant :one
 SELECT COUNT(*) FROM shipments WHERE tenant_id = $1
 `

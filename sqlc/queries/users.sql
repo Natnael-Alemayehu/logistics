@@ -91,3 +91,11 @@ UPDATE users
 SET pin_hash = $2, failed_login_attempts = 0, locked_until = NULL
 WHERE id = $1
 RETURNING *;
+
+-- name: CountDriversWithActiveShipments :one
+SELECT COUNT(DISTINCT s.driver_id) 
+FROM shipments s
+INNER JOIN users u ON s.driver_id = u.id
+WHERE s.tenant_id = $1 
+  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived')
+  AND u.is_active = true;

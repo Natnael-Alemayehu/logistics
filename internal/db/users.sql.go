@@ -22,6 +22,22 @@ func (q *Queries) CountDriversByTenant(ctx context.Context, tenantID pgtype.UUID
 	return count, err
 }
 
+const countDriversWithActiveShipments = `-- name: CountDriversWithActiveShipments :one
+SELECT COUNT(DISTINCT s.driver_id) 
+FROM shipments s
+INNER JOIN users u ON s.driver_id = u.id
+WHERE s.tenant_id = $1 
+  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived')
+  AND u.is_active = true
+`
+
+func (q *Queries) CountDriversWithActiveShipments(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countDriversWithActiveShipments, tenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsersByTenant = `-- name: CountUsersByTenant :one
 SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true
 `

@@ -9,11 +9,14 @@ import (
 )
 
 type Handler struct {
-	Auth     *service.AuthService
-	Shipment *service.ShipmentService
-	SyncSvc  *service.SyncService
-	User     *service.UserService
-	Vehicle  *service.VehicleService
+	Auth      *service.AuthService
+	Shipment  *service.ShipmentService
+	SyncSvc   *service.SyncService
+	User      *service.UserService
+	Vehicle   *service.VehicleService
+	Tracking  *service.TrackingService
+	WS        *WSHandler
+	Dashboard *DashboardService
 }
 
 func New(
@@ -22,13 +25,19 @@ func New(
 	sync *service.SyncService,
 	user *service.UserService,
 	vehicle *service.VehicleService,
+	tracking *service.TrackingService,
+	ws *WSHandler,
+	dashboard *DashboardService,
 ) *Handler {
 	return &Handler{
-		Auth:     auth,
-		Shipment: shipment,
-		SyncSvc:  sync,
-		User:     user,
-		Vehicle:  vehicle,
+		Auth:      auth,
+		Shipment:  shipment,
+		SyncSvc:   sync,
+		User:      user,
+		Vehicle:   vehicle,
+		Tracking:  tracking,
+		WS:        ws,
+		Dashboard: dashboard,
 	}
 }
 

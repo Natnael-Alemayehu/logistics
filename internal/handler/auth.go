@@ -253,3 +253,105 @@ func (h *Handler) RevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "Other sessions revoked"})
 }
+
+type ChangePasswordInput struct {
+	CurrentPassword string `json:"current_password" validate:"required,min=8"`
+	NewPassword     string `json:"new_password" validate:"required,min=8,password_strength"`
+}
+
+// ChangePassword godoc
+// @Summary Change password
+// @Description Change the current user's password. Requires current password for verification.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param input body ChangePasswordInput true "Password change data"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 500 {object} response.Response
+// @Router /auth/change-password [post]
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var input ChangePasswordInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		response.ErrorJSON(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	if err := validation.Get().Struct(input); err != nil {
+		response.ErrorJSON(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Validation failed", validation.FormatErrors(err))
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	tenantID := middleware.GetTenantID(r.Context())
+	userRole := middleware.GetRole(r.Context())
+	ipAddress := getIPAddress(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	err := h.Auth.ChangePassword(r.Context(), tenantID, userID, userRole, input.CurrentPassword, input.NewPassword, ipAddress, userAgent)
+	if err != nil {
+		if err == service.ErrInvalidCredentials {
+			response.ErrorJSON(w, r, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Current password is incorrect")
+			return
+		}
+		response.ErrorJSON(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	response.JSON(w, r, http.StatusOK, map[string]string{"message": "Password changed successfully"})
+}
+
+type ForgotPINInput struct {
+	DriverID string `json:"driver_id" validate:"required,uuid"`
+}
+
+// ForgotPIN godoc
+// @Summary Request PIN reset for driver
+// @Description Request a PIN reset for a driver. Sends new PIN via SMS. Requires admin role or self.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param input body ForgotPINInput true "Driver ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} response.Response
+// @Failure 401 {object} response.Response
+// @Failure 403 {object} response.Response
+// @Failure 500 {object} response.Response
+// @Router /auth/forgot-pin [post]
+func (h *Handler) ForgotPIN(w http.ResponseWriter, r *http.Request) {
+	var input ForgotPINInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		response.ErrorJSON(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
+		return
+	}
+
+	if err := validation.Get().Struct(input); err != nil {
+		response.ErrorJSON(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Validation failed", validation.FormatErrors(err))
+		return
+	}
+
+	userID := middleware.GetUserID(r.Context())
+	tenantID := middleware.GetTenantID(r.Context())
+	userRole := middleware.GetRole(r.Context())
+	ipAddress := getIPAddress(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	err := h.Auth.ForgotPIN(r.Context(), tenantID, userID, userRole, input.DriverID, ipAddress, userAgent)
+	if err != nil {
+		if err == service.ErrUnauthorized {
+			response.ErrorJSON(w, r, http.StatusForbidden, "FORBIDDEN", "Not authorized to reset this driver's PIN")
+			return
+		}
+		if err == service.ErrNotFound {
+			response.ErrorJSON(w, r, http.StatusNotFound, "NOT_FOUND", "Driver not found")
+			return
+		}
+		response.ErrorJSON(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		return
+	}
+
+	response.JSON(w, r, http.StatusOK, map[string]string{"message": "New PIN sent via SMS"})
+}

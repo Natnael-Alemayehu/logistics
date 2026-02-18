@@ -39,6 +39,10 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager) *chi
 		r.Use(middleware.Auth(jwtManager))
 
 		r.Post("/auth/logout", h.Logout)
+		r.Post("/auth/change-password", h.ChangePassword)
+		r.Post("/auth/forgot-pin", h.ForgotPIN)
+
+		r.Get("/ws", h.WS.HandleWebSocket)
 
 		r.Get("/sessions", h.ListSessions)
 		r.Delete("/sessions/{id}", h.RevokeSession)
@@ -61,21 +65,27 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager) *chi
 			r.Put("/shipments/{id}/assign", h.AssignDriver)
 			r.Put("/shipments/{id}/status", h.UpdateShipmentStatus)
 			r.Post("/shipments/{id}/cancel", h.CancelShipment)
+			r.Get("/shipments/{id}/tracking", h.ListShipmentTrackingEvents)
+			r.Get("/shipments/{id}/pod", h.GetShipmentPOD)
 
 			r.Get("/drivers", h.ListDrivers)
 			r.Post("/drivers", h.CreateDriver)
+			r.Get("/drivers/{id}/location", h.GetDriverLocation)
 
 			r.Get("/vehicles", h.ListVehicles)
 			r.Get("/vehicles/active", h.ListActiveVehicles)
 			r.Post("/vehicles", h.CreateVehicle)
 			r.Get("/vehicles/{id}", h.GetVehicle)
 			r.Put("/vehicles/{id}", h.UpdateVehicle)
+
+			r.Get("/dashboard/stats", h.GetDashboardStats)
 		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAdmin())
 			r.Get("/users", h.ListUsers)
 			r.Post("/users", h.CreateUser)
+			r.Put("/users/{id}", h.UpdateUser)
 
 			r.Delete("/vehicles/{id}", h.DeleteVehicle)
 		})

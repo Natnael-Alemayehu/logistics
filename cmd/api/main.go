@@ -15,6 +15,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
 	"github.com/natnael-alemayehu/logistics/pkg/validation"
+	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 	"github.com/rs/zerolog"
 )
 
@@ -73,12 +74,23 @@ func main() {
 	queries := db.New(pool)
 	auditService := service.NewAuditService(queries)
 	authService := service.NewAuthService(queries, jwtManager, auditService)
-	shipmentService := service.NewShipmentService(queries, auditService)
-	syncService := service.NewSyncService(queries, shipmentService)
-	userService := service.NewUserService(queries)
-	vehicleService := service.NewVehicleService(queries)
 
-	h := handler.New(authService, shipmentService, syncService, userService, vehicleService)
+	wsHub := websocket.NewHub(logger)
+	go wsHub.Run()
+
+	eventService := service.NewEventService(wsHub, logger)
+	_ = eventService
+
+	shipmentService := service.NewShipmentService(queries, auditService, nil)
+	syncService := service.NewSyncService(queries, shipmentService)
+	userService := service.NewUserService(queries, auditService)
+	vehicleService := service.NewVehicleService(queries)
+	trackingService := service.NewTrackingService(queries, auditService)
+
+	wsHandler := handler.NewWSHandler(wsHub, jwtManager)
+	dashboardService := handler.NewDashboardService(queries)
+
+	h := handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, wsHandler, dashboardService)
 
 	router := h.Routes(logger, jwtManager)
 
