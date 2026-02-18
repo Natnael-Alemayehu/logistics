@@ -11,12 +11,13 @@ import (
 )
 
 type ShipmentService struct {
-	queries      *db.Queries
-	auditService *AuditService
+	queries             *db.Queries
+	auditService        *AuditService
+	notificationService *NotificationService
 }
 
-func NewShipmentService(queries *db.Queries, auditService *AuditService) *ShipmentService {
-	return &ShipmentService{queries: queries, auditService: auditService}
+func NewShipmentService(queries *db.Queries, auditService *AuditService, notificationService *NotificationService) *ShipmentService {
+	return &ShipmentService{queries: queries, auditService: auditService, notificationService: notificationService}
 }
 
 type CreateShipmentInput struct {
@@ -105,6 +106,15 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 		IPAddress:  ipAddress,
 		UserAgent:  userAgent,
 	})
+
+	if s.notificationService != nil {
+		go func() {
+			notifCtx := context.Background()
+			if err := s.notificationService.SendShipmentCreatedNotification(notifCtx, input.CustomerPhone, trackingNumber); err != nil {
+				// Log error but don't fail the request
+			}
+		}()
+	}
 
 	return dbShipmentToModel(&shipment), nil
 }
@@ -250,6 +260,15 @@ func (s *ShipmentService) AssignDriver(ctx context.Context, tenantID, userID, sh
 		UserAgent:  userAgent,
 	})
 
+	if s.notificationService != nil {
+		go func() {
+			notifCtx := context.Background()
+			if err := s.notificationService.SendDriverAssignmentNotification(notifCtx, "", shipment.TrackingNumber); err != nil {
+				// Log error but don't fail the request
+			}
+		}()
+	}
+
 	return dbShipmentToModel(&shipment), nil
 }
 
@@ -284,6 +303,22 @@ func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, userID, sh
 		IPAddress:  ipAddress,
 		UserAgent:  userAgent,
 	})
+
+	if s.notificationService != nil && oldShipment.Status != input.Status {
+		go func() {
+			notifCtx := context.Background()
+			switch input.Status {
+			case "in_transit":
+				s.notificationService.SendShipmentDispatchedNotification(notifCtx, shipment.CustomerPhone, shipment.TrackingNumber)
+			case "delivered":
+				recipientName := input.StatusNote
+				if recipientName == "" {
+					recipientName = "recipient"
+				}
+				s.notificationService.SendShipmentDeliveredNotification(notifCtx, shipment.CustomerPhone, shipment.TrackingNumber, recipientName)
+			}
+		}()
+	}
 
 	return dbShipmentToModel(&shipment), nil
 }

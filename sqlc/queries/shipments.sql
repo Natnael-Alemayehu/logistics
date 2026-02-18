@@ -120,3 +120,18 @@ WHERE driver_id = $1
   AND tenant_id = $2
   AND (status IN ('assigned', 'in_transit', 'delayed', 'arrived') OR updated_at > $3)
 ORDER BY created_at DESC;
+
+-- name: CountActiveShipmentsByTenant :one
+SELECT COUNT(*) FROM shipments 
+WHERE tenant_id = $1 
+  AND status = ANY($2::text[]);
+
+-- name: CountDeliveriesToday :one
+SELECT COUNT(*) FROM shipments 
+WHERE tenant_id = $1 
+  AND status = 'delivered' 
+  AND actual_delivery >= $2;
+
+-- name: CountShipmentsByStatus :one
+SELECT COUNT(*) FROM shipments 
+WHERE tenant_id = $1 AND status = $2;

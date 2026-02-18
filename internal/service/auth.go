@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -26,6 +27,9 @@ var (
 	ErrPasswordResetRequired = errors.New("password reset required")
 	ErrSessionRevoked        = errors.New("session has been revoked")
 	ErrSessionNotFound       = errors.New("session not found")
+	ErrUnauthorized          = errors.New("unauthorized")
+	ErrNotFound              = errors.New("not found")
+	ErrSamePassword          = errors.New("new password must be different from current password")
 )
 
 type AuthService struct {
@@ -294,6 +298,102 @@ func (s *AuthService) UpdatePIN(ctx context.Context, userID, newPIN string) (*mo
 	}
 
 	return dbUserToModel(&user), nil
+}
+
+func (s *AuthService) ChangePassword(ctx context.Context, tenantID, userID, userRole, currentPassword, newPassword, ipAddress, userAgent string) error {
+	user, err := s.queries.GetUserByID(ctx, db.GetUserByIDParams{
+		ID:       toUUID(userID),
+		TenantID: toUUID(tenantID),
+	})
+	if err != nil {
+		return ErrNotFound
+	}
+
+	if user.PasswordHash == nil || !hash.CheckPassword(currentPassword, *user.PasswordHash) {
+		return ErrInvalidCredentials
+	}
+
+	if hash.CheckPassword(newPassword, *user.PasswordHash) {
+		return ErrSamePassword
+	}
+
+	passwordHash, err := hash.Password(newPassword)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.queries.UpdatePassword(ctx, db.UpdatePasswordParams{
+		ID:           toUUID(userID),
+		PasswordHash: &passwordHash,
+	})
+	if err != nil {
+		return err
+	}
+
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     userID,
+		Action:     "PASSWORD_CHANGED",
+		EntityType: "user",
+		EntityID:   userID,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
+	return nil
+}
+
+func (s *AuthService) ForgotPIN(ctx context.Context, tenantID, requesterID, requesterRole, driverID, ipAddress, userAgent string) error {
+	if requesterRole != "admin" && requesterRole != "fleet_manager" && requesterID != driverID {
+		return ErrUnauthorized
+	}
+
+	user, err := s.queries.GetUserByID(ctx, db.GetUserByIDParams{
+		ID:       toUUID(driverID),
+		TenantID: toUUID(tenantID),
+	})
+	if err != nil {
+		return ErrNotFound
+	}
+
+	if user.Role != "driver" {
+		return ErrNotFound
+	}
+
+	newPIN := generateRandomPIN()
+	pinHash, err := hash.PIN(newPIN)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.queries.UpdatePIN(ctx, db.UpdatePINParams{
+		ID:      toUUID(driverID),
+		PinHash: &pinHash,
+	})
+	if err != nil {
+		return err
+	}
+
+	if user.Phone != nil {
+		// In production, send SMS with new PIN
+		// For now, we just log the audit
+	}
+
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     requesterID,
+		Action:     "PIN_RESET",
+		EntityType: "user",
+		EntityID:   driverID,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
+	return nil
+}
+
+func generateRandomPIN() string {
+	return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
 }
 
 func (s *AuthService) generateTokens(ctx context.Context, user *db.User, ipAddress, userAgent string) (*LoginOutput, error) {

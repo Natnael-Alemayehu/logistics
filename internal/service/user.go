@@ -9,11 +9,12 @@ import (
 )
 
 type UserService struct {
-	queries *db.Queries
+	queries      *db.Queries
+	auditService *AuditService
 }
 
-func NewUserService(queries *db.Queries) *UserService {
-	return &UserService{queries: queries}
+func NewUserService(queries *db.Queries, auditService *AuditService) *UserService {
+	return &UserService{queries: queries, auditService: auditService}
 }
 
 type CreateDriverInput struct {
@@ -123,4 +124,54 @@ func (s *UserService) ListUsers(ctx context.Context, tenantID string, page, perP
 	}
 
 	return result, int(total), nil
+}
+
+func (s *UserService) UpdateUser(ctx context.Context, tenantID, requesterID, requesterRole, targetUserID, fullName, phone, email, ipAddress, userAgent string) (*model.User, error) {
+	if requesterRole != "admin" && requesterRole != "fleet_manager" && requesterID != targetUserID {
+		return nil, ErrUnauthorized
+	}
+
+	user, err := s.queries.GetUserByID(ctx, db.GetUserByIDParams{
+		ID:       toUUID(targetUserID),
+		TenantID: toUUID(tenantID),
+	})
+	if err != nil {
+		return nil, ErrNotFound
+	}
+
+	oldUser := user
+
+	params := db.UpdateUserParams{
+		ID:       toUUID(targetUserID),
+		TenantID: toUUID(tenantID),
+	}
+
+	if fullName != "" {
+		params.FullName = &fullName
+	}
+	if phone != "" {
+		params.Phone = &phone
+	}
+	if email != "" {
+		params.Email = &email
+	}
+
+	updatedUser, err := s.queries.UpdateUser(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	s.auditService.Log(ctx, AuditLogInput{
+		TenantID:   tenantID,
+		UserID:     requesterID,
+		Action:     model.ActionUserUpdated,
+		EntityType: model.EntityUser,
+		EntityID:   targetUserID,
+		OldValue:   oldUser,
+		NewValue:   updatedUser,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+	})
+
+	return dbUserToModel(&updatedUser), nil
 }
