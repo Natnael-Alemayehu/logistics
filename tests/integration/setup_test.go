@@ -1,5 +1,4 @@
 //go:build integration
-// +build integration
 
 package integration
 
@@ -10,6 +9,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"sort"
 	"testing"
 	"time"
 
@@ -23,6 +23,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/pkg/hash"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
+	"github.com/natnael-alemayehu/logistics/pkg/validation"
 	"github.com/rs/zerolog"
 	"github.com/testcontainers/testcontainers-go"
 	postgresdriver "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -124,6 +125,7 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 
 func (e *TestEnv) runMigrations(ctx context.Context) {
 	files, err := fs.Glob(migrationsFS, "testdata/migrations/*.sql")
+	sort.Strings(files)
 	if err != nil {
 		e.t.Fatalf("failed to read migration files: %v", err)
 	}
@@ -141,6 +143,7 @@ func (e *TestEnv) runMigrations(ctx context.Context) {
 }
 
 func (e *TestEnv) setupServices() {
+	validation.Init()
 	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	e.jwtManager = jwt.NewManager(privateKey, &privateKey.PublicKey, "test.logistics.et", time.Hour, 24*time.Hour)
 

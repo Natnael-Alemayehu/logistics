@@ -1,5 +1,3 @@
--- +goose Up
--- +goose StatementBegin
 
 CREATE EXTENSION IF NOT EXISTS postgis;
 
@@ -199,33 +197,4 @@ CREATE TRIGGER update_shipments_updated_at BEFORE UPDATE ON shipments
 CREATE TRIGGER update_sync_metadata_updated_at BEFORE UPDATE ON sync_metadata
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- +goose StatementEnd
 
--- +goose Down
--- +goose StatementBegin
-
--- Drop triggers first
-DROP TRIGGER IF EXISTS update_sync_metadata_updated_at ON sync_metadata;
-DROP TRIGGER IF EXISTS update_shipments_updated_at ON shipments;
-DROP TRIGGER IF EXISTS update_vehicles_updated_at ON vehicles;
-DROP TRIGGER IF EXISTS update_users_updated_at ON users;
-DROP TRIGGER IF EXISTS update_tenants_updated_at ON tenants;
-
--- Drop function
-DROP FUNCTION IF EXISTS update_updated_at_column();
-
--- Drop tables in reverse order (children first, parents last)
-DROP TABLE IF EXISTS sync_metadata CASCADE;
-DROP TABLE IF EXISTS audit_logs CASCADE;
-DROP TABLE IF EXISTS sessions CASCADE;
-DROP TABLE IF EXISTS proof_of_deliveries CASCADE;
-DROP TABLE IF EXISTS tracking_events CASCADE;
-DROP TABLE IF EXISTS shipments CASCADE;
-DROP TABLE IF EXISTS vehicles CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-DROP TABLE IF EXISTS tenants CASCADE;
-
--- Drop extension last (CASCADE to handle dependencies)
-DROP EXTENSION IF EXISTS postgis CASCADE;
-
--- +goose StatementEnd
