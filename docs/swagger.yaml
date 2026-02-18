@@ -533,18 +533,7 @@ paths:
       - auth
   /auth/logout:
     post:
-      consumes:
-      - application/json
       description: Logout and revoke the current session
-      parameters:
-      - description: Refresh token
-        in: body
-        name: input
-        required: true
-        schema:
-          additionalProperties:
-            type: string
-          type: object
       produces:
       - application/json
       responses:
@@ -554,10 +543,6 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.Response'
         "401":
           description: Unauthorized
           schema:

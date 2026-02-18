@@ -10,11 +10,12 @@ import (
 
 type Claims struct {
 	jwt.RegisteredClaims
-	TenantID string `json:"tenant_id"`
-	UserID   string `json:"user_id"`
-	Role     string `json:"role"`
-	Phone    string `json:"phone,omitempty"`
-	Email    string `json:"email,omitempty"`
+	TenantID  string `json:"tenant_id"`
+	UserID    string `json:"user_id"`
+	SessionID string `json:"session_id"`
+	Role      string `json:"role"`
+	Phone     string `json:"phone,omitempty"`
+	Email     string `json:"email,omitempty"`
 }
 
 type JWTManager struct {
@@ -35,7 +36,7 @@ func NewManager(privateKey *rsa.PrivateKey, publicKey *rsa.PublicKey, issuer str
 	}
 }
 
-func (m *JWTManager) GenerateAccessToken(userID, tenantID, role, phone, email string) (string, error) {
+func (m *JWTManager) GenerateAccessToken(userID, tenantID, sessionID, role, phone, email string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -45,11 +46,12 @@ func (m *JWTManager) GenerateAccessToken(userID, tenantID, role, phone, email st
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 		},
-		TenantID: tenantID,
-		UserID:   userID,
-		Role:     role,
-		Phone:    phone,
-		Email:    email,
+		TenantID:  tenantID,
+		UserID:    userID,
+		SessionID: sessionID,
+		Role:      role,
+		Phone:     phone,
+		Email:     email,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)

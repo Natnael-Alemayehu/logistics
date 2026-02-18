@@ -131,9 +131,6 @@ const docTemplate = `{
                     }
                 ],
                 "description": "Logout and revoke the current session",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -141,20 +138,6 @@ const docTemplate = `{
                     "auth"
                 ],
                 "summary": "Logout user",
-                "parameters": [
-                    {
-                        "description": "Refresh token",
-                        "name": "input",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -163,12 +146,6 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
                         }
                     },
                     "401": {

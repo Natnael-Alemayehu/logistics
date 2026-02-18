@@ -223,16 +223,11 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*L
 	return s.generateTokens(ctx, &user, "", "")
 }
 
-func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
-	tokenHash := sha256.Sum256([]byte(refreshToken))
-	tokenHashStr := hex.EncodeToString(tokenHash[:])
-
-	session, err := s.queries.GetActiveSessionByTokenHash(ctx, tokenHashStr)
-	if err != nil {
-		return ErrSessionNotFound
-	}
-
-	return s.queries.RevokeSession(ctx, session.ID)
+func (s *AuthService) Logout(ctx context.Context, userID, sessionID string) error {
+	return s.queries.RevokeSessionByUser(ctx, db.RevokeSessionByUserParams{
+		ID:     toUUID(sessionID),
+		UserID: toUUID(userID),
+	})
 }
 
 func (s *AuthService) ListSessions(ctx context.Context, userID string) ([]model.Session, error) {
@@ -310,17 +305,6 @@ func (s *AuthService) generateTokens(ctx context.Context, user *db.User, ipAddre
 		email = *user.Email
 	}
 
-	accessToken, err := s.jwtManager.GenerateAccessToken(
-		user.ID.String(),
-		user.TenantID.String(),
-		user.Role,
-		phone,
-		email,
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	refreshToken, err := s.jwtManager.GenerateRefreshToken(
 		user.ID.String(),
 		user.TenantID.String(),
@@ -332,7 +316,7 @@ func (s *AuthService) generateTokens(ctx context.Context, user *db.User, ipAddre
 	tokenHash := sha256.Sum256([]byte(refreshToken))
 	tokenHashStr := hex.EncodeToString(tokenHash[:])
 
-	_, err = s.queries.CreateSession(ctx, db.CreateSessionParams{
+	session, err := s.queries.CreateSession(ctx, db.CreateSessionParams{
 		UserID:           user.ID,
 		TenantID:         user.TenantID,
 		RefreshTokenHash: tokenHashStr,
@@ -344,11 +328,24 @@ func (s *AuthService) generateTokens(ctx context.Context, user *db.User, ipAddre
 		return nil, err
 	}
 
+	accessToken, err := s.jwtManager.GenerateAccessToken(
+		user.ID.String(),
+		user.TenantID.String(),
+		session.ID.String(),
+		user.Role,
+		phone,
+		email,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	s.auditService.Log(ctx, AuditLogInput{
 		TenantID:   user.TenantID.String(),
 		UserID:     user.ID.String(),
 		Action:     model.ActionLogin,
 		EntityType: model.EntitySession,
+		EntityID:   session.ID.String(),
 		IPAddress:  ipAddress,
 		UserAgent:  userAgent,
 	})
