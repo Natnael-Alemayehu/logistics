@@ -1,3 +1,4 @@
+// Package sms is a package that will be used to handle the text messages logic
 package sms
 
 import (

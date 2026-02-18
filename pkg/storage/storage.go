@@ -1,3 +1,4 @@
+// Package storage is the package that handles the storage of pods
 package storage
 
 import (
