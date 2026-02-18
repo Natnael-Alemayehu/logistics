@@ -10,7 +10,7 @@ This is a logistics project. Agents working on this codebase should reference th
 - **Functional Requirements**: See `./functional_requirements.md` for functional requirements
 - **Non-Functional Requirements**: See `./non_functional_requirements.md` for non-functional requirements
 - **First Plan**: See `./plan.md` for the complete plan to build the MVP
-- **Second Plan**: See `./plan-phase2.md` for the second iteration for this implementation
+- **Next Plan**: See `./plan-phase4.md` for the second iteration for this implementation
 
 ## Development Guidelines
 
