@@ -12,6 +12,9 @@ This is a logistics project. Agents working on this codebase should reference th
 - **First Plan**: See `./plan.md` for the complete plan to build the MVP
 - **Next Plan**: See `./plan-phase4.md` for the second iteration for this implementation
 
+
+- **Frontend Implenentation**: See `./frontend-plan.md` to see the overall plan of the implenentation of the frontend for this project
+
 ## Development Guidelines
 
 Before making changes or implementing features, consult `plan.md` first as it contains all necessary information for building the MVP.

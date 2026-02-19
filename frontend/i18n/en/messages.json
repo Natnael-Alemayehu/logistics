@@ -1,0 +1,58 @@
+{
+  "common": {
+    "search": "Search",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "error": "Error"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "loginTitle": "Dispatcher Login",
+    "loginDescription": "Enter your credentials to access the dashboard"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "activeShipments": "Active Shipments",
+    "driversOnDuty": "Drivers On Duty",
+    "deliveriesToday": "Deliveries Today",
+    "issues": "Issues"
+  },
+  "shipments": {
+    "title": "Shipments",
+    "newShipment": "New Shipment",
+    "trackingNumber": "Tracking Number",
+    "status": "Status",
+    "customer": "Customer",
+    "origin": "Origin",
+    "destination": "Destination"
+  },
+  "drivers": {
+    "title": "Drivers",
+    "addDriver": "Add Driver"
+  },
+  "vehicles": {
+    "title": "Vehicles",
+    "addVehicle": "Add Vehicle"
+  },
+  "track": {
+    "title": "Track Your Shipment",
+    "placeholder": "Enter tracking number",
+    "notFound": "Shipment not found"
+  },
+  "status": {
+    "pending": "Pending",
+    "assigned": "Assigned",
+    "in_transit": "In Transit",
+    "delayed": "Delayed",
+    "arrived": "Arrived",
+    "delivered": "Delivered",
+    "issue": "Issue",
+    "cancelled": "Cancelled"
+  }
+}
