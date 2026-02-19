@@ -112,6 +112,7 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 			notifCtx := context.Background()
 			if err := s.notificationService.SendShipmentCreatedNotification(notifCtx, input.CustomerPhone, trackingNumber); err != nil {
 				// Log error but don't fail the request
+				fmt.Printf("\nNotificaion fired for: %x with Phone: %x\n", input.CustomerName, input.CustomerPhone)
 			}
 		}()
 	}
@@ -265,6 +266,7 @@ func (s *ShipmentService) AssignDriver(ctx context.Context, tenantID, userID, sh
 			notifCtx := context.Background()
 			if err := s.notificationService.SendDriverAssignmentNotification(notifCtx, "", shipment.TrackingNumber); err != nil {
 				// Log error but don't fail the request
+				fmt.Printf("\nNotificaion fired : Tracking Number: %x\n", shipment.TrackingNumber)
 			}
 		}()
 	}

@@ -1,3 +1,4 @@
+// Package service holds the service logic
 package service
 
 import (
