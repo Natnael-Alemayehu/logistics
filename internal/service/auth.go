@@ -377,6 +377,7 @@ func (s *AuthService) ForgotPIN(ctx context.Context, tenantID, requesterID, requ
 	if user.Phone != nil {
 		// In production, send SMS with new PIN
 		// For now, we just log the audit
+		fmt.Println("In production, send SMS with new PIN, For now, we just log the audit")
 	}
 
 	s.auditService.Log(ctx, AuditLogInput{
