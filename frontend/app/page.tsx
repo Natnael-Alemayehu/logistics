@@ -5,79 +5,79 @@ import { Badge } from '@/components/ui/badge'
 import { 
   Truck, 
   MapPin, 
-  Wifi, 
   WifiOff, 
   Smartphone, 
-  Shield, 
+  ShieldCheck, 
   Clock, 
   CheckCircle2,
   ArrowRight,
   Phone,
   Mail,
-  MessageSquare
+  MessageSquare,
+  ChevronRight,
 } from 'lucide-react'
 
 const features = [
   {
     icon: WifiOff,
-    title: 'Offline-First Design',
-    description: 'Works seamlessly in rural areas with no connectivity. Syncs automatically when connection returns.',
+    title: 'Works Offline',
+    description: 'Full functionality without internet. GPS, signatures, and photos captured locally, synced automatically when connected.',
   },
   {
     icon: MapPin,
     title: 'Real-Time Tracking',
-    description: 'Know where your trucks are without calling every driver. Last-known locations visible on the map.',
+    description: 'See driver locations on a map. Know where every truck is without calling.',
   },
   {
-    icon: Shield,
-    title: 'Digital Proof of Delivery',
-    description: 'Capture signatures, photos, and timestamps. End delivery disputes with verifiable evidence.',
+    icon: ShieldCheck,
+    title: 'Proof of Delivery',
+    description: 'Digital signatures, photos, and timestamps. Resolve disputes with verifiable evidence.',
   },
   {
     icon: Smartphone,
     title: 'Simple Driver App',
-    description: 'Easy-to-use Android app that drivers can learn in minutes. Works on budget smartphones.',
+    description: 'Android app designed for drivers. Works on budget smartphones. Learns in minutes.',
   },
   {
     icon: Clock,
-    title: 'Save Dispatcher Time',
-    description: 'Reduce driver phone calls by 40-60%. Let dispatchers focus on exceptions, not status checks.',
+    title: 'Save Hours Daily',
+    description: 'Reduce driver phone calls by 40-60%. Dispatchers focus on exceptions, not status checks.',
   },
   {
     icon: MessageSquare,
     title: 'SMS Fallback',
-    description: 'Drivers without smartphones can still update status via SMS. Full coverage, no one left behind.',
+    description: 'Drivers without smartphones can update status via SMS. Full fleet coverage.',
   },
 ]
 
 const howItWorks = [
   {
-    step: 1,
-    title: 'Assign Shipments',
-    description: 'Create shipments in the dispatcher dashboard and assign them to drivers.',
+    step: '01',
+    title: 'Create Shipments',
+    description: 'Add shipments in the dispatcher dashboard and assign to drivers.',
   },
   {
-    step: 2,
-    title: 'Track in Real-Time',
-    description: 'Monitor driver locations and shipment status from the web dashboard.',
+    step: '02',
+    title: 'Track Progress',
+    description: 'Monitor locations and status updates from the web dashboard.',
   },
   {
-    step: 3,
-    title: 'Digital Delivery Proof',
-    description: 'Drivers capture recipient signature and photos at delivery.',
+    step: '03',
+    title: 'Capture Delivery',
+    description: 'Driver captures signature and photos at delivery point.',
   },
   {
-    step: 4,
-    title: 'Automatic Sync',
+    step: '04',
+    title: 'Auto Sync',
     description: 'All data syncs to the cloud when connectivity is available.',
   },
 ]
 
 const stats = [
   { value: '15,000+', label: 'Trucks in Ethiopia' },
-  { value: '$3.2B', label: 'Annual Freight Volume' },
   { value: '40%', label: 'Time Saved on Calls' },
   { value: '99%', label: 'Sync Success Rate' },
+  { value: '24/7', label: 'Offline Capability' },
 ]
 
 const pricingPlans = [
@@ -85,7 +85,7 @@ const pricingPlans = [
     name: 'Starter',
     price: '$15',
     period: '/driver/month',
-    description: 'Perfect for small fleets getting started',
+    description: 'For small fleets getting started',
     features: [
       'Up to 10 drivers',
       'Unlimited shipments',
@@ -94,7 +94,6 @@ const pricingPlans = [
       'Dispatcher dashboard',
       'Email support',
     ],
-    popular: false,
   },
   {
     name: 'Professional',
@@ -103,14 +102,13 @@ const pricingPlans = [
     description: 'For growing trucking companies',
     features: [
       'Unlimited drivers',
-      'All Starter features',
       'Photo proof of delivery',
-      'SMS notifications (50/driver/month)',
+      'SMS notifications',
       'Analytics dashboard',
       'Priority support',
       'API access',
     ],
-    popular: true,
+    featured: true,
   },
   {
     name: 'Enterprise',
@@ -118,60 +116,58 @@ const pricingPlans = [
     period: '',
     description: 'For large fleets with custom needs',
     features: [
-      'All Professional features',
       'Custom integrations',
       'Dedicated account manager',
       'On-site training',
       'SLA guarantee',
       'White-label option',
+      'Volume discounts',
     ],
-    popular: false,
   },
 ]
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
-      <nav className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur-md dark:bg-slate-900/80">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+    <div className="min-h-screen bg-white dark:bg-slate-950">
+      <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-md dark:border-slate-800 dark:bg-slate-950/80">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
-            <Truck className="h-8 w-8 text-blue-600" />
-            <span className="text-xl font-bold text-slate-900 dark:text-white">
-              EthioTrack
-            </span>
+            <Truck className="h-7 w-7" />
+            <span className="text-xl font-bold tracking-tight">EthioTrack</span>
           </div>
-          <div className="flex items-center gap-4">
-            <Link href="/track">
-              <Button variant="ghost" className="hidden sm:flex">
+          <div className="flex items-center gap-3">
+            <Link href="/track" className="hidden sm:block">
+              <Button variant="ghost" size="sm">
                 Track Shipment
               </Button>
             </Link>
             <Link href="/login">
-              <Button variant="outline">Sign In</Button>
+              <Button variant="outline" size="sm">
+                Sign In
+              </Button>
             </Link>
             <Link href="/login">
-              <Button>Get Started</Button>
+              <Button size="sm">
+                Get Started
+              </Button>
             </Link>
           </div>
         </div>
       </nav>
 
-      <section className="relative overflow-hidden py-20 sm:py-32">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10" />
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-4xl text-center">
-            <Badge variant="secondary" className="mb-6">
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-100 via-white to-white dark:from-slate-900 dark:via-slate-950 dark:to-slate-950" />
+        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8 lg:py-40">
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge variant="secondary" className="mb-6 rounded-full px-4 py-1.5 text-sm font-medium">
               Built for Ethiopian Infrastructure
             </Badge>
-            <h1 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-6xl lg:text-7xl">
-              Know Where Your{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Trucks Are
-              </span>
+            <h1 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-5xl lg:text-6xl">
+              Ethiopian Logistics Tracking That Works Everywhere
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-400 sm:text-xl">
-              The offline-first logistics tracking platform that works in Addis Ababa 
-              and keeps working in rural Ethiopia. No more blind spots. No more delivery disputes.
+            <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-600 dark:text-slate-400">
+              Track your fleet across Ethiopia—offline or online. No more blind spots. 
+              No more delivery disputes. Built for the reality of Ethiopian roads.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link href="/login">
@@ -190,12 +186,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-y bg-slate-50 py-12 dark:bg-slate-800/50">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+      <section className="border-y border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 gap-8 lg:grid-cols-4">
             {stats.map((stat) => (
               <div key={stat.label} className="text-center">
-                <div className="text-3xl font-bold text-blue-600 sm:text-4xl">
+                <div className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
                   {stat.value}
                 </div>
                 <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
@@ -207,99 +203,124 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="features" className="py-20 sm:py-32">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-              Built for Ethiopian Conditions
-            </h2>
-            <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
-              Global platforms require constant internet. We built for Ethiopia&apos;s reality—stable in cities, 
-              unreliable on highways, non-existent in rural areas.
-            </p>
-          </div>
-          <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => (
-              <Card key={feature.title} className="border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-                <CardContent className="p-6">
-                  <div className="mb-4 inline-flex rounded-lg bg-blue-100 p-3 dark:bg-blue-900/30">
-                    <feature.icon className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                    {feature.title}
-                  </h3>
-                  <p className="mt-2 text-slate-600 dark:text-slate-400">
-                    {feature.description}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+      <section id="features" className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
+            Fleet Tracking Built for Ethiopia&apos;s Network Reality
+          </h2>
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
+            Global platforms require constant internet. We built for Ethiopia&apos;s reality—stable in cities, 
+            unreliable on highways, non-existent in rural areas.
+          </p>
+        </div>
+        <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature) => (
+            <div 
+              key={feature.title} 
+              className="group rounded-2xl border border-slate-200 bg-white p-8 transition-all hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
+            >
+              <div className="mb-4 inline-flex rounded-lg bg-slate-100 p-3 dark:bg-slate-800">
+                <feature.icon className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                {feature.title}
+              </h3>
+              <p className="mt-2 text-slate-600 dark:text-slate-400">
+                {feature.description}
+              </p>
+            </div>
+          ))}
         </div>
       </section>
 
-      <section className="bg-gradient-to-r from-blue-600 to-purple-600 py-20 sm:py-32">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-3xl text-center">
-            <WifiOff className="mx-auto h-12 w-12 text-white/80" />
-            <h2 className="mt-6 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              Works Offline. Syncs Automatically.
-            </h2>
-            <p className="mt-4 text-lg text-white/90">
-              Our driver app stores everything locally—GPS coordinates, delivery photos, signatures. 
-              When connectivity returns, it all syncs automatically. No data loss. No manual uploads.
-            </p>
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <div className="flex items-center gap-2 rounded-full bg-white/20 px-6 py-3 text-white">
-                <CheckCircle2 className="h-5 w-5" />
-                <span>GPS tracking without internet</span>
+      <section className="border-y border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
+                Works Offline. Syncs Automatically.
+              </h2>
+              <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
+                Our driver app stores everything locally—GPS coordinates, delivery photos, signatures. 
+                When connectivity returns, it all syncs automatically. No data loss. No manual uploads.
+              </p>
+              <ul className="mt-8 space-y-4">
+                {[
+                  'GPS tracking without internet',
+                  'Signature capture offline',
+                  'Photo proof stored locally',
+                  'Auto-sync when connected',
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-3">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 dark:bg-white">
+                      <CheckCircle2 className="h-3 w-3 text-white dark:text-slate-900" />
+                    </div>
+                    <span className="text-slate-700 dark:text-slate-300">{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8">
+                <Link href="/login">
+                  <Button>
+                    Learn More
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </Link>
               </div>
-              <div className="flex items-center gap-2 rounded-full bg-white/20 px-6 py-3 text-white">
-                <CheckCircle2 className="h-5 w-5" />
-                <span>Signature capture offline</span>
-              </div>
-              <div className="flex items-center gap-2 rounded-full bg-white/20 px-6 py-3 text-white">
-                <CheckCircle2 className="h-5 w-5" />
-                <span>Auto-sync when connected</span>
+            </div>
+            <div className="relative">
+              <div className="aspect-square rounded-2xl border border-slate-200 bg-white p-8 dark:border-slate-800 dark:bg-slate-950">
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <div className="rounded-full border-2 border-dashed border-slate-300 p-6 dark:border-slate-700">
+                    <Smartphone className="h-16 w-16 text-slate-400" />
+                  </div>
+                  <p className="mt-6 font-medium text-slate-900 dark:text-white">Driver App</p>
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                    Available for Android
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="how-it-works" className="py-20 sm:py-32">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-              How It Works
-            </h2>
-            <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
-              Get started in minutes. No complex setup required.
-            </p>
-          </div>
-          <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {howItWorks.map((item) => (
-              <div key={item.step} className="relative text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-                  <span className="text-2xl font-bold text-blue-600">{item.step}</span>
+      <section id="how-it-works" className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
+            How It Works
+          </h2>
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
+            Get started in minutes. No complex setup required.
+          </p>
+        </div>
+        <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {howItWorks.map((item, index) => (
+            <div key={item.step} className="relative">
+              {index < howItWorks.length - 1 && (
+                <div className="absolute left-12 top-12 hidden h-0.5 w-full border-t border-dashed border-slate-300 dark:border-slate-700 lg:block" />
+              )}
+              <div className="relative flex flex-col items-center text-center">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+                  <span className="text-2xl font-bold text-slate-400">{item.step}</span>
                 </div>
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                <h3 className="mt-6 text-lg font-semibold text-slate-900 dark:text-white">
                   {item.title}
                 </h3>
                 <p className="mt-2 text-slate-600 dark:text-slate-400">
                   {item.description}
                 </p>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       </section>
 
-      <section id="pricing" className="bg-slate-50 py-20 dark:bg-slate-800/50 sm:py-32">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-3xl text-center">
+      <section id="pricing" className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+          <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
-              Simple, Transparent Pricing
+              Simple Pricing
             </h2>
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
               Pay per driver. No hidden fees. Cancel anytime.
@@ -309,42 +330,44 @@ export default function LandingPage() {
             {pricingPlans.map((plan) => (
               <Card 
                 key={plan.name} 
-                className={`relative border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 ${
-                  plan.popular ? 'ring-2 ring-blue-600' : ''
+                className={`rounded-2xl border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${
+                  plan.featured ? 'ring-2 ring-slate-900 dark:ring-white' : ''
                 }`}
               >
-                {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-blue-600">Most Popular</Badge>
-                  </div>
-                )}
                 <CardContent className="p-8">
-                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                    {plan.name}
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                      {plan.name}
+                    </h3>
+                    {plan.featured && (
+                      <Badge variant="secondary" className="rounded-full">
+                        Popular
+                      </Badge>
+                    )}
+                  </div>
                   <div className="mt-4 flex items-baseline">
-                    <span className="text-4xl font-bold text-slate-900 dark:text-white">
+                    <span className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
                       {plan.price}
                     </span>
                     <span className="ml-1 text-slate-600 dark:text-slate-400">
                       {plan.period}
                     </span>
                   </div>
-                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                     {plan.description}
                   </p>
-                  <ul className="mt-8 space-y-4">
+                  <ul className="mt-8 space-y-3">
                     {plan.features.map((feature) => (
                       <li key={feature} className="flex items-center gap-3">
-                        <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-blue-600" />
-                        <span className="text-slate-600 dark:text-slate-400">{feature}</span>
+                        <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-slate-900 dark:text-white" />
+                        <span className="text-sm text-slate-600 dark:text-slate-400">{feature}</span>
                       </li>
                     ))}
                   </ul>
                   <Link href="/login" className="mt-8 block">
                     <Button 
                       className="w-full" 
-                      variant={plan.popular ? 'default' : 'outline'}
+                      variant={plan.featured ? 'default' : 'outline'}
                     >
                       Get Started
                     </Button>
@@ -356,67 +379,63 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="py-20 sm:py-32">
-        <div className="container mx-auto px-4">
-          <div className="mx-auto max-w-4xl">
-            <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-center sm:p-12">
-              <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Ready to Transform Your Fleet?
-              </h2>
-              <p className="mt-4 text-lg text-white/90">
-                Join trucking companies across Ethiopia who are already saving time and ending delivery disputes.
-              </p>
-              <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-                <Link href="/login">
-                  <Button size="lg" variant="secondary" className="w-full sm:w-auto">
-                    Start Free Trial
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/track">
-                  <Button size="lg" variant="outline" className="w-full border-white text-white hover:bg-white/10 sm:w-auto">
-                    Track a Shipment
-                  </Button>
-                </Link>
-              </div>
-            </div>
+      <section className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
+            Ready to Transform Your Fleet?
+          </h2>
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
+            Join trucking companies across Ethiopia saving time and ending delivery disputes.
+          </p>
+          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+            <Link href="/login">
+              <Button size="lg">
+                Start Free Trial
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/track">
+              <Button size="lg" variant="outline">
+                Track a Shipment
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
 
-      <footer className="border-t bg-slate-900 py-12 text-slate-400">
-        <div className="container mx-auto px-4">
+      <footer className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <div className="flex items-center gap-2">
-                <Truck className="h-8 w-8 text-blue-500" />
-                <span className="text-xl font-bold text-white">EthioTrack</span>
+                <Truck className="h-6 w-6" />
+                <span className="text-lg font-bold">EthioTrack</span>
               </div>
-              <p className="mt-4 text-sm">
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
                 Offline-first logistics tracking platform built for Ethiopian trucking companies.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-white">Product</h4>
-              <ul className="mt-4 space-y-2 text-sm">
-                <li><Link href="#features" className="hover:text-white">Features</Link></li>
-                <li><Link href="#pricing" className="hover:text-white">Pricing</Link></li>
-                <li><Link href="/track" className="hover:text-white">Track Shipment</Link></li>
-                <li><Link href="#" className="hover:text-white">Driver App</Link></li>
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Product</h4>
+              <ul className="mt-4 space-y-2 text-sm text-slate-500 dark:text-slate-400">
+                <li><Link href="#features" className="hover:text-slate-900 dark:hover:text-white">Features</Link></li>
+                <li><Link href="#pricing" className="hover:text-slate-900 dark:hover:text-white">Pricing</Link></li>
+                <li><Link href="/track" className="hover:text-slate-900 dark:hover:text-white">Track Shipment</Link></li>
+                <li><Link href="#" className="hover:text-slate-900 dark:hover:text-white">Driver App</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white">Company</h4>
-              <ul className="mt-4 space-y-2 text-sm">
-                <li><Link href="#" className="hover:text-white">About Us</Link></li>
-                <li><Link href="#" className="hover:text-white">Blog</Link></li>
-                <li><Link href="#" className="hover:text-white">Careers</Link></li>
-                <li><Link href="#" className="hover:text-white">Contact</Link></li>
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Company</h4>
+              <ul className="mt-4 space-y-2 text-sm text-slate-500 dark:text-slate-400">
+                <li><Link href="#" className="hover:text-slate-900 dark:hover:text-white">About</Link></li>
+                <li><Link href="#" className="hover:text-slate-900 dark:hover:text-white">Blog</Link></li>
+                <li><Link href="#" className="hover:text-slate-900 dark:hover:text-white">Careers</Link></li>
+                <li><Link href="#" className="hover:text-slate-900 dark:hover:text-white">Contact</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white">Contact</h4>
-              <ul className="mt-4 space-y-3 text-sm">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Contact</h4>
+              <ul className="mt-4 space-y-3 text-sm text-slate-500 dark:text-slate-400">
                 <li className="flex items-center gap-2">
                   <Phone className="h-4 w-4" />
                   <span>+251 911 123 456</span>
@@ -432,7 +451,7 @@ export default function LandingPage() {
               </ul>
             </div>
           </div>
-          <div className="mt-12 border-t border-slate-800 pt-8 text-center text-sm">
+          <div className="mt-12 border-t border-slate-200 pt-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
             <p>&copy; {new Date().getFullYear()} EthioTrack. All rights reserved.</p>
           </div>
         </div>
