@@ -149,8 +149,8 @@ func (e *TestEnv) setupServices() {
 
 	auditService := service.NewAuditService(e.queries)
 	authService := service.NewAuthService(e.queries, e.jwtManager, auditService)
-	shipmentService := service.NewShipmentService(e.queries, auditService, nil)
-	syncService := service.NewSyncService(e.queries, shipmentService)
+	shipmentService := service.NewShipmentService(e.queries, auditService, nil, nil)
+	syncService := service.NewSyncService(e.queries, shipmentService, nil)
 	userService := service.NewUserService(e.queries, auditService)
 	vehicleService := service.NewVehicleService(e.queries)
 	trackingService := service.NewTrackingService(e.queries, auditService)
@@ -334,12 +334,12 @@ func (e *TestEnv) GetAuthService() *service.AuthService {
 
 func (e *TestEnv) GetShipmentService() *service.ShipmentService {
 	auditService := service.NewAuditService(e.queries)
-	return service.NewShipmentService(e.queries, auditService, nil)
+	return service.NewShipmentService(e.queries, auditService, nil, nil)
 }
 
 func (e *TestEnv) GetSyncService() *service.SyncService {
 	shipmentService := e.GetShipmentService()
-	return service.NewSyncService(e.queries, shipmentService)
+	return service.NewSyncService(e.queries, shipmentService, nil)
 }
 
 func (e *TestEnv) GetQueries() *db.Queries {

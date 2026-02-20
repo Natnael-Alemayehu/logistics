@@ -83,5 +83,8 @@ setup: docker-up sleep migrate-up
 sleep:
 	sleep 5
 
+pgcli:
+	pgcli "postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable"
+
 build-linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o bin/$(BINARY_UNIX) ./cmd/api
