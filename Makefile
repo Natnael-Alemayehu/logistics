@@ -8,15 +8,22 @@ GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 
 BINARY_NAME=logistics-api
+WORKER_BINARY=logistics-worker
 BINARY_UNIX=$(BINARY_NAME)_unix
 
+# Database
 DB_URL=postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable
 
+# Main build targets
 build:
 	$(GOBUILD) -o bin/$(BINARY_NAME) ./cmd/api
+	$(GOBUILD) -o bin/$(WORKER_BINARY) ./cmd/worker
 
 run:
 	$(GOCMD) run ./cmd/api
+
+run-worker:
+	$(GOCMD) run ./cmd/worker
 
 dev:
 	@which air > /dev/null || (echo "Installing air..." && go install github.com/air-verse/air@latest)
