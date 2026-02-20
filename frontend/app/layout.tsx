@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -13,12 +13,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#1e40af",
+};
+
 export const metadata: Metadata = {
   title: "Ethiopian Logistics Platform",
   description: "Offline-first logistics tracking and proof-of-delivery platform for Ethiopian trucking companies",
   keywords: ["logistics", "tracking", "delivery", "Ethiopia", "trucking"],
   manifest: "/manifest.json",
-  themeColor: "#1e40af",
 };
 
 export default function RootLayout({
