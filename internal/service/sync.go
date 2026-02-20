@@ -6,15 +6,17 @@ import (
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 )
 
 type SyncService struct {
-	queries  *db.Queries
-	shipment *ShipmentService
+	queries      *db.Queries
+	shipment     *ShipmentService
+	eventService *EventService
 }
 
-func NewSyncService(queries *db.Queries, shipment *ShipmentService) *SyncService {
-	return &SyncService{queries: queries, shipment: shipment}
+func NewSyncService(queries *db.Queries, shipment *ShipmentService, eventService *EventService) *SyncService {
+	return &SyncService{queries: queries, shipment: shipment, eventService: eventService}
 }
 
 func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req model.SyncRequest) (*model.SyncResponse, error) {
@@ -40,6 +42,17 @@ func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req m
 		})
 		if err == nil {
 			eventsReceived++
+
+			// Publish real-time tracking update via WebSocket
+			if s.eventService != nil {
+				s.eventService.PublishTrackingUpdate(
+					tenantID,
+					driverID,
+					event.ShipmentID,
+					websocket.Location{Lat: event.Latitude, Lng: event.Longitude},
+					event.Status,
+				)
+			}
 		}
 	}
 
@@ -60,6 +73,28 @@ func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req m
 		})
 		if err == nil {
 			eventsReceived++
+
+			// Publish delivery complete event via WebSocket
+			if s.eventService != nil {
+				// Look up the shipment to get its tracking number
+				shipment, shipErr := s.queries.GetShipmentByID(ctx, db.GetShipmentByIDParams{
+					ID:       toUUID(pod.ShipmentID),
+					TenantID: toUUID(tenantID),
+				})
+				trackingNumber := ""
+				if shipErr == nil {
+					trackingNumber = shipment.TrackingNumber
+				}
+
+				s.eventService.PublishDeliveryComplete(
+					tenantID,
+					pod.ShipmentID,
+					trackingNumber,
+					driverID,
+					"", // Photo URLs available in the POD record
+					"", // Signature available in the POD record
+				)
+			}
 		}
 	}
 

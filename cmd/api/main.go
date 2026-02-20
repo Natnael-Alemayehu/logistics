@@ -97,10 +97,9 @@ func main() {
 	go wsHub.Run()
 
 	eventService := service.NewEventService(wsHub, logger)
-	_ = eventService
 
-	shipmentService := service.NewShipmentService(queries, auditService, nil)
-	syncService := service.NewSyncService(queries, shipmentService)
+	shipmentService := service.NewShipmentService(queries, auditService, nil, eventService)
+	syncService := service.NewSyncService(queries, shipmentService, eventService)
 	userService := service.NewUserService(queries, auditService)
 	vehicleService := service.NewVehicleService(queries)
 	trackingService := service.NewTrackingService(queries, auditService)
