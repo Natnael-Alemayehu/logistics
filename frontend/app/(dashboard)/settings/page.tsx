@@ -257,7 +257,7 @@ export default function SettingsPage() {
                             <p className="font-medium">
                               {session.user_agent || 'Unknown device'}
                             </p>
-                            {session.is_current_session && (
+                            {session.is_current && (
                               <Badge variant="secondary">Current</Badge>
                             )}
                           </div>
@@ -266,7 +266,7 @@ export default function SettingsPage() {
                           </p>
                         </div>
                       </div>
-                      {!session.is_current_session && (
+                      {!session.is_current && (
                         <Button
                           variant="ghost"
                           size="sm"

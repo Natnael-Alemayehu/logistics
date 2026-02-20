@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useShipments, useDeleteShipment } from '@/hooks'
+import { useShipments, useCancelShipment } from '@/hooks'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -54,11 +54,11 @@ export default function ShipmentsPage() {
     limit: 10,
   })
 
-  const deleteShipment = useDeleteShipment()
+  const cancelShipment = useCancelShipment()
 
   const handleDelete = async () => {
     if (deleteId) {
-      await deleteShipment.mutateAsync(deleteId)
+      await cancelShipment.mutateAsync({ id: deleteId, reason: 'Cancelled by user' })
       setDeleteId(null)
     }
   }
@@ -254,9 +254,9 @@ export default function ShipmentsPage() {
             <Button
               variant="destructive"
               onClick={handleDelete}
-              disabled={deleteShipment.isPending}
+              disabled={cancelShipment.isPending}
             >
-              {deleteShipment.isPending ? 'Deleting...' : 'Delete'}
+              {cancelShipment.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

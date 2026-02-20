@@ -61,9 +61,9 @@ export default function VehiclesPage() {
 
   const filteredVehicles = data?.vehicles?.filter((vehicle: Vehicle) => {
     const matchesSearch = vehicle.plate_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vehicle.make?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vehicle.model?.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || vehicle.status === statusFilter
+      
+      vehicle.vehicle_type?.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesStatus = statusFilter === 'all' || (vehicle.is_active ? "active" : "inactive") === statusFilter
     return matchesSearch && matchesStatus
   })
 
@@ -193,30 +193,30 @@ export default function VehiclesPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {vehicle.make || vehicle.model ? (
-                          <span>{vehicle.make} {vehicle.model}</span>
+                        {vehicle.vehicle_type ? (
+                          <span>{vehicle.vehicle_type}</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        {vehicle.year || <span className="text-muted-foreground">-</span>}
+                        {false || <span className="text-muted-foreground">-</span>}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        {vehicle.capacity_kg ? (
-                          <span>{vehicle.capacity_kg.toLocaleString()} kg</span>
+                        {false ? (
+                          <span>{false.toLocaleString()} kg</span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusBadgeVariant(vehicle.status)}>
-                          {getStatusLabel(vehicle.status)}
+                        <Badge variant={getStatusBadgeVariant(vehicle.is_active ? "active" : "inactive")}>
+                          {getStatusLabel(vehicle.is_active ? "active" : "inactive")}
                         </Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        {vehicle.driver_name ? (
-                          <span>{vehicle.driver_name}</span>
+                        {false ? (
+                          <span>{false}</span>
                         ) : (
                           <span className="text-muted-foreground">Unassigned</span>
                         )}
@@ -285,11 +285,7 @@ export default function VehiclesPage() {
               isLoading={updateVehicle.isPending}
               defaultValues={{
                 plate_number: editingVehicle.plate_number,
-                make: editingVehicle.make || '',
-                model: editingVehicle.model || '',
-                year: editingVehicle.year,
-                capacity_kg: editingVehicle.capacity_kg,
-                status: editingVehicle.status,
+                is_active: editingVehicle.is_active,
               }}
               submitLabel="Save Changes"
             />
@@ -310,40 +306,40 @@ export default function VehiclesPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg">{viewingVehicle.plate_number}</h3>
-                  <Badge variant={getStatusBadgeVariant(viewingVehicle.status)}>
-                    {getStatusLabel(viewingVehicle.status)}
+                  <Badge variant={getStatusBadgeVariant(viewingVehicle.is_active ? "active" : "inactive")}>
+                    {getStatusLabel(viewingVehicle.is_active ? "active" : "inactive")}
                   </Badge>
                 </div>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Make:</span>
-                  <span>{viewingVehicle.make || '-'}</span>
+                  <span>{viewingVehicle.vehicle_type || '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Model:</span>
-                  <span>{viewingVehicle.model || '-'}</span>
+                  <span>{viewingVehicle.vehicle_type || '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Year:</span>
-                  <span>{viewingVehicle.year || '-'}</span>
+                  <span>{false || '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Capacity:</span>
-                  <span>{viewingVehicle.capacity_kg ? `${viewingVehicle.capacity_kg.toLocaleString()} kg` : '-'}</span>
+                  <span>{false ? `${false.toLocaleString()} kg` : '-'}</span>
                 </div>
-                {viewingVehicle.driver_name && (
+                {false && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Driver:</span>
-                    <span>{viewingVehicle.driver_name}</span>
+                    <span>{false}</span>
                   </div>
                 )}
-                {viewingVehicle.current_lat && viewingVehicle.current_lng && (
+                {false && false && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Location:</span>
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3 w-3 text-green-500" />
-                      {viewingVehicle.current_lat.toFixed(4)}, {viewingVehicle.current_lng.toFixed(4)}
+                      {""}, {""}
                     </span>
                   </div>
                 )}

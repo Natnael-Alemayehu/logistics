@@ -14,7 +14,7 @@ export const API_ENDPOINTS = {
     get: (id: string) => `/api/v1/shipments/${id}`,
     create: '/api/v1/shipments',
     update: (id: string) => `/api/v1/shipments/${id}`,
-    delete: (id: string) => `/api/v1/shipments/${id}`,
+    cancel: (id: string) => `/api/v1/shipments/${id}/cancel`,
     assignDriver: (id: string) => `/api/v1/shipments/${id}/assign`,
     updateStatus: (id: string) => `/api/v1/shipments/${id}/status`,
     trackingEvents: (id: string) => `/api/v1/shipments/${id}/tracking`,

@@ -83,17 +83,18 @@ export function useUpdateShipment() {
   })
 }
 
-export function useDeleteShipment() {
+export function useCancelShipment() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (id: string) => api.delete(API_ENDPOINTS.shipments.delete(id)),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => 
+      api.post(API_ENDPOINTS.shipments.cancel(id), { reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shipments'] })
-      toast.success('Shipment deleted successfully')
+      toast.success('Shipment cancelled successfully')
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete shipment')
+      toast.error(error.message || 'Failed to cancel shipment')
     },
   })
 }
