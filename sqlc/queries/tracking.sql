@@ -53,3 +53,17 @@ WHERE id = ANY($1::uuid[]);
 
 -- name: CountTrackingEventsByShipment :one
 SELECT COUNT(*) FROM tracking_events WHERE shipment_id = $1;
+
+-- name: GetLatestDriverLocations :many
+SELECT DISTINCT ON (t.driver_id)
+       t.id, t.tenant_id, t.shipment_id, t.driver_id,
+       ST_X(t.coordinates::geometry) as longitude,
+       ST_Y(t.coordinates::geometry) as latitude,
+       t.accuracy_meters, t.speed_kph, t.heading,
+       t.event_type, t.status, t.note,
+       t.recorded_at, t.synced_at, t.device_id, t.battery_level,
+       u.full_name as driver_name
+FROM tracking_events t
+JOIN users u ON t.driver_id = u.id
+WHERE t.tenant_id = $1 AND t.driver_id IS NOT NULL
+ORDER BY t.driver_id, t.recorded_at DESC;

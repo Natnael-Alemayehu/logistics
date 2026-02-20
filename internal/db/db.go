@@ -2,7 +2,6 @@
 // versions:
 //   sqlc v1.30.0
 
-// Package db provides database access and query abstractions for the logistics project.
 package db
 
 import (

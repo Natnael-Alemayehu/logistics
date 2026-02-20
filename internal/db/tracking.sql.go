@@ -88,6 +88,79 @@ func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEve
 	return i, err
 }
 
+const getLatestDriverLocations = `-- name: GetLatestDriverLocations :many
+SELECT DISTINCT ON (t.driver_id)
+       t.id, t.tenant_id, t.shipment_id, t.driver_id,
+       ST_X(t.coordinates::geometry) as longitude,
+       ST_Y(t.coordinates::geometry) as latitude,
+       t.accuracy_meters, t.speed_kph, t.heading,
+       t.event_type, t.status, t.note,
+       t.recorded_at, t.synced_at, t.device_id, t.battery_level,
+       u.full_name as driver_name
+FROM tracking_events t
+JOIN users u ON t.driver_id = u.id
+WHERE t.tenant_id = $1 AND t.driver_id IS NOT NULL
+ORDER BY t.driver_id, t.recorded_at DESC
+`
+
+type GetLatestDriverLocationsRow struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Longitude      interface{}        `db:"longitude" json:"longitude"`
+	Latitude       interface{}        `db:"latitude" json:"latitude"`
+	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
+	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
+	Heading        pgtype.Numeric     `db:"heading" json:"heading"`
+	EventType      string             `db:"event_type" json:"event_type"`
+	Status         *string            `db:"status" json:"status"`
+	Note           *string            `db:"note" json:"note"`
+	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	SyncedAt       pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
+	DeviceID       *string            `db:"device_id" json:"device_id"`
+	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
+	DriverName     string             `db:"driver_name" json:"driver_name"`
+}
+
+func (q *Queries) GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error) {
+	rows, err := q.db.Query(ctx, getLatestDriverLocations, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLatestDriverLocationsRow{}
+	for rows.Next() {
+		var i GetLatestDriverLocationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.ShipmentID,
+			&i.DriverID,
+			&i.Longitude,
+			&i.Latitude,
+			&i.AccuracyMeters,
+			&i.SpeedKph,
+			&i.Heading,
+			&i.EventType,
+			&i.Status,
+			&i.Note,
+			&i.RecordedAt,
+			&i.SyncedAt,
+			&i.DeviceID,
+			&i.BatteryLevel,
+			&i.DriverName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTrackingEventsForSync = `-- name: GetTrackingEventsForSync :many
 SELECT id, tenant_id, shipment_id, driver_id,
        ST_X(coordinates::geometry) as longitude,

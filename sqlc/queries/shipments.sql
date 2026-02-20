@@ -135,3 +135,16 @@ WHERE tenant_id = $1
 -- name: CountShipmentsByStatus :one
 SELECT COUNT(*) FROM shipments 
 WHERE tenant_id = $1 AND status = $2;
+
+-- name: GetDashboardAlerts :many
+SELECT * FROM shipments
+WHERE tenant_id = $1
+  AND status IN ('issue', 'delayed')
+ORDER BY updated_at DESC
+LIMIT $2;
+
+-- name: GetDashboardActivity :many
+SELECT * FROM shipments
+WHERE tenant_id = $1
+ORDER BY updated_at DESC
+LIMIT $2;
