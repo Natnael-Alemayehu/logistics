@@ -7,7 +7,11 @@ import type { Driver, DriverLocation, CreateDriverInput } from '@/types'
 export function useDrivers() {
   return useQuery({
     queryKey: ['drivers'],
-    queryFn: () => api.get<{ users: Driver[] }>(API_ENDPOINTS.drivers.list),
+    queryFn: async () => {
+      const response = await api.get<{ data: Driver[]; meta?: { total: number; page: number; per_page: number } }>(API_ENDPOINTS.drivers.list)
+      const drivers = response.data ?? (response as unknown as Driver[])
+      return { users: drivers }
+    },
   })
 }
 
@@ -22,8 +26,11 @@ export function useDriver(id: string) {
 export function useDriverLocations() {
   return useQuery({
     queryKey: ['driver-locations'],
-    queryFn: () =>
-      api.get<{ locations: DriverLocation[] }>(API_ENDPOINTS.drivers.locations),
+    queryFn: async () => {
+      const response = await api.get<DriverLocation[] | { data: DriverLocation[] }>(API_ENDPOINTS.drivers.locations)
+      const locations = Array.isArray(response) ? response : (response as { data: DriverLocation[] }).data
+      return { locations }
+    },
     refetchInterval: 30000,
   })
 }

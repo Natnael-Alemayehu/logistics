@@ -42,9 +42,11 @@ export function useShipments(filters: ShipmentFilters = {}) {
     queryKey: ['shipments', filters],
     queryFn: async () => {
       try {
-        const data = await api.get<ShipmentListResponse>(endpoint)
-        await offlineStorage.setShipments(data.shipments)
-        return data
+        const response = await api.get<{ data: Shipment[]; meta: { total: number; page: number; per_page: number } }>(endpoint)
+        const shipments = response.data ?? (response as unknown as Shipment[])
+        const meta = response.meta ?? { total: shipments.length, page: 1, per_page: 10 }
+        await offlineStorage.setShipments(shipments)
+        return { shipments, ...meta }
       } catch (error) {
         const cached = await offlineStorage.getShipments()
         if (cached.length > 0) {
@@ -218,10 +220,13 @@ export function useUpdateShipmentStatus() {
 export function useTrackingEvents(shipmentId: string) {
   return useQuery({
     queryKey: ['tracking-events', shipmentId],
-    queryFn: () =>
-      api.get<{ events: TrackingEvent[] }>(
+    queryFn: async () => {
+      const response = await api.get<{ data: TrackingEvent[]; meta?: { total: number } } | { events: TrackingEvent[] }>(
         API_ENDPOINTS.shipments.trackingEvents(shipmentId)
-      ),
+      )
+      if ('events' in response) return response
+      return { events: response.data }
+    },
     enabled: !!shipmentId,
   })
 }

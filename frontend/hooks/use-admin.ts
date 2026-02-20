@@ -50,12 +50,15 @@ interface CreateTenantInput {
 export function useUsers(filters?: { tenant_id?: string; role?: UserRole }) {
   return useQuery({
     queryKey: ['admin-users', filters],
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams()
       if (filters?.tenant_id) params.append('tenant_id', filters.tenant_id)
       if (filters?.role) params.append('role', filters.role)
       const query = params.toString() ? `?${params.toString()}` : ''
-      return api.get<UsersListResponse>(`${API_ENDPOINTS.users.list}${query}`)
+      const response = await api.get<{ data: User[]; meta?: { total: number; page: number; per_page: number } }>(`${API_ENDPOINTS.users.list}${query}`)
+      const users = response.data ?? (response as unknown as User[])
+      const meta = (response as { meta?: { total: number } }).meta
+      return { users, total: meta?.total ?? users.length }
     },
   })
 }
@@ -96,7 +99,12 @@ export function useUpdateUser() {
 export function useTenants() {
   return useQuery({
     queryKey: ['admin-tenants'],
-    queryFn: () => api.get<TenantsListResponse>(API_ENDPOINTS.tenants.list),
+    queryFn: async () => {
+      const response = await api.get<{ data: Tenant[]; meta?: { total: number } }>(API_ENDPOINTS.tenants.list)
+      const tenants = response.data ?? (response as unknown as Tenant[])
+      const meta = (response as { meta?: { total: number } }).meta
+      return { tenants, total: meta?.total ?? tenants.length }
+    },
   })
 }
 

@@ -40,8 +40,11 @@ export function useDashboardStats() {
 export function useDashboardAlerts() {
   return useQuery({
     queryKey: ['dashboard-alerts'],
-    queryFn: () =>
-      api.get<{ alerts: DashboardAlert[] }>(API_ENDPOINTS.dashboard.alerts),
+    queryFn: async () => {
+      const response = await api.get<{ alerts: DashboardAlert[] } | { data: { alerts: DashboardAlert[] } }>(API_ENDPOINTS.dashboard.alerts)
+      if ('alerts' in response) return response
+      return { alerts: response.data.alerts }
+    },
     refetchInterval: 60000,
   })
 }
@@ -49,7 +52,10 @@ export function useDashboardAlerts() {
 export function useRecentActivity() {
   return useQuery({
     queryKey: ['recent-activity'],
-    queryFn: () =>
-      api.get<{ events: ActivityEvent[] }>(API_ENDPOINTS.dashboard.activity),
+    queryFn: async () => {
+      const response = await api.get<{ events: ActivityEvent[] } | { data: { events: ActivityEvent[] } }>(API_ENDPOINTS.dashboard.activity)
+      if ('events' in response) return response
+      return { events: response.data.events }
+    },
   })
 }

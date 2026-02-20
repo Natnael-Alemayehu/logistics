@@ -85,16 +85,16 @@ export function ShipmentForm({
   const handleSubmit = async (data: ShipmentFormData) => {
     const submitData: CreateShipmentInput = {
       origin_address: data.origin_address,
-      origin_lat: data.origin_lat,
-      origin_lng: data.origin_lng,
+      origin_lat: data.origin_lat ? Number(data.origin_lat) : undefined,
+      origin_lng: data.origin_lng ? Number(data.origin_lng) : undefined,
       destination_address: data.destination_address,
-      destination_lat: data.destination_lat,
-      destination_lng: data.destination_lng,
+      destination_lat: data.destination_lat ? Number(data.destination_lat) : undefined,
+      destination_lng: data.destination_lng ? Number(data.destination_lng) : undefined,
       customer_name: data.customer_name,
       customer_phone: data.customer_phone,
       cargo_description: data.cargo_description || undefined,
-      cargo_weight: data.cargo_weight || undefined,
-      cargo_value: data.cargo_value || undefined,
+      cargo_weight: data.cargo_weight ? Number(data.cargo_weight) : undefined,
+      cargo_value: data.cargo_value ? Number(data.cargo_value) : undefined,
       special_instructions: data.special_instructions || undefined,
       driver_id: data.driver_id || undefined,
     }
@@ -138,7 +138,7 @@ export function ShipmentForm({
                         value={field.value ?? ''}
                         onChange={(e) => {
                           const val = e.target.value
-                          field.onChange(val === '' ? undefined : val)
+                          field.onChange(val === '' ? undefined : parseFloat(val))
                         }}
                       />
                     </FormControl>
@@ -161,7 +161,7 @@ export function ShipmentForm({
                         value={field.value ?? ''}
                         onChange={(e) => {
                           const val = e.target.value
-                          field.onChange(val === '' ? undefined : val)
+                          field.onChange(val === '' ? undefined : parseFloat(val))
                         }}
                       />
                     </FormControl>
@@ -207,7 +207,7 @@ export function ShipmentForm({
                         value={field.value ?? ''}
                         onChange={(e) => {
                           const val = e.target.value
-                          field.onChange(val === '' ? undefined : val)
+                          field.onChange(val === '' ? undefined : parseFloat(val))
                         }}
                       />
                     </FormControl>
@@ -230,7 +230,7 @@ export function ShipmentForm({
                         value={field.value ?? ''}
                         onChange={(e) => {
                           const val = e.target.value
-                          field.onChange(val === '' ? undefined : val)
+                          field.onChange(val === '' ? undefined : parseFloat(val))
                         }}
                       />
                     </FormControl>
@@ -319,7 +319,7 @@ export function ShipmentForm({
                         value={field.value ?? ''}
                         onChange={(e) => {
                           const val = e.target.value
-                          field.onChange(val === '' ? undefined : val)
+                          field.onChange(val === '' ? undefined : parseFloat(val))
                         }}
                       />
                     </FormControl>
@@ -342,7 +342,7 @@ export function ShipmentForm({
                         value={field.value ?? ''}
                         onChange={(e) => {
                           const val = e.target.value
-                          field.onChange(val === '' ? undefined : val)
+                          field.onChange(val === '' ? undefined : parseFloat(val))
                         }}
                       />
                     </FormControl>

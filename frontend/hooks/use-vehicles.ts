@@ -7,14 +7,22 @@ import type { Vehicle, CreateVehicleInput } from '@/types'
 export function useVehicles() {
   return useQuery({
     queryKey: ['vehicles'],
-    queryFn: () => api.get<{ vehicles: Vehicle[] }>(API_ENDPOINTS.vehicles.list),
+    queryFn: async () => {
+      const response = await api.get<{ data: Vehicle[]; meta?: { total: number; page: number; per_page: number } }>(API_ENDPOINTS.vehicles.list)
+      const vehicles = response.data ?? (response as unknown as Vehicle[])
+      return { vehicles }
+    },
   })
 }
 
 export function useActiveVehicles() {
   return useQuery({
     queryKey: ['vehicles', 'active'],
-    queryFn: () => api.get<{ vehicles: Vehicle[] }>(API_ENDPOINTS.vehicles.active),
+    queryFn: async () => {
+      const response = await api.get<Vehicle[] | { data: Vehicle[] }>(API_ENDPOINTS.vehicles.active)
+      const vehicles = Array.isArray(response) ? response : (response as { data: Vehicle[] }).data
+      return { vehicles }
+    },
   })
 }
 
