@@ -40,6 +40,15 @@
     "title": "ተሽከርካሪዎች",
     "addVehicle": "ተሽከርካሪ አክል"
   },
+  "reports": {
+    "title": "ሪፖርቶች"
+  },
+  "settings": {
+    "title": "ቅንብሮች"
+  },
+  "admin": {
+    "users": "ተጠቃሚዎች"
+  },
   "track": {
     "title": "ማጓጓዣዎን ይከታተሉ",
     "placeholder": "የመከታተያ ቁጥር ያስገቡ",
