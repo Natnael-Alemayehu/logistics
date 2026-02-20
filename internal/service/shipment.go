@@ -14,10 +14,16 @@ type ShipmentService struct {
 	queries             *db.Queries
 	auditService        *AuditService
 	notificationService *NotificationService
+	eventService        *EventService
 }
 
-func NewShipmentService(queries *db.Queries, auditService *AuditService, notificationService *NotificationService) *ShipmentService {
-	return &ShipmentService{queries: queries, auditService: auditService, notificationService: notificationService}
+func NewShipmentService(queries *db.Queries, auditService *AuditService, notificationService *NotificationService, eventService *EventService) *ShipmentService {
+	return &ShipmentService{
+		queries:             queries,
+		auditService:        auditService,
+		notificationService: notificationService,
+		eventService:        eventService,
+	}
 }
 
 type CreateShipmentInput struct {
@@ -115,6 +121,18 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 				fmt.Printf("\nNotificaion fired for: %x with Phone: %x\n", input.CustomerName, input.CustomerPhone)
 			}
 		}()
+	}
+
+	// Publish WebSocket event for real-time dashboard updates
+	if s.eventService != nil {
+		go s.eventService.PublishNewShipment(
+			tenantID,
+			shipment.ID.String(),
+			trackingNumber,
+			input.CustomerName,
+			input.DestinationAddress,
+			"pending",
+		)
 	}
 
 	return dbShipmentToModel(&shipment), nil
@@ -271,6 +289,16 @@ func (s *ShipmentService) AssignDriver(ctx context.Context, tenantID, userID, sh
 		}()
 	}
 
+	// Publish WebSocket event for driver assignment (status change from current to assigned)
+	if s.eventService != nil {
+		go s.eventService.PublishStatusChange(
+			tenantID,
+			shipment.ID.String(),
+			oldShipment.Status,
+			"assigned",
+		)
+	}
+
 	return dbShipmentToModel(&shipment), nil
 }
 
@@ -322,6 +350,43 @@ func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, userID, sh
 		}()
 	}
 
+	// Publish WebSocket events for status changes
+	if s.eventService != nil && oldShipment.Status != input.Status {
+		go func() {
+			s.eventService.PublishStatusChange(
+				tenantID,
+				shipment.ID.String(),
+				oldShipment.Status,
+				input.Status,
+			)
+
+			// If delivered, also publish a delivery complete event
+			if input.Status == "delivered" {
+				s.eventService.PublishDeliveryComplete(
+					tenantID,
+					shipment.ID.String(),
+					shipment.TrackingNumber,
+					shipment.DriverID.String(),
+					"", // POD image URL (available via separate query)
+					"", // Signature URL (available via separate query)
+				)
+			}
+
+			// If issue or delayed, publish an alert
+			if input.Status == "issue" || input.Status == "delayed" {
+				severity := "warning"
+				if input.Status == "issue" {
+					severity = "error"
+				}
+				message := fmt.Sprintf("Shipment %s is %s", shipment.TrackingNumber, input.Status)
+				if input.StatusNote != "" {
+					message += ": " + input.StatusNote
+				}
+				s.eventService.PublishAlert(tenantID, "shipment_"+input.Status, message, severity)
+			}
+		}()
+	}
+
 	return dbShipmentToModel(&shipment), nil
 }
 
@@ -361,6 +426,16 @@ func (s *ShipmentService) Cancel(ctx context.Context, tenantID, userID, shipment
 		IPAddress:  ipAddress,
 		UserAgent:  userAgent,
 	})
+
+	// Publish WebSocket event for cancellation
+	if s.eventService != nil {
+		go s.eventService.PublishStatusChange(
+			tenantID,
+			shipment.ID.String(),
+			oldShipment.Status,
+			"cancelled",
+		)
+	}
 
 	return dbShipmentToModel(&shipment), nil
 }
