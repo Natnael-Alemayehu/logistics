@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { API_ENDPOINTS } from '@/lib/constants'
 import { toast } from 'sonner'
+import { useOfflineSync } from './use-offline-sync'
+import { offlineStorage } from '@/lib/offline-storage'
 import type {
   Shipment,
   ShipmentFilters,
@@ -38,27 +40,69 @@ export function useShipments(filters: ShipmentFilters = {}) {
 
   return useQuery({
     queryKey: ['shipments', filters],
-    queryFn: () => api.get<ShipmentListResponse>(endpoint),
+    queryFn: async () => {
+      try {
+        const data = await api.get<ShipmentListResponse>(endpoint)
+        await offlineStorage.setShipments(data.shipments)
+        return data
+      } catch (error) {
+        const cached = await offlineStorage.getShipments()
+        if (cached.length > 0) {
+          return { shipments: cached, total: cached.length, page: 1, per_page: 10 }
+        }
+        throw error
+      }
+    },
   })
 }
 
 export function useShipment(id: string) {
   return useQuery({
     queryKey: ['shipment', id],
-    queryFn: () => api.get<Shipment>(API_ENDPOINTS.shipments.get(id)),
+    queryFn: async () => {
+      try {
+        const data = await api.get<Shipment>(API_ENDPOINTS.shipments.get(id))
+        await offlineStorage.setShipment(data)
+        return data
+      } catch (error) {
+        const cached = await offlineStorage.getShipment(id)
+        if (cached) return cached
+        throw error
+      }
+    },
     enabled: !!id,
   })
 }
 
 export function useCreateShipment() {
   const queryClient = useQueryClient()
+  const { addToQueue } = useOfflineSync()
 
   return useMutation({
-    mutationFn: (data: CreateShipmentInput) =>
-      api.post<Shipment>(API_ENDPOINTS.shipments.create, data),
-    onSuccess: () => {
+    mutationFn: async (data: CreateShipmentInput) => {
+      if (!navigator.onLine) {
+        const tempId = `temp-${Date.now()}`
+        const tempShipment: Shipment = {
+          id: tempId,
+          tenant_id: '',
+          tracking_number: `TEMP-${Date.now()}`,
+          origin_address: data.origin_address,
+          destination_address: data.destination_address,
+          customer_name: data.customer_name,
+          customer_phone: data.customer_phone,
+          cargo_description: data.cargo_description,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        await addToQueue('create_shipment', API_ENDPOINTS.shipments.create, 'POST', data)
+        return tempShipment
+      }
+      return api.post<Shipment>(API_ENDPOINTS.shipments.create, data)
+    },
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shipments'] })
-      toast.success('Shipment created successfully')
+      toast.success(navigator.onLine ? 'Shipment created successfully' : 'Shipment queued for sync')
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create shipment')
@@ -68,14 +112,20 @@ export function useCreateShipment() {
 
 export function useUpdateShipment() {
   const queryClient = useQueryClient()
+  const { addToQueue } = useOfflineSync()
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateShipmentInput }) =>
-      api.put<Shipment>(API_ENDPOINTS.shipments.update(id), data),
+    mutationFn: async ({ id, data }: { id: string; data: UpdateShipmentInput }) => {
+      if (!navigator.onLine) {
+        await addToQueue('update_shipment', API_ENDPOINTS.shipments.update(id), 'PUT', data)
+        return { id, ...data } as Shipment
+      }
+      return api.put<Shipment>(API_ENDPOINTS.shipments.update(id), data)
+    },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['shipment', id] })
       queryClient.invalidateQueries({ queryKey: ['shipments'] })
-      toast.success('Shipment updated successfully')
+      toast.success(navigator.onLine ? 'Shipment updated successfully' : 'Update queued for sync')
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update shipment')
@@ -85,13 +135,19 @@ export function useUpdateShipment() {
 
 export function useCancelShipment() {
   const queryClient = useQueryClient()
+  const { addToQueue } = useOfflineSync()
 
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => 
-      api.post(API_ENDPOINTS.shipments.cancel(id), { reason }),
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      if (!navigator.onLine) {
+        await addToQueue('delete_shipment', API_ENDPOINTS.shipments.cancel(id), 'POST', { reason })
+        return { id, status: 'cancelled' }
+      }
+      return api.post(API_ENDPOINTS.shipments.cancel(id), { reason })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shipments'] })
-      toast.success('Shipment cancelled successfully')
+      toast.success(navigator.onLine ? 'Shipment cancelled successfully' : 'Cancellation queued for sync')
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to cancel shipment')
@@ -101,22 +157,28 @@ export function useCancelShipment() {
 
 export function useAssignDriver() {
   const queryClient = useQueryClient()
+  const { addToQueue } = useOfflineSync()
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       shipmentId,
       driverId,
     }: {
       shipmentId: string
       driverId: string
-    }) =>
-      api.put<Shipment>(API_ENDPOINTS.shipments.assignDriver(shipmentId), {
+    }) => {
+      if (!navigator.onLine) {
+        await addToQueue('assign_driver', API_ENDPOINTS.shipments.assignDriver(shipmentId), 'PUT', { driver_id: driverId })
+        return { id: shipmentId, driver_id: driverId, status: 'assigned' } as Shipment
+      }
+      return api.put<Shipment>(API_ENDPOINTS.shipments.assignDriver(shipmentId), {
         driver_id: driverId,
-      }),
+      })
+    },
     onSuccess: (_, { shipmentId }) => {
       queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] })
       queryClient.invalidateQueries({ queryKey: ['shipments'] })
-      toast.success('Driver assigned successfully')
+      toast.success(navigator.onLine ? 'Driver assigned successfully' : 'Assignment queued for sync')
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to assign driver')
@@ -126,20 +188,26 @@ export function useAssignDriver() {
 
 export function useUpdateShipmentStatus() {
   const queryClient = useQueryClient()
+  const { addToQueue } = useOfflineSync()
 
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       shipmentId,
       data,
     }: {
       shipmentId: string
       data: UpdateStatusInput
-    }) =>
-      api.put<Shipment>(API_ENDPOINTS.shipments.updateStatus(shipmentId), data),
+    }) => {
+      if (!navigator.onLine) {
+        await addToQueue('update_status', API_ENDPOINTS.shipments.updateStatus(shipmentId), 'PUT', data)
+        return { id: shipmentId, status: data.status } as Shipment
+      }
+      return api.put<Shipment>(API_ENDPOINTS.shipments.updateStatus(shipmentId), data)
+    },
     onSuccess: (_, { shipmentId }) => {
       queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] })
       queryClient.invalidateQueries({ queryKey: ['shipments'] })
-      toast.success('Status updated successfully')
+      toast.success(navigator.onLine ? 'Status updated successfully' : 'Status update queued for sync')
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update status')
