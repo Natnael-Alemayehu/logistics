@@ -8,6 +8,7 @@ import { I18nProvider } from '@/i18n'
 import { useOffline } from '@/hooks/use-offline'
 import { useOfflineSync } from '@/hooks/use-offline-sync'
 import { OfflineIndicator } from '@/components/shared/offline-indicator'
+import { ThemeProvider } from '@/components/theme-provider'
 
 function OfflineProvider({ children }: { children: React.ReactNode }) {
   const { isOffline, pendingOperationsCount, isOnline } = useOffline()
@@ -34,15 +35,17 @@ function OfflineProvider({ children }: { children: React.ReactNode }) {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <ErrorBoundary>
-      <I18nProvider>
-        <QueryProvider>
-          <OfflineProvider>
-            {children}
-          </OfflineProvider>
-          <Toaster position="top-right" />
-        </QueryProvider>
-      </I18nProvider>
-    </ErrorBoundary>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <ErrorBoundary>
+        <I18nProvider>
+          <QueryProvider>
+            <OfflineProvider>
+              {children}
+            </OfflineProvider>
+            <Toaster position="top-right" />
+          </QueryProvider>
+        </I18nProvider>
+      </ErrorBoundary>
+    </ThemeProvider>
   )
 }
