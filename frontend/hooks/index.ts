@@ -4,7 +4,7 @@ export {
   useShipment, 
   useCreateShipment, 
   useUpdateShipment, 
-  useDeleteShipment,
+  useCancelShipment,
   useAssignDriver,
   useUpdateShipmentStatus,
   useTrackingEvents,

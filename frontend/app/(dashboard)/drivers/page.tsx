@@ -158,26 +158,10 @@ export default function DriversPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        {driver.assigned_vehicle_plate ? (
-                          <div className="flex items-center gap-1">
-                            <Truck className="h-4 w-4 text-muted-foreground" />
-                            <span>{driver.assigned_vehicle_plate}</span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Unassigned</span>
-                        )}
+                        <span className="text-muted-foreground">Unassigned</span>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        {driver.current_lat && driver.current_lng ? (
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-4 w-4 text-green-500" />
-                            <span className="text-sm">
-                              {driver.current_lat.toFixed(4)}, {driver.current_lng.toFixed(4)}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">Unknown</span>
-                        )}
+                        <span className="text-muted-foreground">Unknown</span>
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -282,18 +266,6 @@ export default function DriversPage() {
                   <span className="text-muted-foreground">Role:</span>
                   <span className="capitalize">{viewingDriver.role}</span>
                 </div>
-                {viewingDriver.assigned_vehicle_plate && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Vehicle:</span>
-                    <span>{viewingDriver.assigned_vehicle_plate}</span>
-                  </div>
-                )}
-                {viewingDriver.current_lat && viewingDriver.current_lng && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Location:</span>
-                    <span>{viewingDriver.current_lat.toFixed(4)}, {viewingDriver.current_lng.toFixed(4)}</span>
-                  </div>
-                )}
               </div>
               <div className="flex gap-2 pt-4">
                 <Button

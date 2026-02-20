@@ -73,9 +73,6 @@ export function Header({ user }: HeaderProps) {
 
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground">
-            3
-          </span>
           <span className="sr-only">Notifications</span>
         </Button>
 
@@ -108,12 +105,6 @@ export function Header({ user }: HeaderProps) {
               <Link href="/settings">
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings/profile">
-                <User className="mr-2 h-4 w-4" />
-                Profile
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

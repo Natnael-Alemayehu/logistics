@@ -34,5 +34,5 @@ export interface Session {
   expires_at: string
   created_at: string
   revoked_at?: string
-  is_current_session?: boolean
+  is_current?: boolean
 }

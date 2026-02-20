@@ -31,21 +31,8 @@ const vehicleFormSchema = z.object({
     .string()
     .min(1, 'Plate number is required')
     .regex(ethiopianPlateRegex, 'Please enter a valid Ethiopian plate number (e.g., AA 1234 or 01-AA-1234)'),
-  make: z.string().optional(),
-  model: z.string().optional(),
-  year: z
-    .number()
-    .int('Year must be a whole number')
-    .min(1990, 'Year must be 1990 or later')
-    .max(new Date().getFullYear() + 1, 'Year cannot be in the future')
-    .optional()
-    .or(z.undefined()),
-  capacity_kg: z
-    .number()
-    .positive('Capacity must be positive')
-    .optional()
-    .or(z.undefined()),
-  status: z.enum(['active', 'maintenance', 'inactive']).optional(),
+  vehicle_type: z.string().optional(),
+  is_active: z.boolean(),
 })
 
 export type VehicleFormData = z.infer<typeof vehicleFormSchema>
@@ -67,11 +54,8 @@ export function VehicleForm({
     resolver: zodResolver(vehicleFormSchema),
     defaultValues: {
       plate_number: '',
-      make: '',
-      model: '',
-      year: undefined,
-      capacity_kg: undefined,
-      status: 'active',
+      vehicle_type: '',
+      is_active: true,
       ...defaultValues,
     },
   })
@@ -79,11 +63,7 @@ export function VehicleForm({
   const handleSubmit = async (data: VehicleFormData) => {
     const submitData: CreateVehicleInput = {
       plate_number: data.plate_number.toUpperCase().replace(/\s+/g, ' ').trim(),
-      make: data.make || undefined,
-      model: data.model || undefined,
-      year: data.year,
-      capacity_kg: data.capacity_kg,
-      status: data.status,
+      vehicle_type: data.vehicle_type || undefined,
     }
     await onSubmit(submitData)
   }
@@ -108,102 +88,35 @@ export function VehicleForm({
           )}
         />
 
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="make"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Make</FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g., Isuzu" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="model"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Model</FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g., NRR" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="year"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Year</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    placeholder="e.g., 2020"
-                    {...field}
-                    value={field.value ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value ? parseInt(e.target.value) : undefined
-                      field.onChange(value)
-                    }}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="capacity_kg"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Capacity (kg)</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    placeholder="e.g., 5000"
-                    {...field}
-                    value={field.value ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value ? parseFloat(e.target.value) : undefined
-                      field.onChange(value)
-                    }}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        <FormField
+          control={form.control}
+          name="vehicle_type"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Vehicle Type</FormLabel>
+              <FormControl>
+                <Input placeholder="e.g., Isuzu NPR" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
           control={form.control}
-          name="status"
+          name="is_active"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Status</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={(v) => field.onChange(v === 'true')} defaultValue={field.value ? 'true' : 'false'}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {VEHICLE_STATUSES.map((status) => (
-                    <SelectItem key={status.value} value={status.value}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="true">Active</SelectItem>
+                  <SelectItem value="false">Inactive</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

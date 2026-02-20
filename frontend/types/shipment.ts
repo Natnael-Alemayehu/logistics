@@ -58,8 +58,8 @@ export interface TrackingEvent {
   id: string
   shipment_id: string
   driver_id?: string
-  lat: number
-  lng: number
+  latitude: number
+  longitude: number
   accuracy_meters?: number
   speed_kph?: number
   heading?: number

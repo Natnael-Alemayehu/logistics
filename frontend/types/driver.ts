@@ -6,11 +6,6 @@ export interface Driver {
   email?: string
   role: string
   is_active: boolean
-  assigned_vehicle_id?: string
-  assigned_vehicle_plate?: string
-  current_lat?: number
-  current_lng?: number
-  last_location_update?: string
   created_at: string
   updated_at: string
 }

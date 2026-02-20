@@ -77,15 +77,15 @@ export function DriverCard({ driver, onViewDetails, onEdit, onResetPassword }: D
           <Badge variant={driver.is_active ? 'default' : 'secondary'}>
             {driver.is_active ? 'Active' : 'Inactive'}
           </Badge>
-          {driver.assigned_vehicle_plate && (
+          {false && (
             <Badge variant="outline" className="flex items-center gap-1">
               <Truck className="h-3 w-3" />
-              {driver.assigned_vehicle_plate}
+              {false}
             </Badge>
           )}
         </div>
 
-        {driver.current_lat && driver.current_lng && (
+        {false && false && (
           <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3" />
             <span>Location available</span>
