@@ -17,8 +17,6 @@ import {
   Settings,
   BarChart3,
   X,
-  Building2,
-  Shield,
 } from 'lucide-react'
 import type { UserRole } from '@/types'
 
@@ -67,18 +65,6 @@ const navItems: NavItem[] = [
 ]
 
 const adminNavItems: NavItem[] = [
-  {
-    title: 'Platform Admin',
-    href: '/admin',
-    icon: Shield,
-    roles: ['admin', 'platform_admin'],
-  },
-  {
-    title: 'Tenants',
-    href: '/admin/tenants',
-    icon: Building2,
-    roles: ['admin', 'platform_admin'],
-  },
   {
     title: 'Users',
     href: '/admin/users',
