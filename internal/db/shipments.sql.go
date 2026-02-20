@@ -331,6 +331,119 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 	return i, err
 }
 
+const getDashboardActivity = `-- name: GetDashboardActivity :many
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+WHERE tenant_id = $1
+ORDER BY updated_at DESC
+LIMIT $2
+`
+
+type GetDashboardActivityParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Limit    int32       `db:"limit" json:"limit"`
+}
+
+func (q *Queries) GetDashboardActivity(ctx context.Context, arg GetDashboardActivityParams) ([]Shipment, error) {
+	rows, err := q.db.Query(ctx, getDashboardActivity, arg.TenantID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Shipment{}
+	for rows.Next() {
+		var i Shipment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.OriginAddress,
+			&i.OriginCoordinates,
+			&i.DestinationAddress,
+			&i.DestinationCoordinates,
+			&i.CustomerName,
+			&i.CustomerPhone,
+			&i.CargoDescription,
+			&i.CargoWeight,
+			&i.CargoValue,
+			&i.SpecialInstructions,
+			&i.DriverID,
+			&i.VehicleID,
+			&i.Status,
+			&i.StatusNote,
+			&i.StatusReason,
+			&i.EstimatedDelivery,
+			&i.ActualDelivery,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CreatedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getDashboardAlerts = `-- name: GetDashboardAlerts :many
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+WHERE tenant_id = $1
+  AND status IN ('issue', 'delayed')
+ORDER BY updated_at DESC
+LIMIT $2
+`
+
+type GetDashboardAlertsParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Limit    int32       `db:"limit" json:"limit"`
+}
+
+func (q *Queries) GetDashboardAlerts(ctx context.Context, arg GetDashboardAlertsParams) ([]Shipment, error) {
+	rows, err := q.db.Query(ctx, getDashboardAlerts, arg.TenantID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Shipment{}
+	for rows.Next() {
+		var i Shipment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.OriginAddress,
+			&i.OriginCoordinates,
+			&i.DestinationAddress,
+			&i.DestinationCoordinates,
+			&i.CustomerName,
+			&i.CustomerPhone,
+			&i.CargoDescription,
+			&i.CargoWeight,
+			&i.CargoValue,
+			&i.SpecialInstructions,
+			&i.DriverID,
+			&i.VehicleID,
+			&i.Status,
+			&i.StatusNote,
+			&i.StatusReason,
+			&i.EstimatedDelivery,
+			&i.ActualDelivery,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CreatedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getShipmentByID = `-- name: GetShipmentByID :one
 SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
 WHERE id = $1 AND tenant_id = $2

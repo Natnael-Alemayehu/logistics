@@ -86,6 +86,7 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 
 				r.Get("/drivers", h.ListDrivers)
 				r.Post("/drivers", h.CreateDriver)
+				r.Get("/drivers/locations", h.GetDriverLocations)
 				r.Get("/drivers/{id}/location", h.GetDriverLocation)
 
 				r.Get("/vehicles", h.ListVehicles)
@@ -95,6 +96,8 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 				r.Put("/vehicles/{id}", h.UpdateVehicle)
 
 				r.Get("/dashboard/stats", h.GetDashboardStats)
+				r.Get("/dashboard/alerts", h.GetDashboardAlerts)
+				r.Get("/dashboard/activity", h.GetDashboardActivity)
 			})
 
 			r.Group(func(r chi.Router) {

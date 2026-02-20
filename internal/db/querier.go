@@ -36,6 +36,9 @@ type Querier interface {
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
 	DeleteVehicle(ctx context.Context, arg DeleteVehicleParams) error
 	GetActiveSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
+	GetDashboardActivity(ctx context.Context, arg GetDashboardActivityParams) ([]Shipment, error)
+	GetDashboardAlerts(ctx context.Context, arg GetDashboardAlertsParams) ([]Shipment, error)
+	GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error)
 	GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error)
 	GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error)
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
