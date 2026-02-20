@@ -40,6 +40,15 @@
     "title": "Vehicles",
     "addVehicle": "Add Vehicle"
   },
+  "reports": {
+    "title": "Reports"
+  },
+  "settings": {
+    "title": "Settings"
+  },
+  "admin": {
+    "users": "Users"
+  },
   "track": {
     "title": "Track Your Shipment",
     "placeholder": "Enter tracking number",

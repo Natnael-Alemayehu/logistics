@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth-store'
@@ -21,7 +22,7 @@ import {
 import type { UserRole } from '@/types'
 
 interface NavItem {
-  title: string
+  titleKey: string
   href: string
   icon: React.ComponentType<{ className?: string }>
   roles?: UserRole[]
@@ -29,35 +30,35 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    title: 'Dashboard',
+    titleKey: 'dashboard.title',
     href: '/dashboard',
     icon: LayoutDashboard,
   },
   {
-    title: 'Shipments',
+    titleKey: 'shipments.title',
     href: '/shipments',
     icon: Package,
   },
   {
-    title: 'Drivers',
+    titleKey: 'drivers.title',
     href: '/drivers',
     icon: Users,
     roles: ['admin', 'fleet_manager', 'dispatcher'],
   },
   {
-    title: 'Vehicles',
+    titleKey: 'vehicles.title',
     href: '/vehicles',
     icon: Truck,
     roles: ['admin', 'fleet_manager'],
   },
   {
-    title: 'Reports',
+    titleKey: 'reports.title',
     href: '/reports',
     icon: BarChart3,
     roles: ['admin', 'fleet_manager'],
   },
   {
-    title: 'Settings',
+    titleKey: 'settings.title',
     href: '/settings',
     icon: Settings,
     roles: ['admin'],
@@ -66,7 +67,7 @@ const navItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   {
-    title: 'Users',
+    titleKey: 'admin.users',
     href: '/admin/users',
     icon: Users,
     roles: ['admin', 'platform_admin'],
@@ -81,6 +82,7 @@ function hasRequiredRole(userRole: UserRole, allowedRoles?: UserRole[]): boolean
 }
 
 export function Sidebar() {
+  const t = useTranslations()
   const pathname = usePathname()
   const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useUIStore()
   const { user } = useAuthStore()
@@ -118,7 +120,7 @@ export function Sidebar() {
                 )}
               >
                 <item.icon className="h-5 w-5" />
-                {!sidebarCollapsed && <span>{item.title}</span>}
+                {!sidebarCollapsed && <span>{t(item.titleKey)}</span>}
               </Link>
             ))}
         </nav>
@@ -149,7 +151,7 @@ export function Sidebar() {
                     )}
                   >
                     <item.icon className="h-5 w-5" />
-                    {!sidebarCollapsed && <span>{item.title}</span>}
+                    {!sidebarCollapsed && <span>{t(item.titleKey)}</span>}
                   </Link>
                 ))}
             </nav>

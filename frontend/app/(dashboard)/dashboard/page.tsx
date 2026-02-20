@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useDashboardStats, useDashboardAlerts, useRecentActivity } from '@/hooks'
 import { useDriverLocationsRealtime } from '@/hooks/use-driver-locations-realtime'
@@ -25,6 +26,7 @@ const RealtimeActiveMap = dynamic(
 )
 
 export default function DashboardPage() {
+  const t = useTranslations()
   const { data: stats, isLoading: statsLoading } = useDashboardStats()
   const { data: alertsData } = useDashboardAlerts()
   const { data: activityData } = useRecentActivity()
@@ -32,28 +34,28 @@ export default function DashboardPage() {
 
   const statsCards = [
     {
-      title: 'Active Shipments',
+      title: t('dashboard.activeShipments'),
       value: stats?.active_shipments ?? 0,
       icon: Package,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50 dark:bg-blue-950',
     },
     {
-      title: 'Drivers On Duty',
+      title: t('dashboard.driversOnDuty'),
       value: stats?.drivers_on_duty ?? 0,
       icon: Truck,
       color: 'text-green-600',
       bgColor: 'bg-green-50 dark:bg-green-950',
     },
     {
-      title: 'Deliveries Today',
+      title: t('dashboard.deliveriesToday'),
       value: stats?.deliveries_today ?? 0,
       icon: CheckCircle,
       color: 'text-purple-600',
       bgColor: 'bg-purple-50 dark:bg-purple-950',
     },
     {
-      title: 'Issues',
+      title: t('dashboard.issues'),
       value: stats?.issues_count ?? 0,
       icon: AlertTriangle,
       color: 'text-orange-600',
@@ -64,7 +66,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
         <p className="text-muted-foreground">
           Overview of your logistics operations
         </p>
