@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { QueryProvider } from '@/lib/query-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { ErrorBoundary } from '@/components/shared/error-boundary'
@@ -9,8 +10,14 @@ import { useOfflineSync } from '@/hooks/use-offline-sync'
 import { OfflineIndicator } from '@/components/shared/offline-indicator'
 
 function OfflineProvider({ children }: { children: React.ReactNode }) {
-  const { isOffline, pendingOperationsCount } = useOffline()
+  const { isOffline, pendingOperationsCount, isOnline } = useOffline()
   const { isSyncing, sync } = useOfflineSync()
+
+  useEffect(() => {
+    if (isOnline && pendingOperationsCount > 0 && !isSyncing) {
+      sync()
+    }
+  }, [isOnline, pendingOperationsCount, isSyncing, sync])
 
   return (
     <>
