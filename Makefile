@@ -1,90 +1,63 @@
-.PHONY: run dev build test clean migrate-up migrate-down seed sqlc docker-up docker-down swagger
+.PHONY: help backend frontend mobile install dev build test clean
 
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GOMOD=$(GOCMD) mod
+help:
+	@echo "Logistics Project - Available Commands"
+	@echo "======================================"
+	@echo "  make install     - Install all dependencies"
+	@echo "  make dev         - Start development servers (backend + frontend)"
+	@echo "  make build       - Build all projects"
+	@echo "  make test        - Run all tests"
+	@echo "  make clean       - Clean build artifacts"
+	@echo ""
+	@echo "Project-specific:"
+	@echo "  make backend     - Run backend commands (use: make backend CMD=target)"
+	@echo "  make frontend    - Run frontend commands (use: make frontend CMD=target)"
+	@echo "  make mobile      - Run mobile commands (use: make mobile CMD=target)"
 
-BINARY_NAME=logistics-api
-WORKER_BINARY=logistics-worker
-BINARY_UNIX=$(BINARY_NAME)_unix
+CMD ?= 
 
-# Database
-DB_URL=postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable
+backend:
+ifdef CMD
+	$(MAKE) -C backend $(CMD)
+else
+	$(MAKE) -C backend
+endif
 
-# Main build targets
-build:
-	$(GOBUILD) -o bin/$(BINARY_NAME) ./cmd/api
-	$(GOBUILD) -o bin/$(WORKER_BINARY) ./cmd/worker
+frontend:
+ifdef CMD
+	$(MAKE) -C frontend $(CMD)
+else
+	$(MAKE) -C frontend
+endif
 
-run:
-	$(GOCMD) run ./cmd/api
+mobile:
+ifdef CMD
+	$(MAKE) -C mobile $(CMD)
+else
+	$(MAKE) -C mobile
+endif
 
-run-worker:
-	$(GOCMD) run ./cmd/worker
+install:
+	$(MAKE) -C backend deps
+	$(MAKE) -C frontend install
 
 dev:
-	@which air > /dev/null || (echo "Installing air..." && go install github.com/air-verse/air@latest)
-	air -c .air.toml
+	@echo "Starting development servers..."
+	@echo "Backend: http://localhost:8080"
+	@echo "Frontend: http://localhost:3000"
+	@trap 'kill 0' INT; \
+	$(MAKE) -C backend dev & \
+	$(MAKE) -C frontend dev & \
+	wait
+
+build:
+	$(MAKE) -C backend build
+	$(MAKE) -C frontend build
 
 test:
-	$(GOTEST) -v -short ./...
-
-# Integration tests with configurable timeout (default: 30m)
-# Usage: make test-integration TIMEOUT=1h
-TIMEOUT ?= 30m
-test-integration:
-	$(GOTEST) -v -tags=integration -timeout $(TIMEOUT) ./tests/integration/...
-
-test-all:
-	$(GOTEST) -v -short ./...
-	$(GOTEST) -v -tags=integration -timeout $(TIMEOUT) ./tests/integration/...
-
-ci: test-all
+	$(MAKE) -C backend test
+	$(MAKE) -C frontend test
 
 clean:
-	$(GOCLEAN)
-	rm -rf bin/
-
-migrate-up:
-	goose -dir migrations postgres "$(DB_URL)" up
-
-migrate-down:
-	goose -dir migrations postgres "$(DB_URL)" down
-
-seed:
-	@echo "Seeding development database..."
-	$(GOCMD) run scripts/seed.go "$(DB_URL)"
-
-migrate-create:
-	@read -p "Enter migration name: " name; \
-	goose -dir migrations create "$$name" sql
-
-sqlc:
-	sqlc generate
-
-swagger:
-	swag init -g cmd/api/main.go -o docs
-
-docker-up:
-	docker compose up -d
-
-docker-down:
-	docker compose down
-
-docker-logs:
-	docker compose logs -f api
-
-setup: docker-up sleep migrate-up
-	@echo "Development environment ready!"
-
-sleep:
-	sleep 5
-
-pgcli:
-	pgcli "postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable"
-
-build-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o bin/$(BINARY_UNIX) ./cmd/api
+	$(MAKE) -C backend clean
+	$(MAKE) -C frontend clean

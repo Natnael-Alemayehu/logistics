@@ -1,5 +1,5 @@
 # Binaries
-bin/
+backend/bin/
 *.exe
 *.exe~
 *.dll
@@ -12,12 +12,20 @@ bin/
 # Output of the go coverage tool
 *.out
 
-# Dependency directories
-vendor/
+# Go dependency directories
+backend/vendor/
 
 # Go workspace file
 go.work
 go.work.sum
+
+# Node/Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
 
 # Environment files
 .env
@@ -32,7 +40,7 @@ go.work.sum
 *~
 
 # Keys
-keys/
+backend/keys/
 *.pem
 
 # Logs
