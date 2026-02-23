@@ -90,6 +90,8 @@ func TestValidateEthiopianPhone(t *testing.T) {
 		{"valid 07 format", "0712345678", false},
 		{"valid +251 9 format", "+251912345678", false},
 		{"valid +251 7 format", "+251712345678", false},
+		{"valid 251 9 format (no plus)", "251912345678", false},
+		{"valid 251 7 format (no plus)", "251712345678", false},
 		{"invalid 08 format", "0812345678", true},
 		{"invalid 06 format", "0612345678", true},
 		{"too short local", "091234567", true},
@@ -98,8 +100,7 @@ func TestValidateEthiopianPhone(t *testing.T) {
 		{"too long international", "+2519123456789", true},
 		{"empty", "", true},
 		{"invalid format", "1234567890", true},
-		{"international without plus", "251912345678", true},
-		{"with letters (note: validation only checks length/prefix)", "09abcdefgh", false},
+		{"international without plus", "2519123456789", true},
 		{"international wrong prefix", "+252912345678", true},
 		{"international +251 with 08", "+251812345678", true},
 		{"international +251 with 06", "+251612345678", true},
@@ -114,6 +115,32 @@ func TestValidateEthiopianPhone(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestNormalizeEthiopianPhone(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"+2519 format", "+251912345678", "0912345678"},
+		{"+2517 format", "+251712345678", "0712345678"},
+		{"2519 format (no plus)", "251912345678", "0912345678"},
+		{"2517 format (no plus)", "251712345678", "0712345678"},
+		{"09 format already local", "0912345678", "0912345678"},
+		{"07 format already local", "0712345678", "0712345678"},
+		{"+251 with spaces", "+251 9 12345678", "0912345678"},
+		{"+251 with dashes", "+251-912-345-678", "0912345678"},
+		{"invalid format unchanged", "invalid", "invalid"},
+		{"empty string", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NormalizeEthiopianPhone(tt.input)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

@@ -1,4 +1,5 @@
 import { getDatabase } from '../database';
+import { generateUUID } from '@utils/helpers';
 
 export interface TrackingEvent {
   id: string;
@@ -39,7 +40,7 @@ export interface TrackingEventInput {
 
 export async function insert(event: TrackingEventInput): Promise<string> {
   const db = await getDatabase();
-  const id = event.id ?? crypto.randomUUID();
+  const id = event.id ?? generateUUID();
   const recordedAt = event.recorded_at ?? new Date().toISOString();
   
   await db.runAsync(
@@ -109,5 +110,63 @@ export async function deleteOlderThan(days: number): Promise<void> {
   await db.runAsync(
     'DELETE FROM tracking_events WHERE synced_at IS NOT NULL AND recorded_at < ?',
     [cutoff.toISOString()]
+  );
+}
+
+export async function update(id: string, updates: Partial<TrackingEvent>): Promise<void> {
+  const db = await getDatabase();
+  
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+  
+  for (const [key, value] of Object.entries(updates)) {
+    fields.push(`${key} = ?`);
+    values.push(value ?? null);
+  }
+  
+  if (fields.length === 0) return;
+  
+  values.push(id);
+  
+  await db.runAsync(
+    `UPDATE tracking_events SET ${fields.join(', ')} WHERE id = ?`,
+    values
+  );
+}
+
+export async function deleteById(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM tracking_events WHERE id = ?', [id]);
+}
+
+export async function batchInsert(events: TrackingEventInput[]): Promise<void> {
+  const db = await getDatabase();
+  
+  await db.withTransactionAsync(async () => {
+    for (const event of events) {
+      await insert(event);
+    }
+  });
+}
+
+export async function getCountsBySyncStatus(): Promise<{ synced: number; unsynced: number }> {
+  const db = await getDatabase();
+  const syncedResult = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM tracking_events WHERE synced_at IS NOT NULL'
+  );
+  const unsyncedResult = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM tracking_events WHERE synced_at IS NULL'
+  );
+  
+  return {
+    synced: syncedResult?.count ?? 0,
+    unsynced: unsyncedResult?.count ?? 0,
+  };
+}
+
+export async function getFailedSyncs(): Promise<TrackingEvent[]> {
+  const db = await getDatabase();
+  return await db.getAllAsync<TrackingEvent>(
+    "SELECT * FROM tracking_events WHERE synced_at IS NULL ORDER BY recorded_at DESC"
   );
 }

@@ -4,7 +4,7 @@ import { API_ENDPOINTS } from '../constants'
 interface LoginResponse {
   access_token: string
   refresh_token: string
-  driver: {
+  user: {
     id: string
     phone: string
     name: string

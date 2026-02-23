@@ -8,15 +8,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useNetworkStore } from '@store/networkStore';
-import { useSyncStore } from '@store/syncStore';
-import { useShipmentsStore } from '@store/shipmentsStore';
-import type { Shipment, ShipmentStatus } from '@/types/shipment';
+import { useShipments, type Shipment } from '@hooks/useShipments';
 
 type TabFilter = 'active' | 'completed' | 'all';
 
-const STATUS_COLORS: Record<ShipmentStatus, string> = {
+const STATUS_COLORS: Record<string, string> = {
   pending: '#fef3c7',
   assigned: '#dbeafe',
   in_transit: '#dbeafe',
@@ -27,7 +25,7 @@ const STATUS_COLORS: Record<ShipmentStatus, string> = {
   cancelled: '#f3f4f6',
 };
 
-const STATUS_TEXT_COLORS: Record<ShipmentStatus, string> = {
+const STATUS_TEXT_COLORS: Record<string, string> = {
   pending: '#92400e',
   assigned: '#1e40af',
   in_transit: '#1e40af',
@@ -38,7 +36,7 @@ const STATUS_TEXT_COLORS: Record<ShipmentStatus, string> = {
   cancelled: '#6b7280',
 };
 
-function formatStatus(status: ShipmentStatus): string {
+function formatStatus(status: string): string {
   return status.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
@@ -46,9 +44,7 @@ export default function ShipmentsListScreen() {
   const [activeTab, setActiveTab] = useState<TabFilter>('active');
   const [refreshing, setRefreshing] = useState(false);
   const isOnline = useNetworkStore((state) => state.isOnline);
-  const sync = useSyncStore((state) => state.sync);
-  const isSyncing = useSyncStore((state) => state.isSyncing);
-  const shipments = useShipmentsStore((state) => state.shipments);
+  const { shipments, isLoading, refetch } = useShipments();
 
   const filteredShipments = shipments.filter((shipment) => {
     if (activeTab === 'active') {
@@ -62,11 +58,12 @@ export default function ShipmentsListScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    if (isOnline) {
-      await sync();
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
-  }, [isOnline, sync]);
+  }, [refetch]);
 
   const renderShipment = ({ item }: { item: Shipment }) => (
     <Pressable
@@ -78,27 +75,22 @@ export default function ShipmentsListScreen() {
         <View
           style={[
             styles.statusBadge,
-            { backgroundColor: STATUS_COLORS[item.status] },
+            { backgroundColor: STATUS_COLORS[item.status] ?? '#f3f4f6' },
           ]}
         >
           <Text
             style={[
               styles.statusText,
-              { color: STATUS_TEXT_COLORS[item.status] },
+              { color: STATUS_TEXT_COLORS[item.status] ?? '#6b7280' },
             ]}
           >
             {formatStatus(item.status)}
           </Text>
         </View>
       </View>
-      <Text style={styles.destination}>{item.destination_address}</Text>
+      <Text style={styles.destination}>{item.destination ?? item.origin ?? ''}</Text>
       <View style={styles.cardFooter}>
         <Text style={styles.customer}>{item.customer_name}</Text>
-        {!item.status && (
-          <View style={styles.syncIndicator}>
-            <Text style={styles.syncPending}>⏳ Pending sync</Text>
-          </View>
-        )}
       </View>
     </Pressable>
   );

@@ -1,4 +1,5 @@
 import { getDatabase } from '../database';
+import { generateUUID } from '@utils/helpers';
 
 export interface POD {
   id: string;
@@ -46,7 +47,7 @@ function parsePOD(row: Record<string, unknown>): POD {
 
 export async function insert(pod: PODInput): Promise<string> {
   const db = await getDatabase();
-  const id = pod.id ?? crypto.randomUUID();
+  const id = pod.id ?? generateUUID();
   const recordedAt = pod.recorded_at ?? new Date().toISOString();
   
   await db.runAsync(
@@ -120,5 +121,74 @@ export async function updateSyncStatus(id: string, status: string): Promise<void
   await db.runAsync(
     'UPDATE proof_of_delivery SET sync_status = ? WHERE id = ?',
     [status, id]
+  );
+}
+
+export async function update(id: string, updates: Partial<POD>): Promise<void> {
+  const db = await getDatabase();
+  
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+  
+  for (const [key, value] of Object.entries(updates)) {
+    if (key === 'photo_paths' && Array.isArray(value)) {
+      fields.push(`${key} = ?`);
+      values.push(JSON.stringify(value));
+    } else if (key === 'location_verified') {
+      fields.push(`${key} = ?`);
+      values.push(value ? 1 : 0);
+    } else if (typeof value === 'string' || typeof value === 'number' || value === null) {
+      fields.push(`${key} = ?`);
+      values.push(value);
+    } else if (value === undefined) {
+      fields.push(`${key} = ?`);
+      values.push(null);
+    } else {
+      fields.push(`${key} = ?`);
+      values.push(String(value));
+    }
+  }
+  
+  if (fields.length === 0) return;
+  
+  values.push(id);
+  
+  await db.runAsync(
+    `UPDATE proof_of_delivery SET ${fields.join(', ')} WHERE id = ?`,
+    values
+  );
+}
+
+export async function getAll(): Promise<POD[]> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<Record<string, unknown>>(
+    'SELECT * FROM proof_of_delivery ORDER BY recorded_at DESC'
+  );
+  
+  return results.map(parsePOD);
+}
+
+export async function getFailedSyncs(): Promise<POD[]> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<Record<string, unknown>>(
+    "SELECT * FROM proof_of_delivery WHERE sync_status = 'failed' ORDER BY recorded_at DESC"
+  );
+  
+  return results.map(parsePOD);
+}
+
+export async function clearOlderThan(date: Date): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    'DELETE FROM proof_of_delivery WHERE recorded_at < ?',
+    [date.toISOString()]
+  );
+}
+
+export async function retrySync(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE proof_of_delivery SET sync_status = 'pending', synced_at = NULL WHERE id = ?",
+    [id]
   );
 }

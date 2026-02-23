@@ -1,8 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as shipmentsApi from '@/services/api/shipments';
 import * as shipmentsDb from '@/db/repositories/shipments';
+import * as syncMetadataRepo from '@/db/repositories/syncMetadata';
 import { useConnectivity } from './useConnectivity';
+import { useAuthStore } from '@/store/authStore';
 
 export interface Shipment {
   id: string;
@@ -21,6 +23,8 @@ export interface Shipment {
 export function useShipments() {
   const queryClient = useQueryClient();
   const { isOnline } = useConnectivity();
+  const user = useAuthStore((state) => state.user);
+  const isInitialSyncing = useAuthStore((state) => state.isInitialSyncing);
 
   const {
     data: shipments,
@@ -28,36 +32,65 @@ export function useShipments() {
     error,
     refetch,
     isFetching,
+    dataUpdatedAt,
   } = useQuery({
     queryKey: ['shipments'],
     queryFn: async () => {
-      if (isOnline) {
-        try {
-          const apiShipments = await shipmentsApi.getMyShipments();
-          await shipmentsDb.upsertMany(
-            apiShipments.map((s) => ({
-              id: s.id,
-              tracking_number: s.tracking_number,
-              origin_address: s.origin,
-              destination_address: s.destination,
-              customer_name: s.customer_name,
-              customer_phone: s.customer_phone,
-              status: s.status,
-              created_at: s.created_at,
-              updated_at: s.updated_at,
-            }))
-          );
-          return apiShipments;
-        } catch (error) {
-          const localShipments = await shipmentsDb.getAll();
-          return localShipments.map(transformDbShipment);
-        }
+      const cachedShipments = await shipmentsDb.getAll();
+      const cached = cachedShipments.map(transformDbShipment);
+
+      if (!isOnline || isInitialSyncing) {
+        return cached;
       }
-      const localShipments = await shipmentsDb.getAll();
-      return localShipments.map(transformDbShipment);
+
+      try {
+        const apiShipments = await shipmentsApi.getMyShipments();
+        
+        await shipmentsDb.upsertMany(
+          apiShipments.map((s) => ({
+            id: s.id,
+            tracking_number: s.tracking_number,
+            origin_address: s.origin,
+            destination_address: s.destination,
+            customer_name: s.customer_name,
+            customer_phone: s.customer_phone,
+            status: s.status,
+            driver_id: user?.id,
+            created_at: s.created_at,
+            updated_at: s.updated_at,
+          }))
+        );
+
+        if (apiShipments.length > 0) {
+          await syncMetadataRepo.upsert({
+            last_sync_at: new Date().toISOString(),
+          });
+        }
+
+        return apiShipments;
+      } catch (apiError) {
+        if (cached.length > 0) {
+          return cached;
+        }
+        throw apiError;
+      }
     },
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
+
+  useEffect(() => {
+    if (isOnline && !isInitialSyncing && dataUpdatedAt) {
+      const now = Date.now();
+      const lastUpdate = dataUpdatedAt;
+      const staleTime = 5 * 60 * 1000;
+      
+      if (now - lastUpdate > staleTime) {
+        refetch();
+      }
+    }
+  }, [isOnline, isInitialSyncing, dataUpdatedAt, refetch]);
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({

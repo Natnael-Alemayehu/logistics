@@ -1,31 +1,42 @@
 import { create } from 'zustand';
-import { api } from '@/services/api';
-import * as trackingEvents from '@/db/repositories/trackingEvents';
-import * as pods from '@/db/repositories/pods';
-import * as shipments from '@/db/repositories/shipments';
+import { syncService, SyncProgress, SyncResult, SyncError } from '@/services/sync/SyncService';
 
 interface SyncState {
   isSyncing: boolean;
   lastSyncAt: string | null;
   pendingCount: number;
-  syncProgress: number;
+  syncProgress: SyncProgress;
   lastError: string | null;
+  errors: SyncError[];
 
   setSyncing: (isSyncing: boolean) => void;
   setLastSyncAt: (time: string) => void;
   setPendingCount: (count: number) => void;
-  setProgress: (progress: number) => void;
+  setProgress: (progress: SyncProgress) => void;
   setError: (error: string | null) => void;
-  sync: () => Promise<void>;
+  setErrors: (errors: SyncError[]) => void;
+  sync: () => Promise<SyncResult>;
+  fullSync: () => Promise<SyncResult>;
   getPendingCount: () => Promise<number>;
+  clearErrors: () => void;
 }
+
+let progressUnsubscribe: (() => void) | null = null;
 
 export const useSyncStore = create<SyncState>((set, get) => ({
   isSyncing: false,
   lastSyncAt: null,
   pendingCount: 0,
-  syncProgress: 0,
+  syncProgress: {
+    phase: 'idle',
+    currentEntity: null,
+    itemsProcessed: 0,
+    totalItems: 0,
+    percentage: 0,
+    message: 'Ready to sync',
+  },
   lastError: null,
+  errors: [],
 
   setSyncing: (isSyncing) => {
     set({ isSyncing });
@@ -47,13 +58,20 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ lastError: error });
   },
 
+  setErrors: (errors) => {
+    set({ errors });
+  },
+
+  clearErrors: () => {
+    syncService.clearErrors();
+    set({ errors: [], lastError: null });
+  },
+
   getPendingCount: async () => {
     try {
-      const trackingCount = await trackingEvents.getUnsyncedCount();
-      const pendingPods = await pods.getPendingSync();
-      const total = trackingCount + pendingPods.length;
-      set({ pendingCount: total });
-      return total;
+      const count = await syncService.getPendingCount();
+      set({ pendingCount: count });
+      return count;
     } catch {
       return 0;
     }
@@ -61,86 +79,106 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   sync: async () => {
     const { isSyncing } = get();
-    if (isSyncing) return;
+    if (isSyncing) {
+      return {
+        success: false,
+        pulled: 0,
+        pushed: 0,
+        conflicts: 0,
+        errors: [],
+        duration: 0,
+        syncTime: new Date().toISOString(),
+      };
+    }
 
-    set({ isSyncing: true, syncProgress: 0, lastError: null });
+    set({ isSyncing: true, lastError: null, errors: [] });
+
+    if (progressUnsubscribe) {
+      progressUnsubscribe();
+    }
+
+    progressUnsubscribe = syncService.onProgress((progress) => {
+      set({ syncProgress: progress });
+    });
 
     try {
-      set({ syncProgress: 10 });
+      const result = await syncService.sync();
 
-      const [unsyncedEvents, unsyncedPods] = await Promise.all([
-        trackingEvents.getPendingSync(),
-        pods.getPendingSync(),
-      ]);
-
-      set({ syncProgress: 30 });
-
-      const syncPayload = {
-        device_id: 'mobile-device',
-        last_sync_at: get().lastSyncAt,
-        events: unsyncedEvents.map((e) => ({
-          shipment_id: e.shipment_id,
-          latitude: e.latitude,
-          longitude: e.longitude,
-          accuracy: e.accuracy ?? 0,
-          speed: e.speed,
-          heading: e.heading,
-          event_type: e.event_type,
-          status: e.status,
-          note: e.note,
-          recorded_at: e.recorded_at,
-          battery_level: e.battery_level,
-        })),
-        pods: unsyncedPods.map((p) => ({
-          shipment_id: p.shipment_id,
-          recipient_name: p.recipient_name,
-          recipient_phone: p.recipient_phone,
-          signature_data: p.signature_data,
-          photo_urls: p.photo_paths ?? [],
-          delivery_address: p.delivery_address,
-          delivery_lat: p.delivery_lat ?? 0,
-          delivery_lng: p.delivery_lng ?? 0,
-          delivery_notes: p.delivery_notes,
-          location_verified: p.location_verified,
-          location_mismatch_meters: p.location_mismatch_meters,
-          recorded_at: p.recorded_at,
-        })),
-        statuses: [],
-        battery_level: 100,
-        storage_remaining_kb: 0,
-      };
-
-      set({ syncProgress: 50 });
-
-      const response = await api.post<{
-        server_time: string;
-        pull: { shipments: shipments.Shipment[] };
-      }>('/sync', syncPayload);
-
-      set({ syncProgress: 70 });
-
-      const now = new Date().toISOString();
-      await Promise.all([
-        ...unsyncedEvents.map((e) => trackingEvents.markSynced(e.id, now)),
-        ...unsyncedPods.map((p) => pods.markSynced(p.id, now)),
-      ]);
-
-      if (response.pull?.shipments?.length) {
-        await shipments.upsertMany(response.pull.shipments);
+      if (result.success) {
+        set({
+          lastSyncAt: result.syncTime,
+          pendingCount: await syncService.getPendingCount(),
+        });
+      } else {
+        set({
+          lastError: result.errors[0]?.error ?? 'Sync failed',
+          errors: result.errors,
+        });
       }
 
-      set({
-        syncProgress: 100,
-        lastSyncAt: response.server_time ?? now,
-        pendingCount: 0,
-      });
+      return result;
     } catch (error) {
-      set({
-        lastError: error instanceof Error ? error.message : 'Sync failed',
-        syncProgress: 0,
-      });
+      const errorMessage = error instanceof Error ? error.message : 'Sync failed';
+      set({ lastError: errorMessage });
       throw error;
     } finally {
+      if (progressUnsubscribe) {
+        progressUnsubscribe();
+        progressUnsubscribe = null;
+      }
+      set({ isSyncing: false });
+    }
+  },
+
+  fullSync: async () => {
+    const { isSyncing } = get();
+    if (isSyncing) {
+      return {
+        success: false,
+        pulled: 0,
+        pushed: 0,
+        conflicts: 0,
+        errors: [],
+        duration: 0,
+        syncTime: new Date().toISOString(),
+      };
+    }
+
+    set({ isSyncing: true, lastError: null, errors: [] });
+
+    if (progressUnsubscribe) {
+      progressUnsubscribe();
+    }
+
+    progressUnsubscribe = syncService.onProgress((progress) => {
+      set({ syncProgress: progress });
+    });
+
+    try {
+      const result = await syncService.fullSync();
+
+      if (result.success) {
+        set({
+          lastSyncAt: result.syncTime,
+          pendingCount: await syncService.getPendingCount(),
+        });
+      } else {
+        set({
+          lastError: result.errors[0]?.error ?? 'Full sync failed',
+          errors: result.errors,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Full sync failed';
+      set({ lastError: errorMessage });
+      throw error;
+    } finally {
+      if (progressUnsubscribe) {
+        progressUnsubscribe();
+        progressUnsubscribe = null;
+      }
       set({ isSyncing: false });
     }
   },

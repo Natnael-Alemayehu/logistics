@@ -9,3 +9,8 @@ export { default as Avatar } from './Avatar';
 export { default as ListItem } from './ListItem';
 export { default as Banner } from './Banner';
 export { default as Modal } from './Modal';
+export { default as OfflineBanner } from './OfflineBanner';
+export { default as SyncIndicator } from './SyncIndicator';
+export { default as SyncProgress } from './SyncProgress';
+export { default as PendingDataBadge } from './PendingDataBadge';
+export * from './syncComponents';

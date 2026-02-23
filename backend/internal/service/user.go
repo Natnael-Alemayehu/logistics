@@ -6,6 +6,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/pkg/hash"
+	"github.com/natnael-alemayehu/logistics/pkg/validation"
 )
 
 type UserService struct {
@@ -38,11 +39,12 @@ func (s *UserService) CreateDriver(ctx context.Context, tenantID string, input C
 	}
 
 	isActive := true
+	phone := validation.NormalizeEthiopianPhone(input.Phone)
 	user, err := s.queries.CreateUser(ctx, db.CreateUserParams{
 		TenantID: toUUID(tenantID),
 		Role:     "driver",
 		FullName: input.FullName,
-		Phone:    &input.Phone,
+		Phone:    &phone,
 		PinHash:  &pinHash,
 		IsActive: &isActive,
 	})
@@ -60,11 +62,16 @@ func (s *UserService) CreateUser(ctx context.Context, tenantID string, input Cre
 	}
 
 	isActive := true
+	var phonePtr *string
+	if input.Phone != "" {
+		phone := validation.NormalizeEthiopianPhone(input.Phone)
+		phonePtr = &phone
+	}
 	user, err := s.queries.CreateUser(ctx, db.CreateUserParams{
 		TenantID:     toUUID(tenantID),
 		Role:         input.Role,
 		FullName:     input.FullName,
-		Phone:        toText(input.Phone),
+		Phone:        phonePtr,
 		Email:        &input.Email,
 		PasswordHash: &passwordHash,
 		IsActive:     &isActive,
@@ -150,7 +157,8 @@ func (s *UserService) UpdateUser(ctx context.Context, tenantID, requesterID, req
 		params.FullName = &fullName
 	}
 	if phone != "" {
-		params.Phone = &phone
+		normalizedPhone := validation.NormalizeEthiopianPhone(phone)
+		params.Phone = &normalizedPhone
 	}
 	if email != "" {
 		params.Email = &email

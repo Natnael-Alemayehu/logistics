@@ -17,15 +17,7 @@ export interface NotificationState {
   error: string | null;
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Notification handler is set in _layout.tsx — do not duplicate here.
 
 export function useNotifications() {
   const router = useRouter();
@@ -118,10 +110,10 @@ export function useNotifications() {
         switch (data.type) {
           case 'shipment_update':
           case 'new_assignment':
-            router.push(`/shipments/${data.shipmentId}`);
+            router.push(`/shipment/${data.shipmentId}`);
             break;
           case 'pod_required':
-            router.push(`/shipments/${data.shipmentId}/pod`);
+            router.push(`/pod/${data.shipmentId}`);
             break;
           default:
             if (data.screen) {
@@ -141,16 +133,16 @@ export function useNotifications() {
         switch (data.type) {
           case 'shipment_update':
           case 'new_assignment':
-            router.push(`/shipments/${data.shipmentId}`);
+            router.push(`/shipment/${data.shipmentId}`);
             break;
           case 'pod_required':
-            router.push(`/shipments/${data.shipmentId}/pod`);
+            router.push(`/pod/${data.shipmentId}`);
             break;
           default:
             if (data.screen) {
               router.push(data.screen as any);
             } else {
-              router.push('/shipments');
+              router.push('/(main)');
             }
         }
       } else {

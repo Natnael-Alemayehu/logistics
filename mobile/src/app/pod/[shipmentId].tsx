@@ -15,6 +15,8 @@ import * as Location from 'expo-location';
 import { useAuthStore } from '@store/authStore';
 import { useNetworkStore } from '@store/networkStore';
 import { api } from '@/services/api';
+import { API_ENDPOINTS } from '@/services/constants';
+import { insertPOD, updateShipment } from '@db';
 import type { Shipment } from '@/types/shipment';
 
 const { width } = Dimensions.get('window');
@@ -47,23 +49,37 @@ export default function PODScreen() {
 
   useEffect(() => {
     loadShipment();
-    checkLocation();
   }, [shipmentId]);
 
   const loadShipment = async () => {
     setIsLoading(true);
     try {
-      const response = await api.get<Shipment>(`/shipments/${shipmentId}`);
+      const response = await api.get<Shipment>(`/api/v1/shipments/${shipmentId}`);
       setShipment(response);
+      // Check location after shipment is loaded so we have destination coordinates
+      checkLocation(response);
     } catch (error) {
-      console.error('Failed to load shipment:', error);
-      Alert.alert('Error', 'Failed to load shipment details');
+      // Fallback: try loading from local DB
+      try {
+        const { getShipmentById } = await import('@db');
+        const local = await getShipmentById(shipmentId!);
+        if (local) {
+          setShipment(local as unknown as Shipment);
+          checkLocation(local as unknown as Shipment);
+        } else {
+          console.error('Failed to load shipment:', error);
+          Alert.alert('Error', 'Failed to load shipment details');
+        }
+      } catch {
+        console.error('Failed to load shipment:', error);
+        Alert.alert('Error', 'Failed to load shipment details');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const checkLocation = async () => {
+  const checkLocation = async (loadedShipment: Shipment) => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -72,12 +88,12 @@ export default function PODScreen() {
       }
 
       const location = await Location.getCurrentPositionAsync({});
-      if (shipment?.destination_lat && shipment?.destination_lng) {
+      if (loadedShipment?.destination_lat && loadedShipment?.destination_lng) {
         const distance = calculateDistance(
           location.coords.latitude,
           location.coords.longitude,
-          shipment.destination_lat,
-          shipment.destination_lng
+          loadedShipment.destination_lat,
+          loadedShipment.destination_lng
         );
         setLocationMismatch(distance);
         setLocationVerified(distance <= 500);
@@ -191,21 +207,33 @@ export default function PODScreen() {
         shipment_id: shipment.id,
         driver_id: user.id,
         recipient_name: recipientName,
-        recipient_phone: recipientPhone || null,
+        recipient_phone: recipientPhone || undefined,
         signature_data: JSON.stringify(signatureLines),
         photo_paths: photos.map((p) => p.uri),
-        delivery_notes: deliveryNotes || null,
+        delivery_notes: deliveryNotes || undefined,
         location_verified: locationVerified,
-        location_mismatch_meters: locationMismatch,
+        location_mismatch_meters: locationMismatch || undefined,
         recorded_at: new Date().toISOString(),
       };
 
-      await api.post('/pods', pod);
+      try {
+        if (isOnline) {
+          await api.post(API_ENDPOINTS.shipments.pod(shipment.id), pod);
+        } else {
+          throw new Error('Offline');
+        }
+      } catch (apiError) {
+        // Save locally to be synced later
+        await insertPOD(pod);
+      }
+
+      // Automatically mark the shipment as delivered in the local DB
+      await updateShipment(shipment.id, { status: 'delivered' }).catch(() => {});
+      
       setSubmitted(true);
     } catch (error) {
-      console.error('Failed to submit POD:', error);
-      Alert.alert('Error', 'Failed to submit proof of delivery. It will be saved locally and synced later.');
-      setSubmitted(true);
+      console.error('Failed to process POD:', error);
+      Alert.alert('Error', 'An unexpected error occurred while processing proof of delivery.');
     } finally {
       setIsSubmitting(false);
     }

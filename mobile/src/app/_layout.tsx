@@ -1,6 +1,6 @@
 import '../i18n';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -8,9 +8,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useNetworkStore } from '@store/networkStore';
+import { useSyncStore } from '@store/syncStore';
 import { restoreAuthSession } from '@store/authStore';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import SyncStatusBar from '@components/layout/SyncStatusBar';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,10 +38,28 @@ Notifications.setNotificationHandler({
 function NetworkListener() {
   const netInfo = useNetInfo();
   const setOnline = useNetworkStore((state) => state.setOnline);
+  const setConnectionType = useNetworkStore((state) => state.setConnectionType);
+  const sync = useSyncStore((state) => state.sync);
+  const prevOnlineRef = useRef<boolean | null>(null);
 
   useEffect(() => {
-    setOnline(netInfo.isConnected ?? false);
-  }, [netInfo.isConnected, setOnline]);
+    const isConnected = netInfo.isConnected ?? false;
+    setOnline(isConnected);
+
+    const connectionType = netInfo.type === 'wifi'
+      ? 'wifi'
+      : netInfo.type === 'cellular'
+        ? 'cellular'
+        : netInfo.type === 'none'
+          ? 'none'
+          : 'unknown';
+    setConnectionType(connectionType);
+
+    if (prevOnlineRef.current === false && isConnected) {
+      sync().catch((err) => console.warn('Auto-sync failed:', err));
+    }
+    prevOnlineRef.current = isConnected;
+  }, [netInfo.isConnected, netInfo.type, setOnline, setConnectionType, sync]);
 
   return null;
 }
@@ -98,6 +118,7 @@ export default function RootLayout() {
           <NetworkListener />
           <NotificationHandler />
           <StatusBar style="auto" />
+          <SyncStatusBar />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />

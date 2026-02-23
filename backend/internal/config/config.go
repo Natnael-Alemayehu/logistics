@@ -1,3 +1,4 @@
+// Package config loads all the configs from the environment variables
 package config
 
 import (
@@ -55,7 +56,7 @@ func Load() *Config {
 		JWTAccessTTL:         getDurationEnv("JWT_ACCESS_TTL", time.Hour),
 		JWTRefreshTTL:        getDurationEnv("JWT_REFRESH_TTL", 30*24*time.Hour),
 		JWTIssuer:            getEnv("JWT_ISSUER", "logistics.et"),
-		LogLevel:             getEnv("LOG_LEVEL", "info"),
+		LogLevel:             getEnv("LOG_LEVEL", "debug"),
 		Environment:          getEnv("ENVIRONMENT", "development"),
 		StorageType:          getEnv("STORAGE_TYPE", "local"),
 		StoragePath:          getEnv("STORAGE_PATH", "./uploads"),

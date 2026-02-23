@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/pkg/validation"
 )
 
 type ShipmentService struct {
@@ -81,6 +82,7 @@ type SearchShipmentsInput struct {
 
 func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string, input CreateShipmentInput, ipAddress, userAgent string) (*model.Shipment, error) {
 	trackingNumber := generateTrackingNumber()
+	customerPhone := validation.NormalizeEthiopianPhone(input.CustomerPhone)
 
 	shipment, err := s.queries.CreateShipment(ctx, db.CreateShipmentParams{
 		TenantID:            toUUID(tenantID),
@@ -88,7 +90,7 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 		OriginAddress:       input.OriginAddress,
 		DestinationAddress:  input.DestinationAddress,
 		CustomerName:        input.CustomerName,
-		CustomerPhone:       input.CustomerPhone,
+		CustomerPhone:       customerPhone,
 		CargoDescription:    toText(input.CargoDescription),
 		CargoWeight:         toNumeric(input.CargoWeight),
 		CargoValue:          toNumeric(input.CargoValue),
@@ -116,9 +118,9 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 	if s.notificationService != nil {
 		go func() {
 			notifCtx := context.Background()
-			if err := s.notificationService.SendShipmentCreatedNotification(notifCtx, input.CustomerPhone, trackingNumber); err != nil {
+			if err := s.notificationService.SendShipmentCreatedNotification(notifCtx, customerPhone, trackingNumber); err != nil {
 				// Log error but don't fail the request
-				fmt.Printf("\nNotificaion fired for: %x with Phone: %x\n", input.CustomerName, input.CustomerPhone)
+				fmt.Printf("\nNotificaion fired for: %x with Phone: %x\n", input.CustomerName, customerPhone)
 			}
 		}()
 	}
@@ -215,13 +217,19 @@ func (s *ShipmentService) Update(ctx context.Context, tenantID, userID, shipment
 		estimatedDelivery = pgtype.Timestamptz{Time: *input.EstimatedDelivery, Valid: true}
 	}
 
+	var customerPhone *string
+	if input.CustomerPhone != "" {
+		phone := validation.NormalizeEthiopianPhone(input.CustomerPhone)
+		customerPhone = &phone
+	}
+
 	shipment, err := s.queries.UpdateShipment(ctx, db.UpdateShipmentParams{
 		ID:                  toUUID(shipmentID),
 		TenantID:            toUUID(tenantID),
 		OriginAddress:       toText(input.OriginAddress),
 		DestinationAddress:  toText(input.DestinationAddress),
 		CustomerName:        toText(input.CustomerName),
-		CustomerPhone:       toText(input.CustomerPhone),
+		CustomerPhone:       customerPhone,
 		CargoDescription:    toText(input.CargoDescription),
 		CargoWeight:         toNumeric(input.CargoWeight),
 		CargoValue:          toNumeric(input.CargoValue),
