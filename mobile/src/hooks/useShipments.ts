@@ -5,6 +5,10 @@ import * as shipmentsDb from '@/db/repositories/shipments';
 import * as syncMetadataRepo from '@/db/repositories/syncMetadata';
 import { useConnectivity } from './useConnectivity';
 import { useAuthStore } from '@/store/authStore';
+import { useTrackingStore } from '@/store/trackingStore';
+import { startLocationTracking, stopLocationTracking, getCurrentLocation } from '@/services/location';
+import { getTrackingContext, clearTrackingContext } from '@/services/location/trackingContext';
+import { insert as insertTrackingEvent } from '@/db/repositories/trackingEvents';
 
 export interface Shipment {
   id: string;
@@ -25,6 +29,12 @@ export function useShipments() {
   const { isOnline } = useConnectivity();
   const user = useAuthStore((state) => state.user);
   const isInitialSyncing = useAuthStore((state) => state.isInitialSyncing);
+  const { 
+    isTracking, 
+    activeShipmentId, 
+    startTracking: startTrackingStore, 
+    stopTracking: stopTrackingStore 
+  } = useTrackingStore();
 
   const {
     data: shipments,
@@ -160,6 +170,67 @@ export function useShipments() {
     [updateStatusMutation]
   );
 
+  const startTrackingForShipment = useCallback(async (shipmentId: string) => {
+    const driverId = user?.id;
+    if (!driverId) {
+      throw new Error('No driver ID available');
+    }
+
+    if (isTracking && activeShipmentId && activeShipmentId !== shipmentId) {
+      await stopTrackingForShipment();
+    }
+
+    try {
+      startTrackingStore(shipmentId, driverId);
+      await startLocationTracking(shipmentId, driverId);
+      
+      const location = await getCurrentLocation();
+      if (location) {
+        await insertTrackingEvent({
+          shipment_id: shipmentId,
+          driver_id: driverId,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy ?? undefined,
+          speed: location.speed ? location.speed * 3.6 : undefined,
+          heading: location.heading ?? undefined,
+          event_type: 'status_change',
+          status: 'in_transit',
+          note: 'Tracking started',
+          recorded_at: new Date().toISOString(),
+        });
+      }
+      
+      return true;
+    } catch (error) {
+      stopTrackingStore();
+      throw error;
+    }
+  }, [user?.id, isTracking, activeShipmentId, startTrackingStore, stopTrackingStore]);
+
+  const stopTrackingForShipment = useCallback(async () => {
+    try {
+      await stopLocationTracking();
+      stopTrackingStore();
+      return true;
+    } catch (error) {
+      console.error('Failed to stop tracking:', error);
+      throw error;
+    }
+  }, [stopTrackingStore]);
+
+  const getActiveTrackingShipment = useCallback(async () => {
+    const context = await getTrackingContext();
+    return context?.shipmentId ?? null;
+  }, []);
+
+  const restoreTrackingState = useCallback(async () => {
+    const context = await getTrackingContext();
+    if (context) {
+      startTrackingStore(context.shipmentId, context.driverId);
+    }
+  }, [startTrackingStore]);
+
   return {
     shipments: shipments ?? [],
     shipment,
@@ -173,6 +244,12 @@ export function useShipments() {
     updateStatus,
     updateStatusPending: updateStatusMutation.isPending,
     refetch,
+    isTracking,
+    activeShipmentId,
+    startTrackingForShipment,
+    stopTrackingForShipment,
+    getActiveTrackingShipment,
+    restoreTrackingState,
   };
 }
 

@@ -1,6 +1,22 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { insertTrackingEvent } from '@db';
+import {
+  setTrackingContext,
+  getTrackingContext,
+  clearTrackingContext,
+  type TrackingContext,
+  type TrackingConfig,
+  DEFAULT_TRACKING_CONFIG,
+} from './trackingContext';
+import {
+  checkGeofences,
+  startGeofenceMonitoring,
+  stopGeofenceMonitoring,
+  createShipmentGeofences,
+  addGeofence,
+  clearGeofences,
+} from './geofencing';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 
@@ -41,16 +57,42 @@ export async function getCurrentLocation(): Promise<LocationData | null> {
   };
 }
 
-export async function startLocationTracking(_shipmentId: string): Promise<void> {
+export async function startLocationTracking(
+  shipmentId: string,
+  driverId: string,
+  config: Partial<TrackingConfig> = {}
+): Promise<void> {
   const hasPermission = await requestLocationPermissions();
   if (!hasPermission) {
     throw new Error('Location permission not granted');
   }
 
+  const trackingConfig: TrackingConfig = {
+    ...DEFAULT_TRACKING_CONFIG,
+    ...config,
+  };
+
+  const context: TrackingContext = {
+    shipmentId,
+    driverId,
+    startedAt: new Date().toISOString(),
+    config: trackingConfig,
+  };
+
+  await setTrackingContext(context);
+  
+  startGeofenceMonitoring();
+
+  const accuracyMap: Record<string, Location.Accuracy> = {
+    high: Location.Accuracy.High,
+    balanced: Location.Accuracy.Balanced,
+    low: Location.Accuracy.Low,
+  };
+
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: Location.Accuracy.High,
-    timeInterval: 10000,
-    distanceInterval: 50,
+    accuracy: accuracyMap[trackingConfig.accuracy] ?? Location.Accuracy.High,
+    timeInterval: trackingConfig.timeInterval,
+    distanceInterval: trackingConfig.distanceInterval,
     foregroundService: {
       notificationTitle: 'Tracking Active',
       notificationBody: 'Your location is being tracked for delivery',
@@ -63,7 +105,38 @@ export async function stopLocationTracking(): Promise<void> {
   if (isTracking) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   }
+  stopGeofenceMonitoring();
+  clearGeofences();
+  await clearTrackingContext();
 }
+
+export async function isLocationTrackingActive(): Promise<boolean> {
+  return Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+}
+
+export function setupShipmentGeofences(shipment: {
+  id: string;
+  origin_lat?: number;
+  origin_lng?: number;
+  destination_lat?: number;
+  destination_lng?: number;
+}): void {
+  const geofences = createShipmentGeofences(shipment);
+  geofences.forEach(g => addGeofence(g));
+}
+
+export { 
+  addGeofence, 
+  removeGeofence, 
+  clearGeofences, 
+  getGeofences,
+  checkGeofences,
+  startGeofenceMonitoring,
+  stopGeofenceMonitoring,
+  createShipmentGeofences,
+  type Geofence,
+  type GeofenceEvent,
+} from './geofencing';
 
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) {
@@ -76,9 +149,23 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const location = locations[0];
 
     if (location) {
+      const context = await getTrackingContext();
+
+      if (!context) {
+        console.warn('No tracking context found, skipping location update');
+        return;
+      }
+
+      const coordinate = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      
+      checkGeofences(coordinate);
+
       await insertTrackingEvent({
-        shipment_id: 'current',
-        driver_id: 'current',
+        shipment_id: context.shipmentId,
+        driver_id: context.driverId,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         accuracy: location.coords.accuracy ?? undefined,

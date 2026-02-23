@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS tracking_events (
   synced_at TEXT,
   device_id TEXT,
   battery_level INTEGER,
-  sync_priority INTEGER DEFAULT 0
+  sync_priority INTEGER DEFAULT 0,
+  geofence_id TEXT,
+  geofence_type TEXT
 );
 `;
 

@@ -9,9 +9,6 @@ This is a logistics project. Agents working on this codebase should reference th
 - **Business Model**: See `./business_plan.md` for details on what is being built
 - **Functional Requirements**: See `./functional_requirements.md` for functional requirements
 - **Non-Functional Requirements**: See `./non_functional_requirements.md` for non-functional requirements
-- **First Plan**: See `./plan.md` for the complete plan to build the MVP
-- **Next Plan**: See `./plan-phase4.md` for the second iteration for this implementation
-
 
 - **Frontend Implenentation**: See `./frontend-plan.md` to see the overall plan of the implenentation of the frontend for this project
 
