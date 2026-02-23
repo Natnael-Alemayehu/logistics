@@ -10,6 +10,7 @@ export { useNetworkSync } from './useNetworkSync';
 export { useConflictResolution } from './useConflictResolution';
 export { useSyncStatus } from './useSyncStatus';
 export { useInitialSync } from './useInitialSync';
+export { useGeofencing } from './useGeofencing';
 
 export type { LocationCoords, LocationError } from './useLocation';
 export type { ConnectionType, ConnectionQuality, ConnectionHistoryEntry } from './useConnectivity';
@@ -18,3 +19,4 @@ export type { NotificationData, NotificationState } from './useNotifications';
 export type { OfflineFirstResult, OfflineFirstOptions } from './useOfflineFirst';
 export type { QueuedOperation, NetworkSyncOptions } from './useNetworkSync';
 export type { SyncStatus as SyncStatusType } from './useSyncStatus';
+export type { UseGeofencingResult } from './useGeofencing';

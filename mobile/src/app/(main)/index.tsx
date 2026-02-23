@@ -10,6 +10,7 @@ import {
 import { router } from 'expo-router';
 import { useState, useCallback } from 'react';
 import { useNetworkStore } from '@store/networkStore';
+import { useTrackingStore } from '@store/trackingStore';
 import { useShipments, type Shipment } from '@hooks/useShipments';
 
 type TabFilter = 'active' | 'completed' | 'all';
@@ -45,6 +46,7 @@ export default function ShipmentsListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const isOnline = useNetworkStore((state) => state.isOnline);
   const { shipments, isLoading, refetch } = useShipments();
+  const { isTracking, activeShipmentId } = useTrackingStore();
 
   const filteredShipments = shipments.filter((shipment) => {
     if (activeTab === 'active') {
@@ -65,35 +67,50 @@ export default function ShipmentsListScreen() {
     }
   }, [refetch]);
 
-  const renderShipment = ({ item }: { item: Shipment }) => (
-    <Pressable
-      style={styles.card}
-      onPress={() => router.push(`/shipment/${item.id}`)}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.trackingNumber}>{item.tracking_number}</Text>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: STATUS_COLORS[item.status] ?? '#f3f4f6' },
-          ]}
-        >
-          <Text
-            style={[
-              styles.statusText,
-              { color: STATUS_TEXT_COLORS[item.status] ?? '#6b7280' },
-            ]}
-          >
-            {formatStatus(item.status)}
-          </Text>
+  const renderShipment = ({ item }: { item: Shipment }) => {
+    const isBeingTracked = isTracking && activeShipmentId === item.id;
+    
+    return (
+      <Pressable
+        style={[
+          styles.card,
+          isBeingTracked && styles.cardTracking,
+        ]}
+        onPress={() => router.push(`/shipment/${item.id}`)}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.trackingNumber}>{item.tracking_number}</Text>
+          <View style={styles.badgeContainer}>
+            {isBeingTracked && (
+              <View style={styles.trackingBadge}>
+                <View style={styles.trackingDot} />
+                <Text style={styles.trackingBadgeText}>Tracking</Text>
+              </View>
+            )}
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: STATUS_COLORS[item.status] ?? '#f3f4f6' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: STATUS_TEXT_COLORS[item.status] ?? '#6b7280' },
+                ]}
+              >
+                {formatStatus(item.status)}
+              </Text>
+            </View>
+          </View>
         </View>
-      </View>
-      <Text style={styles.destination}>{item.destination ?? item.origin ?? ''}</Text>
-      <View style={styles.cardFooter}>
-        <Text style={styles.customer}>{item.customer_name}</Text>
-      </View>
-    </Pressable>
-  );
+        <Text style={styles.destination}>{item.destination ?? item.origin ?? ''}</Text>
+        <View style={styles.cardFooter}>
+          <Text style={styles.customer}>{item.customer_name}</Text>
+        </View>
+      </Pressable>
+    );
+  };
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -185,6 +202,11 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  cardTracking: {
+    borderWidth: 2,
+    borderColor: '#059669',
+    backgroundColor: '#f0fdf4',
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -195,6 +217,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1f2937',
+    flex: 1,
+  },
+  badgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  trackingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  trackingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#059669',
+    marginRight: 4,
+  },
+  trackingBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#065f46',
   },
   statusBadge: {
     paddingHorizontal: 10,

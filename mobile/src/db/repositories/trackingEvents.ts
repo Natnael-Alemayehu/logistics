@@ -18,6 +18,8 @@ export interface TrackingEvent {
   device_id?: string;
   battery_level?: number;
   sync_priority: number;
+  geofence_id?: string;
+  geofence_type?: string;
 }
 
 export interface TrackingEventInput {
@@ -36,6 +38,8 @@ export interface TrackingEventInput {
   device_id?: string;
   battery_level?: number;
   sync_priority?: number;
+  geofence_id?: string;
+  geofence_type?: string;
 }
 
 export async function insert(event: TrackingEventInput): Promise<string> {
@@ -46,8 +50,9 @@ export async function insert(event: TrackingEventInput): Promise<string> {
   await db.runAsync(
     `INSERT INTO tracking_events (
       id, shipment_id, driver_id, latitude, longitude, accuracy, speed, heading,
-      event_type, status, note, recorded_at, synced_at, device_id, battery_level, sync_priority
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      event_type, status, note, recorded_at, synced_at, device_id, battery_level, sync_priority,
+      geofence_id, geofence_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       event.shipment_id,
@@ -65,6 +70,8 @@ export async function insert(event: TrackingEventInput): Promise<string> {
       event.device_id ?? null,
       event.battery_level ?? null,
       event.sync_priority ?? 0,
+      event.geofence_id ?? null,
+      event.geofence_type ?? null,
     ]
   );
   

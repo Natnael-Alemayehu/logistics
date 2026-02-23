@@ -31,6 +31,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         NSPhotoLibraryUsageDescription:
           'This app needs access to your photo library to save proof of delivery photos.',
         UIBackgroundModes: ['location', 'fetch', 'remote-notification'],
+        MGLMapboxMetricsEnabledSettingShownInApp: true,
       },
     },
     android: {
@@ -58,6 +59,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       bundler: 'metro',
     },
     plugins: [
+      '@maplibre/maplibre-react-native',
       [
         'expo-router',
         {

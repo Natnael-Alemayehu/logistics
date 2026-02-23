@@ -9,13 +9,20 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams, Stack } from 'expo-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Shipment, ShipmentStatus } from '@/types/shipment';
 import { useShipmentsStore } from '@store/shipmentsStore';
 import { useNetworkStore } from '@store/networkStore';
+import { useTrackingStore } from '@store/trackingStore';
+import { useAuthStore } from '@store/authStore';
 import { api } from '@/services/api';
 import { API_ENDPOINTS } from '@/services/constants';
 import { getShipmentById as getLocalShipment, updateShipment as updateLocalShipment } from '@db';
+import { ShipmentMiniMap } from '@/components/shipments/ShipmentMiniMap';
+import { TrackingStatusBanner } from '@/components/tracking/TrackingStatusBanner';
+import { TrackingEventTimeline } from '@/components/tracking/TrackingEventTimeline';
+import { startLocationTracking, stopLocationTracking } from '@/services/location';
+import { insert as insertTrackingEvent } from '@/db/repositories/trackingEvents';
 
 const STATUS_COLORS: Record<ShipmentStatus, string> = {
   pending: '#fef3c7',
@@ -48,6 +55,21 @@ const DELAY_REASONS = [
   'Other',
 ];
 
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function toRadians(degrees: number): number {
+  return degrees * (Math.PI / 180);
+}
+
 function formatStatus(status: ShipmentStatus): string {
   return status.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
@@ -57,12 +79,50 @@ export default function ShipmentDetailScreen() {
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [distanceToDestination, setDistanceToDestination] = useState<number | null>(null);
   const isOnline = useNetworkStore((state) => state.isOnline);
   const updateShipment = useShipmentsStore((state) => state.updateShipment);
+  const { 
+    isTracking, 
+    activeShipmentId, 
+    batteryLevel,
+    isStationary,
+    trackingConfig,
+    startTracking, 
+    stopTracking 
+  } = useTrackingStore();
+  const user = useAuthStore((state) => state.user);
+  
+  const isTrackingThisShipment = isTracking && activeShipmentId === id;
 
   useEffect(() => {
     loadShipment();
   }, [id]);
+
+  useEffect(() => {
+    if (isTrackingThisShipment && shipment?.destination_lat && shipment?.destination_lng) {
+      const updateDistance = async () => {
+        try {
+          const location = await import('@/services/location').then(m => m.getCurrentLocation());
+          if (location) {
+            const dist = calculateDistance(
+              location.latitude,
+              location.longitude,
+              shipment.destination_lat!,
+              shipment.destination_lng!
+            );
+            setDistanceToDestination(dist);
+          }
+        } catch (error) {
+          console.error('Failed to calculate distance:', error);
+        }
+      };
+      updateDistance();
+      const interval = setInterval(updateDistance, 10000);
+      return () => clearInterval(interval);
+    }
+    return undefined;
+  }, [isTrackingThisShipment, shipment?.destination_lat, shipment?.destination_lng]);
 
   const loadShipment = async () => {
     setIsLoading(true);
@@ -115,11 +175,74 @@ export default function ShipmentDetailScreen() {
       await updateLocalShipment(shipment.id, { status }).catch(() => {});
       updateShipment(shipment.id, { status, status_reason: reason });
       setShipment({ ...shipment, status, status_reason: reason });
+
+      // Handle tracking based on status
+      if (status === 'in_transit' && !isTrackingThisShipment) {
+        await handleStartTracking();
+      } else if (status === 'delivered' && isTrackingThisShipment) {
+        await handleStopTracking();
+      }
+
       Alert.alert('Success', `Status updated to ${formatStatus(status)}`);
     } catch (error) {
       Alert.alert('Error', 'Failed to update status');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleStartTracking = async () => {
+    if (!shipment || !user?.id) return;
+    
+    try {
+      if (isTracking && activeShipmentId && activeShipmentId !== shipment.id) {
+        Alert.alert(
+          'Stop Current Tracking?',
+          `You are currently tracking shipment #${activeShipmentId}. Start tracking this shipment instead?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Yes, Switch',
+              onPress: async () => {
+                await handleStopTracking();
+                await startTrackingForShipment();
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      await startTrackingForShipment();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to start tracking');
+    }
+  };
+
+  const startTrackingForShipment = async () => {
+    if (!shipment || !user?.id) return;
+    
+    startTracking(shipment.id, user.id);
+    await startLocationTracking(shipment.id, user.id);
+    
+    await insertTrackingEvent({
+      shipment_id: shipment.id,
+      driver_id: user.id,
+      latitude: 0,
+      longitude: 0,
+      event_type: 'status_change',
+      status: shipment.status,
+      note: 'Tracking started',
+      recorded_at: new Date().toISOString(),
+    });
+  };
+
+  const handleStopTracking = async () => {
+    try {
+      await stopLocationTracking();
+      stopTracking();
+    } catch (error) {
+      console.error('Failed to stop tracking:', error);
     }
   };
 
@@ -135,10 +258,25 @@ export default function ShipmentDetailScreen() {
     );
   };
 
-  const handleCompleteDelivery = () => {
+  const handleCompleteDelivery = async () => {
     if (shipment) {
+      if (isTrackingThisShipment) {
+        await handleStopTracking();
+      }
       router.push(`/pod/${shipment.id}`);
     }
+  };
+
+  const handleViewOnMap = () => {
+    if (shipment) {
+      router.push(`/map?shipmentId=${shipment.id}`);
+    }
+  };
+
+  const getTrackingMode = (): 'active' | 'paused' | 'checkpoint-only' => {
+    if (isStationary) return 'paused';
+    if (trackingConfig?.batteryOptimized) return 'active';
+    return 'active';
   };
 
   if (isLoading) {
@@ -158,7 +296,7 @@ export default function ShipmentDetailScreen() {
   }
 
   const renderActionButtons = () => {
-    const buttons: { label: string; onPress: () => void; color: string }[] = [];
+    const buttons: { label: string; onPress: () => void; color: string; disabled?: boolean }[] = [];
 
     switch (shipment.status) {
       case 'assigned':
@@ -207,14 +345,33 @@ export default function ShipmentDetailScreen() {
 
     if (buttons.length === 0) return null;
 
+    const isDisabled = isTracking && activeShipmentId && activeShipmentId !== shipment.id;
+
     return (
       <View style={styles.actions}>
+        {isTrackingThisShipment && (
+          <View style={styles.trackingActiveIndicator}>
+            <View style={styles.trackingDot} />
+            <Text style={styles.trackingActiveText}>Tracking Active</Text>
+          </View>
+        )}
+        {isDisabled && (
+          <View style={styles.trackingWarning}>
+            <Text style={styles.trackingWarningText}>
+              Stop tracking another shipment to perform actions
+            </Text>
+          </View>
+        )}
         {buttons.map((btn, index) => (
           <Pressable
             key={index}
-            style={[styles.actionButton, { backgroundColor: btn.color }]}
+            style={[
+              styles.actionButton, 
+              { backgroundColor: btn.color },
+              (isDisabled || btn.disabled) && styles.actionButtonDisabled
+            ]}
             onPress={btn.onPress}
-            disabled={updating}
+            disabled={updating || isDisabled || btn.disabled}
           >
             {updating ? (
               <ActivityIndicator color="#fff" />
@@ -237,6 +394,15 @@ export default function ShipmentDetailScreen() {
         }}
       />
       <ScrollView style={styles.container}>
+        {isTrackingThisShipment && (
+          <TrackingStatusBanner
+            shipmentId={shipment.id}
+            trackingNumber={shipment.tracking_number}
+            trackingMode={getTrackingMode()}
+            batteryLevel={batteryLevel}
+            isStationary={isStationary}
+          />
+        )}
         <View style={styles.header}>
           <View
             style={[
@@ -253,6 +419,11 @@ export default function ShipmentDetailScreen() {
               {formatStatus(shipment.status)}
             </Text>
           </View>
+          {isTrackingThisShipment && distanceToDestination !== null && (
+            <Text style={styles.distanceText}>
+              {formatDistance(distanceToDestination)} to destination
+            </Text>
+          )}
         </View>
 
         <Pressable style={styles.card} onPress={handleCallCustomer}>
@@ -296,16 +467,19 @@ export default function ShipmentDetailScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Map Preview</Text>
-          <View style={styles.mapPlaceholder}>
-            <Text style={styles.mapPlaceholderText}>
-              📍 {shipment.destination_address}
-            </Text>
-            {(shipment.destination_lat || shipment.destination_lng) && (
-              <Pressable style={styles.openMapButton} onPress={handleNavigate}>
-                <Text style={styles.openMapButtonText}>Open in Maps</Text>
-              </Pressable>
-            )}
-          </View>
+          <ShipmentMiniMap 
+            shipment={shipment} 
+            isTracking={isTrackingThisShipment}
+            height={180}
+          />
+          <Pressable style={styles.viewMapButton} onPress={handleViewOnMap}>
+            <Text style={styles.viewMapButtonText}>View on Map</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Recent Activity</Text>
+          <TrackingEventTimeline shipmentId={shipment.id} limit={5} />
         </View>
 
         <View style={styles.card}>
@@ -358,6 +532,55 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  distanceText: {
+    fontSize: 14,
+    color: '#059669',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  trackingActiveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  trackingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#059669',
+    marginRight: 8,
+  },
+  trackingActiveText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#065f46',
+  },
+  trackingWarning: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  trackingWarningText: {
+    fontSize: 12,
+    color: '#92400e',
+  },
+  viewMapButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  viewMapButtonText: {
+    color: '#fff',
     fontWeight: '600',
   },
   card: {
@@ -494,9 +717,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
+  actionButtonDisabled: {
+    opacity: 0.5,
+  },
   actionButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
 });
+
+function formatDistance(meters: number): string {
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(1)} km`;
+  }
+  return `${Math.round(meters)} m`;
+}
