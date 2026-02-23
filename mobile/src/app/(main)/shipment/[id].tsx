@@ -14,6 +14,8 @@ import type { Shipment, ShipmentStatus } from '@/types/shipment';
 import { useShipmentsStore } from '@store/shipmentsStore';
 import { useNetworkStore } from '@store/networkStore';
 import { api } from '@/services/api';
+import { API_ENDPOINTS } from '@/services/constants';
+import { getShipmentById as getLocalShipment, updateShipment as updateLocalShipment } from '@db';
 
 const STATUS_COLORS: Record<ShipmentStatus, string> = {
   pending: '#fef3c7',
@@ -65,10 +67,22 @@ export default function ShipmentDetailScreen() {
   const loadShipment = async () => {
     setIsLoading(true);
     try {
-      const response = await api.get<Shipment>(`/shipments/${id}`);
-      setShipment(response);
+      if (isOnline) {
+        const response = await api.get<Shipment>(API_ENDPOINTS.shipments.get(id!));
+        setShipment(response);
+      } else {
+        throw new Error('Offline');
+      }
     } catch (error) {
-      console.error('Failed to load shipment:', error);
+      // Fallback to local DB
+      try {
+        const local = await getLocalShipment(id!);
+        if (local) {
+          setShipment(local as unknown as Shipment);
+        }
+      } catch {
+        console.error('Failed to load shipment:', error);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -91,10 +105,14 @@ export default function ShipmentDetailScreen() {
     if (!shipment) return;
     setUpdating(true);
     try {
-      await api.patch(`/shipments/${shipment.id}/status`, {
-        status,
-        status_reason: reason,
-      });
+      if (isOnline) {
+        await api.patch(API_ENDPOINTS.shipments.updateStatus(shipment.id), {
+          status,
+          status_reason: reason,
+        });
+      }
+      // Always update locally
+      await updateLocalShipment(shipment.id, { status }).catch(() => {});
       updateShipment(shipment.id, { status, status_reason: reason });
       setShipment({ ...shipment, status, status_reason: reason });
       Alert.alert('Success', `Status updated to ${formatStatus(status)}`);

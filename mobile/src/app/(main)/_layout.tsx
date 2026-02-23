@@ -1,8 +1,13 @@
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNetworkStore } from '@store/networkStore';
 import { useSyncStore } from '@store/syncStore';
 import { useEffect } from 'react';
+import { SyncStatus } from '@/types/components';
+import SyncIndicator from '@components/ui/SyncIndicator';
+import SyncProgress from '@components/ui/SyncProgress';
+import PendingDataBadge from '@components/ui/PendingDataBadge';
+import { colors, spacing } from '@/utils/theme';
 
 const ICONS: Record<string, string> = {
   home: '📦',
@@ -11,48 +16,79 @@ const ICONS: Record<string, string> = {
   settings: '⚙️',
 };
 
-function SyncIndicator() {
+function SyncStatusHeader() {
   const isOnline = useNetworkStore((state) => state.isOnline);
   const isSyncing = useSyncStore((state) => state.isSyncing);
   const pendingCount = useSyncStore((state) => state.pendingCount);
+  const lastError = useSyncStore((state) => state.lastError);
+  const syncProgress = useSyncStore((state) => state.syncProgress);
 
-  if (!isOnline) {
-    return (
-      <View style={styles.offlineBanner}>
-        <Text style={styles.offlineText}>⚠️ Offline - Data will sync later</Text>
-      </View>
-    );
-  }
+  const getSyncStatus = (): SyncStatus => {
+    if (lastError) return 'error';
+    if (isSyncing) return 'syncing';
+    if (pendingCount > 0) return 'pending';
+    return 'synced';
+  };
 
-  if (isSyncing) {
-    return (
-      <View style={styles.syncBanner}>
-        <Text style={styles.syncText}>🔄 Syncing...</Text>
-      </View>
-    );
-  }
+  return (
+    <View style={styles.syncHeader}>
+      <SyncIndicator
+        status={getSyncStatus()}
+        pendingCount={pendingCount}
+        style={styles.syncIndicator}
+      />
+      {!isOnline && (
+        <View style={styles.offlineBadge}>
+          <Text style={styles.offlineText}>Offline</Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
-  if (pendingCount > 0) {
-    return (
-      <View style={styles.pendingBanner}>
-        <Text style={styles.pendingText}>{pendingCount} pending</Text>
-      </View>
-    );
-  }
-
-  return null;
+function TabBarIcon({ 
+  icon, 
+  focused, 
+  pendingCount 
+}: { 
+  icon: string; 
+  focused: boolean;
+  pendingCount?: number;
+}) {
+  return (
+    <View style={styles.tabIconContainer}>
+      <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.6 }}>
+        {icon}
+      </Text>
+      {pendingCount !== undefined && pendingCount > 0 && (
+        <PendingDataBadge count={pendingCount} style={styles.tabBadge} />
+      )}
+    </View>
+  );
 }
 
 export default function MainLayout() {
   const getPendingCount = useSyncStore((state) => state.getPendingCount);
+  const isSyncing = useSyncStore((state) => state.isSyncing);
+  const syncProgress = useSyncStore((state) => state.syncProgress);
+  const pendingCount = useSyncStore((state) => state.pendingCount);
 
   useEffect(() => {
     getPendingCount();
   }, [getPendingCount]);
 
   return (
-    <>
-      <SyncIndicator />
+    <View style={styles.container}>
+      {isSyncing && syncProgress.phase !== 'idle' && (
+        <SyncProgress
+          visible={true}
+          progress={syncProgress.percentage}
+          current={syncProgress.itemsProcessed}
+          total={syncProgress.totalItems}
+          message={syncProgress.message}
+        />
+      )}
+      
       <Tabs
         screenOptions={{
           headerShown: true,
@@ -62,6 +98,7 @@ export default function MainLayout() {
           tabBarActiveTintColor: '#2563eb',
           tabBarInactiveTintColor: '#6b7280',
           tabBarStyle: styles.tabBar,
+          headerRight: () => <SyncStatusHeader />,
         }}
       >
         <Tabs.Screen
@@ -70,9 +107,7 @@ export default function MainLayout() {
             title: 'Shipments',
             headerTitle: 'My Shipments',
             tabBarIcon: ({ focused }: { focused: boolean }) => (
-              <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.6 }}>
-                {ICONS.home}
-              </Text>
+              <TabBarIcon icon={ICONS.home} focused={focused} />
             ),
           }}
         />
@@ -82,9 +117,7 @@ export default function MainLayout() {
             title: 'Map',
             headerTitle: 'Delivery Map',
             tabBarIcon: ({ focused }: { focused: boolean }) => (
-              <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.6 }}>
-                {ICONS.map}
-              </Text>
+              <TabBarIcon icon={ICONS.map} focused={focused} />
             ),
           }}
         />
@@ -94,9 +127,7 @@ export default function MainLayout() {
             title: 'Profile',
             headerTitle: 'Driver Profile',
             tabBarIcon: ({ focused }: { focused: boolean }) => (
-              <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.6 }}>
-                {ICONS.profile}
-              </Text>
+              <TabBarIcon icon={ICONS.profile} focused={focused} />
             ),
           }}
         />
@@ -106,18 +137,19 @@ export default function MainLayout() {
             title: 'Settings',
             headerTitle: 'Settings',
             tabBarIcon: ({ focused }: { focused: boolean }) => (
-              <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.6 }}>
-                {ICONS.settings}
-              </Text>
+              <TabBarIcon icon={ICONS.settings} focused={focused} pendingCount={pendingCount} />
             ),
           }}
         />
       </Tabs>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   header: {
     backgroundColor: '#2563eb',
   },
@@ -133,33 +165,33 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     height: 60,
   },
-  offlineBanner: {
-    backgroundColor: '#fef3c7',
-    padding: 8,
+  syncHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginRight: spacing.sm,
+  },
+  syncIndicator: {
+    marginRight: spacing.sm,
+  },
+  offlineBadge: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   offlineText: {
     color: '#92400e',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: '600',
   },
-  syncBanner: {
-    backgroundColor: '#dbeafe',
-    padding: 8,
+  tabIconContainer: {
+    position: 'relative',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  syncText: {
-    color: '#1e40af',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  pendingBanner: {
-    backgroundColor: '#f3f4f6',
-    padding: 8,
-    alignItems: 'center',
-  },
-  pendingText: {
-    color: '#4b5563',
-    fontSize: 12,
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
   },
 });

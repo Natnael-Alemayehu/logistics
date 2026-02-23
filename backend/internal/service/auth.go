@@ -13,6 +13,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/pkg/hash"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
+	"github.com/natnael-alemayehu/logistics/pkg/validation"
 )
 
 const (
@@ -73,7 +74,7 @@ type SessionOutput struct {
 }
 
 func (s *AuthService) DriverLogin(ctx context.Context, input DriverLoginInput, ipAddress, userAgent string) (*LoginOutput, error) {
-	phone := input.Phone
+	phone := validation.NormalizeEthiopianPhone(input.Phone)
 	user, err := s.queries.GetUserByPhone(ctx, &phone)
 	if err != nil {
 		s.auditService.Log(ctx, AuditLogInput{

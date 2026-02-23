@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
+import { driverLogin, refreshToken as refreshTokenApi } from '@/services/api/auth';
 import { api } from '@/services/api';
-import type { User, AuthTokens } from '@/types/user';
+import { performInitialSync, InitialSyncResult } from '@/services/initialSync';
+import * as syncMetadataRepo from '@/db/repositories/syncMetadata';
+import type { User } from '@/types/user';
 
 interface AuthState {
   user: User | null;
@@ -10,8 +13,11 @@ interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitialSyncing: boolean;
+  initialSyncProgress: number;
+  initialSyncError: string | null;
 
-  login: (phone: string, pin: string) => Promise<void>;
+  login: (phone: string, pin: string) => Promise<InitialSyncResult | null>;
   logout: () => Promise<void>;
   refreshTokens: () => Promise<void>;
   setUser: (user: User | null) => void;
@@ -43,29 +49,65 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
+      isInitialSyncing: false,
+      initialSyncProgress: 0,
+      initialSyncError: null,
 
       login: async (phone: string, pin: string) => {
-        set({ isLoading: true });
+        set({ isLoading: true, isInitialSyncing: false, initialSyncError: null });
         try {
-          const response = await api.post<{ user: User; tokens: AuthTokens }>(
-            '/auth/login',
-            { phone, pin }
-          );
+          const response = await driverLogin(phone, pin);
 
-          const { user, tokens } = response;
+          const accessToken = response.access_token;
+          const refreshToken = response.refresh_token;
+          const user: User = {
+            id: response.user.id,
+            email: '',
+            name: response.user.name,
+            role: 'driver',
+            phone: response.user.phone,
+          };
 
-          await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken);
-          await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, tokens.refreshToken);
+          await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
+          await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
 
           set({
             user,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
+            accessToken,
+            refreshToken,
             isAuthenticated: true,
             isLoading: false,
+            isInitialSyncing: true,
+            initialSyncProgress: 0,
           });
+
+          let syncResult: InitialSyncResult | null = null;
+          try {
+            syncResult = await performInitialSync(user.id, (progress) => {
+              set({ initialSyncProgress: progress.percentage });
+            });
+
+            if (syncResult.success) {
+              await syncMetadataRepo.upsert({
+                driver_id: user.id,
+                last_sync_at: new Date().toISOString(),
+              });
+            }
+
+            set({
+              isInitialSyncing: false,
+              initialSyncError: syncResult.error ?? null,
+            });
+          } catch (syncError) {
+            set({
+              isInitialSyncing: false,
+              initialSyncError: syncError instanceof Error ? syncError.message : 'Initial sync failed',
+            });
+          }
+
+          return syncResult;
         } catch (error) {
-          set({ isLoading: false });
+          set({ isLoading: false, isInitialSyncing: false });
           throw error;
         }
       },
@@ -88,25 +130,23 @@ export const useAuthStore = create<AuthState>()(
       },
 
       refreshTokens: async () => {
-        const { refreshToken } = get();
-        if (!refreshToken) {
+        const { refreshToken: currentRefreshToken } = get();
+        if (!currentRefreshToken) {
           throw new Error('No refresh token available');
         }
 
         try {
-          const response = await api.post<{ tokens: AuthTokens }>(
-            '/auth/refresh',
-            { refreshToken }
-          );
+          const response = await refreshTokenApi(currentRefreshToken);
 
-          const { tokens } = response;
+          const newAccessToken = response.access_token;
+          const newRefreshToken = response.refresh_token;
 
-          await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken);
-          await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, tokens.refreshToken);
+          await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, newAccessToken);
+          await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken);
 
           set({
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
           });
         } catch (error) {
           get().clearAuth();
@@ -140,6 +180,9 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+          isInitialSyncing: false,
+          initialSyncProgress: 0,
+          initialSyncError: null,
         });
       },
     }),

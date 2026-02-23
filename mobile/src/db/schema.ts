@@ -75,7 +75,25 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   priority INTEGER DEFAULT 0,
   attempts INTEGER DEFAULT 0,
   last_error TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  retry_at TEXT,
+  status TEXT DEFAULT 'pending',
+  synced_at TEXT
+);
+`;
+
+export const CREATE_DEAD_LETTER_QUEUE_TABLE = `
+CREATE TABLE IF NOT EXISTS dead_letter_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  priority INTEGER DEFAULT 0,
+  attempts INTEGER NOT NULL,
+  last_error TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  moved_to_dead_letter_at TEXT NOT NULL,
+  original_queue_id INTEGER NOT NULL
 );
 `;
 
@@ -100,6 +118,9 @@ CREATE INDEX IF NOT EXISTS idx_tracking_synced ON tracking_events(synced_at);
 CREATE INDEX IF NOT EXISTS idx_pod_shipment ON proof_of_delivery(shipment_id);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_priority ON sync_queue(priority DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_entity ON sync_queue(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
+CREATE INDEX IF NOT EXISTS idx_sync_queue_retry ON sync_queue(retry_at);
+CREATE INDEX IF NOT EXISTS idx_dead_letter_created ON dead_letter_queue(created_at);
 `;
 
 export const ALL_SCHEMA = [
@@ -107,6 +128,7 @@ export const ALL_SCHEMA = [
   CREATE_TRACKING_EVENTS_TABLE,
   CREATE_PROOF_OF_DELIVERY_TABLE,
   CREATE_SYNC_QUEUE_TABLE,
+  CREATE_DEAD_LETTER_QUEUE_TABLE,
   CREATE_SYNC_METADATA_TABLE,
   CREATE_INDEXES,
 ];

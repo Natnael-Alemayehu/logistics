@@ -118,3 +118,48 @@ export async function clearAll(): Promise<void> {
   const db = await getDatabase();
   await db.runAsync('DELETE FROM shipments');
 }
+
+export async function getByDriverId(driverId: string): Promise<Shipment[]> {
+  const db = await getDatabase();
+  return await db.getAllAsync<Shipment>(
+    'SELECT * FROM shipments WHERE driver_id = ? ORDER BY created_at DESC',
+    [driverId]
+  );
+}
+
+export async function deleteByStatus(status: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM shipments WHERE status = ?', [status]);
+}
+
+export async function batchDelete(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  
+  const db = await getDatabase();
+  const placeholders = ids.map(() => '?').join(', ');
+  await db.runAsync(
+    `DELETE FROM shipments WHERE id IN (${placeholders})`,
+    ids
+  );
+}
+
+export async function getCountsByStatus(): Promise<Record<string, number>> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<{ status: string; count: number }>(
+    'SELECT status, COUNT(*) as count FROM shipments GROUP BY status'
+  );
+  
+  const counts: Record<string, number> = {};
+  for (const row of results) {
+    counts[row.status] = row.count;
+  }
+  return counts;
+}
+
+export async function getStaleSyncs(olderThan: Date): Promise<Shipment[]> {
+  const db = await getDatabase();
+  return await db.getAllAsync<Shipment>(
+    'SELECT * FROM shipments WHERE synced_at IS NULL OR synced_at < ? ORDER BY created_at DESC',
+    [olderThan.toISOString()]
+  );
+}
