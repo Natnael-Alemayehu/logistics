@@ -1,0 +1,112 @@
+export const SCHEMA_VERSION = 1;
+
+export const CREATE_SHIPMENTS_TABLE = `
+CREATE TABLE IF NOT EXISTS shipments (
+  id TEXT PRIMARY KEY,
+  tracking_number TEXT UNIQUE NOT NULL,
+  origin_address TEXT NOT NULL,
+  origin_lat REAL,
+  origin_lng REAL,
+  destination_address TEXT NOT NULL,
+  destination_lat REAL,
+  destination_lng REAL,
+  customer_name TEXT NOT NULL,
+  customer_phone TEXT NOT NULL,
+  cargo_description TEXT,
+  status TEXT NOT NULL,
+  driver_id TEXT,
+  vehicle_id TEXT,
+  estimated_delivery TEXT,
+  special_instructions TEXT,
+  synced_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
+export const CREATE_TRACKING_EVENTS_TABLE = `
+CREATE TABLE IF NOT EXISTS tracking_events (
+  id TEXT PRIMARY KEY,
+  shipment_id TEXT NOT NULL,
+  driver_id TEXT NOT NULL,
+  latitude REAL NOT NULL,
+  longitude REAL NOT NULL,
+  accuracy REAL,
+  speed REAL,
+  heading REAL,
+  event_type TEXT NOT NULL,
+  status TEXT,
+  note TEXT,
+  recorded_at TEXT NOT NULL,
+  synced_at TEXT,
+  device_id TEXT,
+  battery_level INTEGER,
+  sync_priority INTEGER DEFAULT 0
+);
+`;
+
+export const CREATE_PROOF_OF_DELIVERY_TABLE = `
+CREATE TABLE IF NOT EXISTS proof_of_delivery (
+  id TEXT PRIMARY KEY,
+  shipment_id TEXT UNIQUE NOT NULL,
+  driver_id TEXT NOT NULL,
+  recipient_name TEXT NOT NULL,
+  recipient_phone TEXT,
+  signature_data TEXT,
+  photo_paths TEXT,
+  delivery_address TEXT,
+  delivery_lat REAL,
+  delivery_lng REAL,
+  delivery_notes TEXT,
+  location_verified INTEGER DEFAULT 0,
+  location_mismatch_meters INTEGER,
+  recorded_at TEXT NOT NULL,
+  synced_at TEXT,
+  sync_status TEXT DEFAULT 'pending'
+);
+`;
+
+export const CREATE_SYNC_QUEUE_TABLE = `
+CREATE TABLE IF NOT EXISTS sync_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL,
+  priority INTEGER DEFAULT 0,
+  attempts INTEGER DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT NOT NULL
+);
+`;
+
+export const CREATE_SYNC_METADATA_TABLE = `
+CREATE TABLE IF NOT EXISTS sync_metadata (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  driver_id TEXT NOT NULL,
+  last_sync_at TEXT,
+  last_event_id TEXT,
+  pending_count INTEGER DEFAULT 0,
+  storage_used_kb INTEGER DEFAULT 0,
+  device_id TEXT
+);
+`;
+
+export const CREATE_INDEXES = `
+CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);
+CREATE INDEX IF NOT EXISTS idx_shipments_driver ON shipments(driver_id);
+CREATE INDEX IF NOT EXISTS idx_shipments_tracking ON shipments(tracking_number);
+CREATE INDEX IF NOT EXISTS idx_tracking_shipment ON tracking_events(shipment_id);
+CREATE INDEX IF NOT EXISTS idx_tracking_synced ON tracking_events(synced_at);
+CREATE INDEX IF NOT EXISTS idx_pod_shipment ON proof_of_delivery(shipment_id);
+CREATE INDEX IF NOT EXISTS idx_sync_queue_priority ON sync_queue(priority DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_queue_entity ON sync_queue(entity_type, entity_id);
+`;
+
+export const ALL_SCHEMA = [
+  CREATE_SHIPMENTS_TABLE,
+  CREATE_TRACKING_EVENTS_TABLE,
+  CREATE_PROOF_OF_DELIVERY_TABLE,
+  CREATE_SYNC_QUEUE_TABLE,
+  CREATE_SYNC_METADATA_TABLE,
+  CREATE_INDEXES,
+];
