@@ -2,17 +2,7 @@
 
 ## Project Overview
 
-This is a logistics project with a monorepo structure. Agents working on this codebase should reference the following documents:
-
-## Project Structure
-
-```
-logistics/
-├── backend/     # Go API server, database, and services
-├── frontend/    # Next.js web application
-├── mobile/      # Mobile application (not yet implemented)
-└── *.md         # Documentation files
-```
+This is a logistics project. Agents working on this codebase should reference the following documents:
 
 ## Key Documents
 
@@ -21,22 +11,13 @@ logistics/
 - **Non-Functional Requirements**: See `./non_functional_requirements.md` for non-functional requirements
 - **First Plan**: See `./plan.md` for the complete plan to build the MVP
 - **Next Plan**: See `./plan-phase4.md` for the second iteration for this implementation
-- **Frontend Implementation**: See `./frontend-plan.md` for the frontend implementation plan
+
+
+- **Frontend Implenentation**: See `./frontend-plan.md` to see the overall plan of the implenentation of the frontend for this project
 
 ## Development Guidelines
 
 Before making changes or implementing features, consult `plan.md` first as it contains all necessary information for building the MVP.
 
-### Quick Start
 
-```bash
-# Install all dependencies
-make install
-
-# Start development servers
-make dev
-
-# Or run individual projects
-make backend CMD=dev
-make frontend CMD=dev
-```
+If you want to look at the backend code you must go to the ./backend dir and all the respective commands will only work form there. Same with frontend code and mobile code. 
