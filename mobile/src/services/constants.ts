@@ -30,6 +30,9 @@ export const API_ENDPOINTS = {
     locations: '/api/v1/drivers/locations',
     location: (id: string) => `/api/v1/drivers/${id}/location`,
     resetPassword: (id: string) => `/api/v1/drivers/${id}/reset-password`,
+    stats: '/api/v1/driver/stats',
+    vehicle: '/api/v1/driver/vehicle',
+    profile: '/api/v1/driver/profile',
   },
   vehicles: {
     list: '/api/v1/vehicles',
@@ -61,6 +64,11 @@ export const API_ENDPOINTS = {
   },
   sync: {
     sync: '/api/v1/sync',
+  },
+  notifications: {
+    register: '/api/v1/notifications/register',
+    unregister: (deviceId: string) => `/api/v1/notifications/device/${deviceId}`,
+    preferences: '/api/v1/notifications/preferences',
   },
 }
 

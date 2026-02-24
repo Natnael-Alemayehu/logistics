@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { useAuthStore } from '@store/authStore';
 import { useSettingsStore } from '@store/settingsStore';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const ETHIOPIAN_PHONE_REGEX = /^(\+251|0)[1-9]\d{8}$/;
 
@@ -39,12 +40,29 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
+  const { t } = useTranslation();
   const login = useAuthStore((state) => state.login);
   const isLoading = useAuthStore((state) => state.isLoading);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [error, setError] = useState<string | null>(null);
   const language = useSettingsStore((state) => state.language);
   const setLanguage = useSettingsStore((state) => state.setLanguage);
+
+  const loginSchema = z.object({
+    phone: z
+      .string()
+      .min(1, t('auth.phoneRequired'))
+      .refine((val) => ETHIOPIAN_PHONE_REGEX.test(val.replace(/\s|-/g, '')), {
+        message: t('auth.phoneInvalid'),
+      }),
+    pin: z
+      .string()
+      .min(4, t('auth.pinMinLength'))
+      .max(6, t('auth.pinMaxLength'))
+      .refine((val) => /^\d+$/.test(val), {
+        message: t('auth.pinNumbersOnly'),
+      }),
+  });
 
   const {
     control,
@@ -73,9 +91,9 @@ export default function LoginScreen() {
       await login(formattedPhone, data.pin);
       router.replace('/(main)');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      const message = err instanceof Error ? err.message : t('auth.loginFailed');
       setError(message);
-      Alert.alert('Login Failed', message);
+      Alert.alert(t('auth.loginFailed'), message);
     }
   };
 
@@ -99,8 +117,8 @@ export default function LoginScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.logoIcon}>🚚</Text>
-          <Text style={styles.title}>Logistics Driver</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
+          <Text style={styles.title}>{t('auth.appTitle')}</Text>
+          <Text style={styles.subtitle}>{t('auth.signInToContinue')}</Text>
         </View>
 
         <View style={styles.form}>
@@ -109,7 +127,7 @@ export default function LoginScreen() {
             name="phone"
             render={({ field: { onChange, onBlur, value } }) => (
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Phone Number</Text>
+                <Text style={styles.label}>{t('auth.phoneNumber')}</Text>
                 <TextInput
                   style={[styles.input, errors.phone && styles.inputError]}
                   placeholder="0911234567 or +251911234567"
@@ -131,10 +149,10 @@ export default function LoginScreen() {
             name="pin"
             render={({ field: { onChange, onBlur, value } }) => (
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>PIN</Text>
+                <Text style={styles.label}>{t('auth.pin')}</Text>
                 <TextInput
                   style={[styles.input, errors.pin && styles.inputError]}
-                  placeholder="Enter 4-6 digit PIN"
+                  placeholder={t('auth.pinPlaceholder')}
                   value={value}
                   onChangeText={onChange}
                   onBlur={onBlur}
@@ -161,12 +179,12 @@ export default function LoginScreen() {
             {isLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>{t('auth.signIn')}</Text>
             )}
           </Pressable>
 
           <Pressable onPress={() => router.push('/forgot-pin')}>
-            <Text style={styles.link}>Forgot PIN?</Text>
+            <Text style={styles.link}>{t('auth.forgotPin')}</Text>
           </Pressable>
         </View>
 

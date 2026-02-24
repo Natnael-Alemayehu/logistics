@@ -75,7 +75,7 @@ func TestGetIPAddress(t *testing.T) {
 }
 
 func TestHandler_New(t *testing.T) {
-	h := New(nil, nil, nil, nil, nil, nil, nil, nil)
+	h := New(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.NotNil(t, h)
 }
 

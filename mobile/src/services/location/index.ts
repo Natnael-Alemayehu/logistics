@@ -17,6 +17,7 @@ import {
   addGeofence,
   clearGeofences,
 } from './geofencing';
+import { useSettingsStore } from '@/store/settingsStore';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 
@@ -62,6 +63,11 @@ export async function startLocationTracking(
   driverId: string,
   config: Partial<TrackingConfig> = {}
 ): Promise<void> {
+  const settings = useSettingsStore.getState();
+  if (!settings.trackingEnabled) {
+    throw new Error('Tracking is disabled in settings');
+  }
+
   const hasPermission = await requestLocationPermissions();
   if (!hasPermission) {
     throw new Error('Location permission not granted');
@@ -112,6 +118,20 @@ export async function stopLocationTracking(): Promise<void> {
 
 export async function isLocationTrackingActive(): Promise<boolean> {
   return Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+}
+
+export async function stopTrackingIfDisabled(): Promise<void> {
+  const settings = useSettingsStore.getState();
+  if (!settings.trackingEnabled) {
+    const isActive = await isLocationTrackingActive();
+    if (isActive) {
+      await stopLocationTracking();
+    }
+  }
+}
+
+export function isTrackingEnabledInSettings(): boolean {
+  return useSettingsStore.getState().trackingEnabled;
 }
 
 export function setupShipmentGeofences(shipment: {

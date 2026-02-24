@@ -22,6 +22,17 @@ type AuditLog struct {
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type DeviceToken struct {
+	ID         pgtype.UUID        `db:"id" json:"id"`
+	UserID     pgtype.UUID        `db:"user_id" json:"user_id"`
+	DeviceID   string             `db:"device_id" json:"device_id"`
+	PushToken  string             `db:"push_token" json:"push_token"`
+	Platform   string             `db:"platform" json:"platform"`
+	AppVersion *string            `db:"app_version" json:"app_version"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type ProofOfDelivery struct {
 	ID                     pgtype.UUID        `db:"id" json:"id"`
 	TenantID               pgtype.UUID        `db:"tenant_id" json:"tenant_id"`

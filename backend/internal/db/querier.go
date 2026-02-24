@@ -32,12 +32,21 @@ type Querier interface {
 	CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (TrackingEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)
+	DeleteDeviceToken(ctx context.Context, arg DeleteDeviceTokenParams) error
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
 	DeleteVehicle(ctx context.Context, arg DeleteVehicleParams) error
 	GetActiveSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
 	GetDashboardActivity(ctx context.Context, arg GetDashboardActivityParams) ([]Shipment, error)
 	GetDashboardAlerts(ctx context.Context, arg GetDashboardAlertsParams) ([]Shipment, error)
+	GetDeviceTokenByDeviceID(ctx context.Context, arg GetDeviceTokenByDeviceIDParams) (DeviceToken, error)
+	GetDeviceTokensByUser(ctx context.Context, userID pgtype.UUID) ([]DeviceToken, error)
+	GetDriverActiveShipmentCount(ctx context.Context, arg GetDriverActiveShipmentCountParams) (int64, error)
+	GetDriverDeliveriesThisMonth(ctx context.Context, arg GetDriverDeliveriesThisMonthParams) (int64, error)
+	GetDriverDeliveriesThisWeek(ctx context.Context, arg GetDriverDeliveriesThisWeekParams) (int64, error)
+	GetDriverDeliveriesToday(ctx context.Context, arg GetDriverDeliveriesTodayParams) (int64, error)
+	GetDriverTotalDeliveries(ctx context.Context, arg GetDriverTotalDeliveriesParams) (int64, error)
+	GetDriverVehicleAssignment(ctx context.Context, arg GetDriverVehicleAssignmentParams) (Vehicle, error)
 	GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error)
 	GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error)
 	GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error)
@@ -91,6 +100,7 @@ type Querier interface {
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error)
+	UpsertDeviceToken(ctx context.Context, arg UpsertDeviceTokenParams) (DeviceToken, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -1,4 +1,8 @@
-const WS_URL = 'ws://localhost:8080/ws';
+import Constants from 'expo-constants';
+
+// Get WebSocket URL from API URL or default to localhost
+const API_URL = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:8080';
+const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
 
 type MessageHandler = (data: unknown) => void;
 type ConnectionHandler = () => void;

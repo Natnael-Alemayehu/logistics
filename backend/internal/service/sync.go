@@ -58,18 +58,20 @@ func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req m
 
 	for _, pod := range req.PODs {
 		_, err := s.queries.CreatePOD(ctx, db.CreatePODParams{
-			TenantID:        toUUID(tenantID),
-			ShipmentID:      toUUID(pod.ShipmentID),
-			DriverID:        toUUID(driverID),
-			RecipientName:   pod.RecipientName,
-			RecipientPhone:  toText(pod.RecipientPhone),
-			SignatureData:   toText(pod.SignatureData),
-			PhotoUrls:       pod.PhotoURLs,
-			DeliveryAddress: toText(pod.DeliveryAddress),
-			StMakepoint:     pod.DeliveryLng,
-			StMakepoint_2:   pod.DeliveryLat,
-			DeliveryNotes:   toText(pod.DeliveryNotes),
-			RecordedAt:      toTimestamp(pod.RecordedAt),
+			TenantID:               toUUID(tenantID),
+			ShipmentID:             toUUID(pod.ShipmentID),
+			DriverID:               toUUID(driverID),
+			RecipientName:          pod.RecipientName,
+			RecipientPhone:         toText(pod.RecipientPhone),
+			SignatureData:          toText(pod.SignatureData),
+			PhotoUrls:              pod.PhotoURLs,
+			DeliveryAddress:        toText(pod.DeliveryAddress),
+			StMakepoint:            pod.DeliveryLng,
+			StMakepoint_2:          pod.DeliveryLat,
+			DeliveryNotes:          toText(pod.DeliveryNotes),
+			LocationVerified:       toBoolPtr(pod.LocationVerified),
+			LocationMismatchMeters: toNumeric(pod.LocationMismatchMeters),
+			RecordedAt:             toTimestamp(pod.RecordedAt),
 		})
 		if err == nil {
 			eventsReceived++
@@ -98,7 +100,8 @@ func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req m
 		}
 	}
 
-	for _, status := range req.Statuses {
+	for _, status := range req.GetStatusUpdates() {
+		// TODO: Pass status.GetRecordedAt() to UpdateStatus once UpdateStatusInput supports RecordedAt field
 		_, err := s.shipment.UpdateStatus(ctx, tenantID, driverID, status.ShipmentID, UpdateStatusInput{
 			Status:       status.Status,
 			StatusNote:   status.Note,
@@ -122,8 +125,10 @@ func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req m
 	}
 
 	return &model.SyncResponse{
-		ServerTime:     now,
-		EventsReceived: eventsReceived,
-		Pull:           pullData,
+		ServerTime:         now,
+		SyncTime:           now,
+		EventsReceived:     eventsReceived,
+		DeletedShipmentIDs: []string{},
+		Pull:               pullData,
 	}, nil
 }

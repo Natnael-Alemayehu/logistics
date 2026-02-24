@@ -10,45 +10,29 @@ import {
 import { router, Stack } from 'expo-router';
 import { useAuthStore } from '@store/authStore';
 import { useSyncStore } from '@store/syncStore';
-import { useState, useEffect } from 'react';
-
-interface DriverStats {
-  deliveriesToday: number;
-  deliveriesWeek: number;
-  deliveriesMonth: number;
-}
+import { useTranslation } from 'react-i18next';
+import { useDriverStats } from '@/hooks/useDriverStats';
+import { useDriverVehicle } from '@/hooks/useDriverVehicle';
+import { useStorageUsage } from '@/hooks/useStorageUsage';
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const lastSyncAt = useSyncStore((state) => state.lastSyncAt);
   const pendingCount = useSyncStore((state) => state.pendingCount);
   const sync = useSyncStore((state) => state.sync);
   const isSyncing = useSyncStore((state) => state.isSyncing);
-  const [stats, setStats] = useState<DriverStats>({
-    deliveriesToday: 0,
-    deliveriesWeek: 0,
-    deliveriesMonth: 0,
-  });
-
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  const loadStats = async () => {
-    // TODO: Load from API
-    setStats({
-      deliveriesToday: 8,
-      deliveriesWeek: 42,
-      deliveriesMonth: 156,
-    });
-  };
+  
+  const { stats, isLoading: isLoadingStats } = useDriverStats();
+  const { vehicle, isLoading: isLoadingVehicle } = useDriverVehicle();
+  const { storage, isLoading: isLoadingStorage } = useStorageUsage();
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('auth.logout'), t('profile.logoutConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Logout',
+        text: t('auth.logout'),
         style: 'destructive',
         onPress: async () => {
           await logout();
@@ -61,9 +45,9 @@ export default function ProfileScreen() {
   const handleSync = async () => {
     try {
       await sync();
-      Alert.alert('Success', 'Data synced successfully');
+      Alert.alert(t('common.success'), t('profile.syncSuccess'));
     } catch (error) {
-      Alert.alert('Error', 'Failed to sync data');
+      Alert.alert(t('common.error'), t('profile.syncError'));
     }
   };
 
@@ -71,7 +55,7 @@ export default function ProfileScreen() {
     <>
       <Stack.Screen
         options={{
-          title: 'Driver Profile',
+          title: t('profile.driverProfile'),
           headerStyle: { backgroundColor: '#2563eb' },
           headerTintColor: '#fff',
         }}
@@ -83,52 +67,72 @@ export default function ProfileScreen() {
               {user?.name?.charAt(0)?.toUpperCase() ?? 'D'}
             </Text>
           </View>
-          <Text style={styles.name}>{user?.name ?? 'Driver'}</Text>
+          <Text style={styles.name}>{user?.name ?? t('profile.driver')}</Text>
           <Text style={styles.phone}>{user?.phone ?? '+251 9X XXX XXXX'}</Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Vehicle Assignment</Text>
+          <Text style={styles.sectionTitle}>{t('profile.vehicleAssignment')}</Text>
           <View style={styles.vehicleCard}>
-            <Text style={styles.vehicleIcon}>🚚</Text>
-            <View>
-              <Text style={styles.vehiclePlate}>ET-1234-AA</Text>
-              <Text style={styles.vehicleType}>Truck - Light Duty</Text>
-            </View>
+            {isLoadingVehicle ? (
+              <ActivityIndicator size="small" color="#2563eb" />
+            ) : vehicle ? (
+              <>
+                <Text style={styles.vehicleIcon}>🚚</Text>
+                <View>
+                  <Text style={styles.vehiclePlate}>{vehicle.plateNumber}</Text>
+                  <Text style={styles.vehicleType}>{vehicle.type || t('profile.truckLightDuty')}</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.vehicleIcon}>🚚</Text>
+                <View>
+                  <Text style={styles.vehiclePlate}>{t('profile.noVehicleAssigned')}</Text>
+                  <Text style={styles.vehicleType}>{t('profile.contactDispatcher')}</Text>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Statistics</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{stats.deliveriesToday}</Text>
-              <Text style={styles.statLabel}>Today</Text>
+          <Text style={styles.sectionTitle}>{t('profile.stats')}</Text>
+          {isLoadingStats ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#2563eb" />
             </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{stats.deliveriesWeek}</Text>
-              <Text style={styles.statLabel}>This Week</Text>
+          ) : (
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.deliveriesToday}</Text>
+                <Text style={styles.statLabel}>{t('profile.deliveriesToday')}</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.deliveriesWeek}</Text>
+                <Text style={styles.statLabel}>{t('profile.deliveriesWeek')}</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statValue}>{stats.deliveriesMonth}</Text>
+                <Text style={styles.statLabel}>{t('profile.deliveriesMonth')}</Text>
+              </View>
             </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{stats.deliveriesMonth}</Text>
-              <Text style={styles.statLabel}>This Month</Text>
-            </View>
-          </View>
+          )}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sync Status</Text>
+          <Text style={styles.sectionTitle}>{t('profile.syncStatus')}</Text>
           <View style={styles.syncCard}>
             <View style={styles.syncRow}>
-              <Text style={styles.syncLabel}>Last Sync:</Text>
+              <Text style={styles.syncLabel}>{t('profile.lastSync')}:</Text>
               <Text style={styles.syncValue}>
                 {lastSyncAt
                   ? new Date(lastSyncAt).toLocaleString()
-                  : 'Never'}
+                  : t('profile.never')}
               </Text>
             </View>
             <View style={styles.syncRow}>
-              <Text style={styles.syncLabel}>Pending Items:</Text>
+              <Text style={styles.syncLabel}>{t('profile.pendingItems')}:</Text>
               <Text style={[styles.syncValue, pendingCount > 0 && styles.pendingText]}>
                 {pendingCount}
               </Text>
@@ -141,25 +145,34 @@ export default function ProfileScreen() {
               {isSyncing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.syncButtonText}>Sync Now</Text>
+                <Text style={styles.syncButtonText}>{t('profile.syncNow')}</Text>
               )}
             </Pressable>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Storage</Text>
+          <Text style={styles.sectionTitle}>{t('profile.storage')}</Text>
           <View style={styles.storageCard}>
-            <Text style={styles.storageUsed}>24.5 MB</Text>
-            <Text style={styles.storageLabel}>App storage used</Text>
-            <Text style={styles.storageNote}>
-              Offline data, photos, and cached content
-            </Text>
+            {isLoadingStorage ? (
+              <ActivityIndicator size="small" color="#2563eb" />
+            ) : (
+              <>
+                <Text style={styles.storageUsed}>{storage.formatted.total}</Text>
+                <Text style={styles.storageLabel}>{t('profile.storageUsed')}</Text>
+                <Text style={styles.storageNote}>
+                  {t('profile.storageBreakdown', {
+                    photos: storage.formatted.photos,
+                    database: storage.formatted.database,
+                  })}
+                </Text>
+              </>
+            )}
           </View>
         </View>
 
         <Pressable style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
+          <Text style={styles.logoutText}>{t('auth.logout')}</Text>
         </Pressable>
       </ScrollView>
     </>
@@ -229,6 +242,12 @@ const styles = StyleSheet.create({
   vehicleType: {
     fontSize: 14,
     color: '#6b7280',
+  },
+  loadingContainer: {
+    backgroundColor: '#fff',
+    padding: 32,
+    borderRadius: 12,
+    alignItems: 'center',
   },
   statsGrid: {
     flexDirection: 'row',
@@ -307,6 +326,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     marginTop: 4,
+    textAlign: 'center',
   },
   logoutButton: {
     margin: 16,

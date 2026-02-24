@@ -1,55 +1,47 @@
 import { getDatabase } from '../database';
 import { generateUUID } from '@utils/helpers';
+import {
+  ProofOfDelivery,
+  ProofOfDeliveryDB,
+  PODInput,
+  PODPhoto,
+  toDBFormat,
+  fromDBFormat,
+  inputToDBFormat,
+} from '../../types/pod';
 
-export interface POD {
-  id: string;
-  shipment_id: string;
-  driver_id: string;
-  recipient_name: string;
-  recipient_phone?: string;
-  signature_data?: string;
-  photo_paths?: string[];
-  delivery_address?: string;
-  delivery_lat?: number;
-  delivery_lng?: number;
-  delivery_notes?: string;
-  location_verified: boolean;
-  location_mismatch_meters?: number;
-  recorded_at: string;
-  synced_at?: string;
-  sync_status: string;
-}
+export type { ProofOfDelivery, ProofOfDeliveryDB, PODInput, PODPhoto };
 
-export interface PODInput {
-  id?: string;
-  shipment_id: string;
-  driver_id: string;
-  recipient_name: string;
-  recipient_phone?: string;
-  signature_data?: string;
-  photo_paths?: string[];
-  delivery_address?: string;
-  delivery_lat?: number;
-  delivery_lng?: number;
-  delivery_notes?: string;
-  location_verified?: boolean;
-  location_mismatch_meters?: number;
-  recorded_at?: string;
-}
+export type POD = ProofOfDelivery;
 
-function parsePOD(row: Record<string, unknown>): POD {
+function parsePODRow(row: Record<string, unknown>): ProofOfDeliveryDB {
   return {
-    ...row,
-    photo_paths: row.photo_paths ? JSON.parse(row.photo_paths as string) : [],
-    location_verified: row.location_verified === 1,
-  } as POD;
+    id: row.id as string,
+    shipment_id: row.shipment_id as string,
+    driver_id: row.driver_id as string,
+    recipient_name: row.recipient_name as string,
+    recipient_phone: row.recipient_phone as string | undefined,
+    signature_data: row.signature_data as string | undefined,
+    photo_paths: row.photo_paths as string | undefined,
+    delivery_address: row.delivery_address as string | undefined,
+    delivery_lat: row.delivery_lat as number | undefined,
+    delivery_lng: row.delivery_lng as number | undefined,
+    delivery_notes: row.delivery_notes as string | undefined,
+    location_verified: row.location_verified as number,
+    location_mismatch_meters: row.location_mismatch_meters as number | undefined,
+    recorded_at: row.recorded_at as string,
+    synced_at: row.synced_at as string | undefined,
+    sync_status: row.sync_status as 'pending' | 'syncing' | 'synced' | 'failed',
+  };
 }
 
 export async function insert(pod: PODInput): Promise<string> {
   const db = await getDatabase();
   const id = pod.id ?? generateUUID();
-  const recordedAt = pod.recorded_at ?? new Date().toISOString();
+  const recordedAt = pod.recordedAt ?? new Date().toISOString();
   
+  const photoPaths = pod.photos ? JSON.stringify(pod.photos) : null;
+
   await db.runAsync(
     `INSERT INTO proof_of_delivery (
       id, shipment_id, driver_id, recipient_name, recipient_phone,
@@ -58,54 +50,54 @@ export async function insert(pod: PODInput): Promise<string> {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
-      pod.shipment_id,
-      pod.driver_id,
-      pod.recipient_name,
-      pod.recipient_phone ?? null,
-      pod.signature_data ?? null,
-      pod.photo_paths ? JSON.stringify(pod.photo_paths) : null,
-      pod.delivery_address ?? null,
-      pod.delivery_lat ?? null,
-      pod.delivery_lng ?? null,
-      pod.delivery_notes ?? null,
-      pod.location_verified ? 1 : 0,
-      pod.location_mismatch_meters ?? null,
+      pod.shipmentId,
+      pod.driverId,
+      pod.recipientName,
+      pod.recipientPhone ?? null,
+      pod.signatureData ?? null,
+      photoPaths,
+      pod.deliveryAddress ?? null,
+      pod.deliveryLat ?? null,
+      pod.deliveryLng ?? null,
+      pod.deliveryNotes ?? null,
+      pod.locationVerified ? 1 : 0,
+      pod.locationMismatchMeters ?? null,
       recordedAt,
       null,
       'pending',
     ]
   );
-  
+
   return id;
 }
 
-export async function getById(id: string): Promise<POD | null> {
+export async function getById(id: string): Promise<ProofOfDelivery | null> {
   const db = await getDatabase();
   const result = await db.getFirstAsync<Record<string, unknown>>(
     'SELECT * FROM proof_of_delivery WHERE id = ?',
     [id]
   );
-  
-  return result ? parsePOD(result) : null;
+
+  return result ? fromDBFormat(parsePODRow(result)) : null;
 }
 
-export async function getByShipmentId(shipmentId: string): Promise<POD | null> {
+export async function getByShipmentId(shipmentId: string): Promise<ProofOfDelivery | null> {
   const db = await getDatabase();
   const result = await db.getFirstAsync<Record<string, unknown>>(
     'SELECT * FROM proof_of_delivery WHERE shipment_id = ?',
     [shipmentId]
   );
-  
-  return result ? parsePOD(result) : null;
+
+  return result ? fromDBFormat(parsePODRow(result)) : null;
 }
 
-export async function getPendingSync(): Promise<POD[]> {
+export async function getPendingSync(): Promise<ProofOfDelivery[]> {
   const db = await getDatabase();
   const results = await db.getAllAsync<Record<string, unknown>>(
     "SELECT * FROM proof_of_delivery WHERE sync_status = 'pending' OR synced_at IS NULL"
   );
-  
-  return results.map(parsePOD);
+
+  return results.map((row) => fromDBFormat(parsePODRow(row)));
 }
 
 export async function markSynced(id: string, syncedAt: string): Promise<void> {
@@ -116,7 +108,10 @@ export async function markSynced(id: string, syncedAt: string): Promise<void> {
   );
 }
 
-export async function updateSyncStatus(id: string, status: string): Promise<void> {
+export async function updateSyncStatus(
+  id: string,
+  status: 'pending' | 'syncing' | 'synced' | 'failed'
+): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
     'UPDATE proof_of_delivery SET sync_status = ? WHERE id = ?',
@@ -124,57 +119,61 @@ export async function updateSyncStatus(id: string, status: string): Promise<void
   );
 }
 
-export async function update(id: string, updates: Partial<POD>): Promise<void> {
+export async function update(id: string, updates: Partial<ProofOfDelivery>): Promise<void> {
   const db = await getDatabase();
-  
+
+  const dbUpdates = toDBFormat(updates as ProofOfDelivery);
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
-  
-  for (const [key, value] of Object.entries(updates)) {
-    if (key === 'photo_paths' && Array.isArray(value)) {
+
+  const updateableFields: (keyof ProofOfDeliveryDB)[] = [
+    'recipient_name',
+    'recipient_phone',
+    'signature_data',
+    'photo_paths',
+    'delivery_address',
+    'delivery_lat',
+    'delivery_lng',
+    'delivery_notes',
+    'location_verified',
+    'location_mismatch_meters',
+    'synced_at',
+    'sync_status',
+  ];
+
+  for (const key of updateableFields) {
+    if (key in dbUpdates && dbUpdates[key] !== undefined) {
       fields.push(`${key} = ?`);
-      values.push(JSON.stringify(value));
-    } else if (key === 'location_verified') {
-      fields.push(`${key} = ?`);
-      values.push(value ? 1 : 0);
-    } else if (typeof value === 'string' || typeof value === 'number' || value === null) {
-      fields.push(`${key} = ?`);
-      values.push(value);
-    } else if (value === undefined) {
-      fields.push(`${key} = ?`);
-      values.push(null);
-    } else {
-      fields.push(`${key} = ?`);
-      values.push(String(value));
+      values.push(dbUpdates[key] as string | number | null);
     }
   }
-  
+
   if (fields.length === 0) return;
-  
+
   values.push(id);
-  
+
   await db.runAsync(
     `UPDATE proof_of_delivery SET ${fields.join(', ')} WHERE id = ?`,
     values
   );
 }
 
-export async function getAll(): Promise<POD[]> {
+export async function getAll(): Promise<ProofOfDelivery[]> {
   const db = await getDatabase();
   const results = await db.getAllAsync<Record<string, unknown>>(
     'SELECT * FROM proof_of_delivery ORDER BY recorded_at DESC'
   );
-  
-  return results.map(parsePOD);
+
+  return results.map((row) => fromDBFormat(parsePODRow(row)));
 }
 
-export async function getFailedSyncs(): Promise<POD[]> {
+export async function getFailedSyncs(): Promise<ProofOfDelivery[]> {
   const db = await getDatabase();
   const results = await db.getAllAsync<Record<string, unknown>>(
     "SELECT * FROM proof_of_delivery WHERE sync_status = 'failed' ORDER BY recorded_at DESC"
   );
-  
-  return results.map(parsePOD);
+
+  return results.map((row) => fromDBFormat(parsePODRow(row)));
 }
 
 export async function clearOlderThan(date: Date): Promise<void> {
@@ -192,3 +191,5 @@ export async function retrySync(id: string): Promise<void> {
     [id]
   );
 }
+
+export { toDBFormat, fromDBFormat };

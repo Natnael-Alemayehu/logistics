@@ -1,10 +1,10 @@
 import React, { memo, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import MapLibreGL from '@maplibre/maplibre-react-native';
 import { STATUS_COLORS, MARKER_COLORS, type Coordinates } from '@/types/maps';
 import type { ShipmentStatus } from '@/types/shipment';
 import { colors, spacing } from '@/utils/theme';
 import { calculateDistance, formatDistance } from '@/services/maps';
+import { isMapAvailable, getMapLibre } from '@/services/maps/native';
 
 interface DestinationMarkerProps {
   id: string;
@@ -43,6 +43,13 @@ function DestinationMarkerComponent({
   onPress,
   currentLocation,
 }: DestinationMarkerProps) {
+  const MapLibreGL = getMapLibre();
+  
+  // If MapLibreGL isn't available, return null (shouldn't render in this case)
+  if (!MapLibreGL || !isMapAvailable()) {
+    return null;
+  }
+  
   const statusColor = getStatusColor(status);
   
   const calculatedDistance = useMemo(() => {

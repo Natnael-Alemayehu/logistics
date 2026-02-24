@@ -111,6 +111,18 @@ CREATE TABLE IF NOT EXISTS sync_metadata (
 );
 `;
 
+export const CREATE_STATUS_UPDATES_TABLE = `
+CREATE TABLE IF NOT EXISTS status_updates (
+  id TEXT PRIMARY KEY,
+  shipment_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  note TEXT,
+  reason TEXT,
+  recorded_at TEXT NOT NULL,
+  synced_at TEXT
+);
+`;
+
 export const CREATE_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);
 CREATE INDEX IF NOT EXISTS idx_shipments_driver ON shipments(driver_id);
@@ -123,12 +135,15 @@ CREATE INDEX IF NOT EXISTS idx_sync_queue_entity ON sync_queue(entity_type, enti
 CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_retry ON sync_queue(retry_at);
 CREATE INDEX IF NOT EXISTS idx_dead_letter_created ON dead_letter_queue(created_at);
+CREATE INDEX IF NOT EXISTS idx_status_updates_shipment ON status_updates(shipment_id);
+CREATE INDEX IF NOT EXISTS idx_status_updates_synced ON status_updates(synced_at);
 `;
 
 export const ALL_SCHEMA = [
   CREATE_SHIPMENTS_TABLE,
   CREATE_TRACKING_EVENTS_TABLE,
   CREATE_PROOF_OF_DELIVERY_TABLE,
+  CREATE_STATUS_UPDATES_TABLE,
   CREATE_SYNC_QUEUE_TABLE,
   CREATE_DEAD_LETTER_QUEUE_TABLE,
   CREATE_SYNC_METADATA_TABLE,

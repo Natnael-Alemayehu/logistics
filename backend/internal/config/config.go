@@ -56,7 +56,7 @@ func Load() *Config {
 		JWTAccessTTL:         getDurationEnv("JWT_ACCESS_TTL", time.Hour),
 		JWTRefreshTTL:        getDurationEnv("JWT_REFRESH_TTL", 30*24*time.Hour),
 		JWTIssuer:            getEnv("JWT_ISSUER", "logistics.et"),
-		LogLevel:             getEnv("LOG_LEVEL", "debug"),
+		LogLevel:             getEnv("LOG_LEVEL", "info"),
 		Environment:          getEnv("ENVIRONMENT", "development"),
 		StorageType:          getEnv("STORAGE_TYPE", "local"),
 		StoragePath:          getEnv("STORAGE_PATH", "./uploads"),

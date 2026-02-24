@@ -1,10 +1,10 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
-import MapLibreGL from '@maplibre/maplibre-react-native';
+import { View, Text, StyleSheet, Pressable, Linking } from 'react-native';
 import { router } from 'expo-router';
 import { colors, spacing } from '@/utils/theme';
 import { MAP_STYLE, DEFAULT_CENTER, DEFAULT_ZOOM, calculateDistance } from '@/services/maps';
 import { getCurrentLocation } from '@/services/location';
+import { isMapAvailable, getMapLibre } from '@/services/maps/native';
 import type { Shipment } from '@/types/shipment';
 import type { Coordinates } from '@/types/maps';
 
@@ -17,7 +17,6 @@ interface ShipmentMiniMapProps {
 export function ShipmentMiniMap({ shipment, isTracking = false, height = 150 }: ShipmentMiniMapProps) {
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   const destination = useMemo(() => {
     if (shipment.destination_lat && shipment.destination_lng) {
@@ -51,16 +50,12 @@ export function ShipmentMiniMap({ shipment, isTracking = false, height = 150 }: 
           }
         } catch (error) {
           console.error('Failed to get current location:', error);
-        } finally {
-          setIsLoading(false);
         }
       };
       loadLocation();
       
       const interval = setInterval(loadLocation, 10000);
       return () => clearInterval(interval);
-    } else {
-      setIsLoading(false);
     }
     return undefined;
   }, [isTracking, destination]);
@@ -68,6 +63,13 @@ export function ShipmentMiniMap({ shipment, isTracking = false, height = 150 }: 
   const handlePress = () => {
     if (shipment.destination_lat && shipment.destination_lng) {
       router.push(`/map?shipmentId=${shipment.id}`);
+    }
+  };
+
+  const handleOpenInMaps = () => {
+    if (destination) {
+      const url = `https://www.google.com/maps?q=${destination.latitude},${destination.longitude}`;
+      Linking.openURL(url);
     }
   };
 
@@ -83,6 +85,40 @@ export function ShipmentMiniMap({ shipment, isTracking = false, height = 150 }: 
       <View style={[styles.placeholder, { height }]}>
         <Text style={styles.placeholderText}>No destination coordinates</Text>
       </View>
+    );
+  }
+
+  // If map is not available (Expo Go), show a fallback
+  if (!isMapAvailable()) {
+    return (
+      <Pressable style={[styles.fallbackContainer, { height }]} onPress={handleOpenInMaps}>
+        <View style={styles.fallbackContent}>
+          <Text style={styles.fallbackIcon}>📍</Text>
+          <Text style={styles.fallbackTitle}>Destination</Text>
+          <Text style={styles.fallbackAddress} numberOfLines={2}>
+            {shipment.destination_address || 'View on map'}
+          </Text>
+          <Text style={styles.fallbackHint}>Tap to open in Google Maps</Text>
+        </View>
+        {isTracking && distance !== null && (
+          <View style={styles.distanceBadge}>
+            <Text style={styles.distanceText}>{formatDistance(distance)} away</Text>
+          </View>
+        )}
+      </Pressable>
+    );
+  }
+
+  // Only render native map if available
+  const MapLibreGL = getMapLibre();
+  if (!MapLibreGL) {
+    return (
+      <Pressable style={[styles.fallbackContainer, { height }]} onPress={handleOpenInMaps}>
+        <View style={styles.fallbackContent}>
+          <Text style={styles.fallbackIcon}>📍</Text>
+          <Text style={styles.fallbackHint}>Tap to open in Maps</Text>
+        </View>
+      </Pressable>
     );
   }
 
@@ -152,6 +188,39 @@ const styles = StyleSheet.create({
   placeholderText: {
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  fallbackContainer: {
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  fallbackContent: {
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  fallbackIcon: {
+    fontSize: 32,
+    marginBottom: spacing.xs,
+  },
+  fallbackTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  fallbackAddress: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  fallbackHint: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: '500',
   },
   destinationMarker: {
     width: 30,

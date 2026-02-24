@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import * as SecureStore from 'expo-secure-store';
+import { i18n } from '@/i18n';
 
 interface SettingsState {
   language: 'en' | 'am';
@@ -36,6 +37,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       setLanguage: (lang) => {
         set({ language: lang });
+        i18n.changeLanguage(lang);
       },
 
       toggleTracking: () => {

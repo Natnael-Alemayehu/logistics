@@ -5,6 +5,10 @@ import { driverLogin, refreshToken as refreshTokenApi } from '@/services/api/aut
 import { api } from '@/services/api';
 import { performInitialSync, InitialSyncResult } from '@/services/initialSync';
 import * as syncMetadataRepo from '@/db/repositories/syncMetadata';
+import {
+  registerPushToken,
+  unregisterPushToken,
+} from '@/services/api/notifications';
 import type { User } from '@/types/user';
 
 interface AuthState {
@@ -16,6 +20,7 @@ interface AuthState {
   isInitialSyncing: boolean;
   initialSyncProgress: number;
   initialSyncError: string | null;
+  pushToken: string | null;
 
   login: (phone: string, pin: string) => Promise<InitialSyncResult | null>;
   logout: () => Promise<void>;
@@ -24,6 +29,8 @@ interface AuthState {
   setTokens: (accessToken: string, refreshToken: string) => void;
   setLoading: (loading: boolean) => void;
   clearAuth: () => void;
+  setPushToken: (token: string | null) => void;
+  registerPushNotifications: (token: string) => Promise<void>;
 }
 
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -52,6 +59,7 @@ export const useAuthStore = create<AuthState>()(
       isInitialSyncing: false,
       initialSyncProgress: 0,
       initialSyncError: null,
+      pushToken: null,
 
       login: async (phone: string, pin: string) => {
         set({ isLoading: true, isInitialSyncing: false, initialSyncError: null });
@@ -114,6 +122,14 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         try {
+          const { pushToken } = get();
+          if (pushToken) {
+            try {
+              await unregisterPushToken();
+            } catch {
+              // Ignore unregister errors
+            }
+          }
           await api.post('/auth/logout', {});
         } catch {
           // Ignore logout API errors
@@ -125,6 +141,7 @@ export const useAuthStore = create<AuthState>()(
             accessToken: null,
             refreshToken: null,
             isAuthenticated: false,
+            pushToken: null,
           });
         }
       },
@@ -183,7 +200,27 @@ export const useAuthStore = create<AuthState>()(
           isInitialSyncing: false,
           initialSyncProgress: 0,
           initialSyncError: null,
+          pushToken: null,
         });
+      },
+
+      setPushToken: (token) => {
+        set({ pushToken: token });
+      },
+
+      registerPushNotifications: async (token: string) => {
+        const { pushToken } = get();
+        if (pushToken === token) {
+          return;
+        }
+
+        try {
+          await registerPushToken(token);
+          set({ pushToken: token });
+        } catch (error) {
+          console.error('Failed to register push token:', error);
+          throw error;
+        }
       },
     }),
     {

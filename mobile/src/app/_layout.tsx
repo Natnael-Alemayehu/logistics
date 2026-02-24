@@ -13,6 +13,7 @@ import { restoreAuthSession } from '@store/authStore';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import SyncStatusBar from '@components/layout/SyncStatusBar';
+import ErrorBoundary from '@components/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -112,30 +113,32 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <NetworkListener />
-          <NotificationHandler />
-          <StatusBar style="auto" />
-          <SyncStatusBar />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(main)" options={{ headerShown: false }} />
-            <Stack.Screen 
-              name="pod/[shipmentId]" 
-              options={{ 
-                headerShown: true, 
-                title: 'Proof of Delivery',
-                headerStyle: { backgroundColor: '#2563eb' },
-                headerTintColor: '#fff',
-                headerTitleStyle: { fontWeight: '600' },
-              }} 
-            />
-          </Stack>
-        </QueryClientProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <QueryClientProvider client={queryClient}>
+            <NetworkListener />
+            <NotificationHandler />
+            <StatusBar style="auto" />
+            <SyncStatusBar />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(main)" options={{ headerShown: false }} />
+              <Stack.Screen 
+                name="pod/[shipmentId]" 
+                options={{ 
+                  headerShown: true, 
+                  title: 'Proof of Delivery',
+                  headerStyle: { backgroundColor: '#2563eb' },
+                  headerTintColor: '#fff',
+                  headerTitleStyle: { fontWeight: '600' },
+                }} 
+              />
+            </Stack>
+          </QueryClientProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

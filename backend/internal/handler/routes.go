@@ -58,6 +58,9 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 			r.Post("/auth/change-password", h.ChangePassword)
 			r.Post("/auth/forgot-pin", h.ForgotPIN)
 
+			r.Post("/notifications/register", h.RegisterPushToken)
+			r.Delete("/notifications/device/{deviceId}", h.UnregisterDevice)
+
 			r.Get("/ws", h.WS.HandleWebSocket)
 
 			r.Get("/sessions", h.ListSessions)
@@ -68,6 +71,8 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 				r.Use(middleware.RequireDriver())
 				r.Post("/sync", h.Sync)
 				r.Get("/my-shipments", h.ListMyShipments)
+				r.Get("/driver/stats", h.GetDriverStats)
+				r.Get("/driver/vehicle", h.GetDriverVehicle)
 			})
 
 			r.Group(func(r chi.Router) {

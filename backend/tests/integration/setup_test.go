@@ -154,8 +154,10 @@ func (e *TestEnv) setupServices() {
 	userService := service.NewUserService(e.queries, auditService)
 	vehicleService := service.NewVehicleService(e.queries)
 	trackingService := service.NewTrackingService(e.queries, auditService)
+	driverService := service.NewDriverService(e.queries, e.pool)
+	deviceTokenService := service.NewDeviceTokenService(e.queries)
 
-	e.handler = handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, nil, nil)
+	e.handler = handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, nil, nil, driverService, deviceTokenService)
 	e.router = e.handler.Routes(zerolog.Nop(), e.jwtManager, nil)
 }
 

@@ -23,6 +23,7 @@ import { TrackingStatusBanner } from '@/components/tracking/TrackingStatusBanner
 import { TrackingEventTimeline } from '@/components/tracking/TrackingEventTimeline';
 import { startLocationTracking, stopLocationTracking } from '@/services/location';
 import { insert as insertTrackingEvent } from '@/db/repositories/trackingEvents';
+import { useTranslation } from 'react-i18next';
 
 const STATUS_COLORS: Record<ShipmentStatus, string> = {
   pending: '#fef3c7',
@@ -75,6 +76,7 @@ function formatStatus(status: ShipmentStatus): string {
 }
 
 export default function ShipmentDetailScreen() {
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -94,6 +96,15 @@ export default function ShipmentDetailScreen() {
   const user = useAuthStore((state) => state.user);
   
   const isTrackingThisShipment = isTracking && activeShipmentId === id;
+
+  const DELAY_REASONS = [
+    t('delayReasons.road_conditions'),
+    t('delayReasons.weather'),
+    t('delayReasons.security_checkpoint'),
+    t('delayReasons.mechanical_issue'),
+    t('delayReasons.traffic'),
+    t('delayReasons.other'),
+  ];
 
   useEffect(() => {
     loadShipment();
@@ -183,9 +194,9 @@ export default function ShipmentDetailScreen() {
         await handleStopTracking();
       }
 
-      Alert.alert('Success', `Status updated to ${formatStatus(status)}`);
+      Alert.alert(t('common.success'), t('shipments.statusUpdated', { status: t(`status.${status}`) }));
     } catch (error) {
-      Alert.alert('Error', 'Failed to update status');
+      Alert.alert(t('common.error'), t('shipments.statusUpdateError'));
     } finally {
       setUpdating(false);
     }
@@ -197,12 +208,12 @@ export default function ShipmentDetailScreen() {
     try {
       if (isTracking && activeShipmentId && activeShipmentId !== shipment.id) {
         Alert.alert(
-          'Stop Current Tracking?',
-          `You are currently tracking shipment #${activeShipmentId}. Start tracking this shipment instead?`,
+          t('shipments.stopCurrentTracking'),
+          t('shipments.stopCurrentTrackingMessage', { id: activeShipmentId }),
           [
-            { text: 'Cancel', style: 'cancel' },
+            { text: t('common.cancel'), style: 'cancel' },
             {
-              text: 'Yes, Switch',
+              text: t('shipments.yesSwitch'),
               onPress: async () => {
                 await handleStopTracking();
                 await startTrackingForShipment();
@@ -215,7 +226,7 @@ export default function ShipmentDetailScreen() {
 
       await startTrackingForShipment();
     } catch (error) {
-      Alert.alert('Error', 'Failed to start tracking');
+      Alert.alert(t('common.error'), t('shipments.trackingStartError'));
     }
   };
 
@@ -248,8 +259,8 @@ export default function ShipmentDetailScreen() {
 
   const handleDelay = () => {
     Alert.alert(
-      'Mark Delayed',
-      'Select a reason:',
+      t('shipments.markDelayed'),
+      t('delayReasons.title'),
       DELAY_REASONS.map((reason) => ({
         text: reason,
         onPress: () => updateStatus('delayed', reason),
@@ -290,7 +301,7 @@ export default function ShipmentDetailScreen() {
   if (!shipment) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>Shipment not found</Text>
+        <Text style={styles.errorText}>{t('shipments.notFound')}</Text>
       </View>
     );
   }
@@ -301,7 +312,7 @@ export default function ShipmentDetailScreen() {
     switch (shipment.status) {
       case 'assigned':
         buttons.push({
-          label: 'Start Trip',
+          label: t('shipments.startTrip'),
           onPress: () => updateStatus('in_transit'),
           color: '#2563eb',
         });
@@ -309,12 +320,12 @@ export default function ShipmentDetailScreen() {
       case 'in_transit':
         buttons.push(
           {
-            label: 'Mark Arrived',
+            label: t('shipments.markArrived'),
             onPress: () => updateStatus('arrived'),
             color: '#059669',
           },
           {
-            label: 'Mark Delayed',
+            label: t('shipments.markDelayed'),
             onPress: handleDelay,
             color: '#d97706',
           }
@@ -323,12 +334,12 @@ export default function ShipmentDetailScreen() {
       case 'delayed':
         buttons.push(
           {
-            label: 'Resume Trip',
+            label: t('shipments.resumeTrip'),
             onPress: () => updateStatus('in_transit'),
             color: '#2563eb',
           },
           {
-            label: 'Mark Arrived',
+            label: t('shipments.markArrived'),
             onPress: () => updateStatus('arrived'),
             color: '#059669',
           }
@@ -336,7 +347,7 @@ export default function ShipmentDetailScreen() {
         break;
       case 'arrived':
         buttons.push({
-          label: 'Complete Delivery',
+          label: t('shipments.completeDelivery'),
           onPress: handleCompleteDelivery,
           color: '#059669',
         });
@@ -352,13 +363,13 @@ export default function ShipmentDetailScreen() {
         {isTrackingThisShipment && (
           <View style={styles.trackingActiveIndicator}>
             <View style={styles.trackingDot} />
-            <Text style={styles.trackingActiveText}>Tracking Active</Text>
+            <Text style={styles.trackingActiveText}>{t('shipments.trackingActive')}</Text>
           </View>
         )}
         {isDisabled && (
           <View style={styles.trackingWarning}>
             <Text style={styles.trackingWarningText}>
-              Stop tracking another shipment to perform actions
+              {t('shipments.stopTrackingWarning')}
             </Text>
           </View>
         )}
@@ -416,86 +427,86 @@ export default function ShipmentDetailScreen() {
                 { color: STATUS_TEXT_COLORS[shipment.status] },
               ]}
             >
-              {formatStatus(shipment.status)}
+              {t(`status.${shipment.status}`)}
             </Text>
           </View>
           {isTrackingThisShipment && distanceToDestination !== null && (
             <Text style={styles.distanceText}>
-              {formatDistance(distanceToDestination)} to destination
+              {formatDistance(distanceToDestination)} {t('shipments.toDestination')}
             </Text>
           )}
         </View>
 
         <Pressable style={styles.card} onPress={handleCallCustomer}>
-          <Text style={styles.cardTitle}>Customer</Text>
+          <Text style={styles.cardTitle}>{t('shipments.customer')}</Text>
           <Text style={styles.customerName}>{shipment.customer_name}</Text>
           <Text style={styles.customerPhone}>📞 {shipment.customer_phone}</Text>
-          <Text style={styles.tapHint}>Tap to call</Text>
+          <Text style={styles.tapHint}>{t('shipments.tapToCall')}</Text>
         </Pressable>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Origin</Text>
+          <Text style={styles.cardTitle}>{t('shipments.origin')}</Text>
           <Text style={styles.address}>{shipment.origin_address}</Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Destination</Text>
+          <Text style={styles.cardTitle}>{t('shipments.destination')}</Text>
           <Text style={styles.address}>{shipment.destination_address}</Text>
           {(shipment.destination_lat || shipment.destination_lng) && (
             <Pressable style={styles.navigateButton} onPress={handleNavigate}>
-              <Text style={styles.navigateButtonText}>🗺️ Navigate</Text>
+              <Text style={styles.navigateButtonText}>🗺️ {t('shipments.navigate')}</Text>
             </Pressable>
           )}
         </View>
 
         {shipment.cargo_description && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Cargo Details</Text>
+            <Text style={styles.cardTitle}>{t('shipments.cargoDetails')}</Text>
             <Text style={styles.cargoText}>{shipment.cargo_description}</Text>
             {shipment.cargo_weight && (
-              <Text style={styles.cargoMeta}>Weight: {shipment.cargo_weight} kg</Text>
+              <Text style={styles.cargoMeta}>{t('shipments.weight')}: {shipment.cargo_weight} kg</Text>
             )}
           </View>
         )}
 
         {shipment.special_instructions && (
           <View style={[styles.card, styles.specialCard]}>
-            <Text style={styles.cardTitle}>⚠️ Special Instructions</Text>
+            <Text style={styles.cardTitle}>⚠️ {t('shipments.specialInstructions')}</Text>
             <Text style={styles.specialText}>{shipment.special_instructions}</Text>
           </View>
         )}
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Map Preview</Text>
+          <Text style={styles.cardTitle}>{t('shipments.mapPreview')}</Text>
           <ShipmentMiniMap 
             shipment={shipment} 
             isTracking={isTrackingThisShipment}
             height={180}
           />
           <Pressable style={styles.viewMapButton} onPress={handleViewOnMap}>
-            <Text style={styles.viewMapButtonText}>View on Map</Text>
+            <Text style={styles.viewMapButtonText}>{t('shipments.viewOnMap')}</Text>
           </Pressable>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Recent Activity</Text>
+          <Text style={styles.cardTitle}>{t('shipments.recentActivity')}</Text>
           <TrackingEventTimeline shipmentId={shipment.id} limit={5} />
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Status History</Text>
+          <Text style={styles.cardTitle}>{t('shipments.statusHistory')}</Text>
           <View style={styles.timeline}>
             <View style={styles.timelineItem}>
               <View style={styles.timelineDot} />
               <View style={styles.timelineContent}>
                 <Text style={styles.timelineStatus}>
-                  {formatStatus(shipment.status)}
+                  {t(`status.${shipment.status}`)}
                 </Text>
-                <Text style={styles.timelineTime}>Current</Text>
+                <Text style={styles.timelineTime}>{t('shipments.current')}</Text>
               </View>
             </View>
             {shipment.status_reason && (
-              <Text style={styles.reasonText}>Reason: {shipment.status_reason}</Text>
+              <Text style={styles.reasonText}>{t('shipments.reason')}: {shipment.status_reason}</Text>
             )}
           </View>
         </View>

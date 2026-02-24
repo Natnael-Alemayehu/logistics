@@ -10,6 +10,8 @@ import {
 } from '@db';
 import { api } from '@/services/api';
 import { API_ENDPOINTS } from '@/services/constants';
+import { useSettingsStore } from '@/store/settingsStore';
+import { getCurrentConnectionInfo } from '@/services/connectivity';
 
 const SYNC_TASK_NAME = 'background-sync';
 
@@ -44,6 +46,17 @@ export async function performSync(): Promise<SyncResult> {
   };
 
   try {
+    const settings = useSettingsStore.getState();
+    
+    if (settings.wifiOnlySync) {
+      const connectionInfo = await getCurrentConnectionInfo();
+      if (connectionInfo.connectionType !== 'wifi') {
+        result.errors.push('WiFi-only sync is enabled. Skipping sync.');
+        result.success = false;
+        return result;
+      }
+    }
+
     await getDatabase();
     
     const unsyncedEvents = await getPendingTrackingEvents();
@@ -70,18 +83,18 @@ export async function performSync(): Promise<SyncResult> {
         battery_level: e.battery_level,
       })),
       pods: unsyncedPODs.map((p) => ({
-        shipment_id: p.shipment_id,
-        recipient_name: p.recipient_name,
-        recipient_phone: p.recipient_phone,
-        signature_data: p.signature_data,
-        photo_urls: p.photo_paths ?? [],
-        delivery_address: p.delivery_address,
-        delivery_lat: p.delivery_lat ?? 0,
-        delivery_lng: p.delivery_lng ?? 0,
-        delivery_notes: p.delivery_notes,
-        location_verified: p.location_verified,
-        location_mismatch_meters: p.location_mismatch_meters,
-        recorded_at: p.recorded_at,
+        shipment_id: p.shipmentId,
+        recipient_name: p.recipientName,
+        recipient_phone: p.recipientPhone,
+        signature_data: p.signatureData,
+        photo_urls: p.photos.map((photo) => photo.localUri),
+        delivery_address: p.deliveryAddress,
+        delivery_lat: p.deliveryLat ?? 0,
+        delivery_lng: p.deliveryLng ?? 0,
+        delivery_notes: p.deliveryNotes,
+        location_verified: p.locationVerified,
+        location_mismatch_meters: p.locationMismatchMeters,
+        recorded_at: p.recordedAt,
       })),
       statuses: [],
       battery_level: 100,

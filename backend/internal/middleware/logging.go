@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -127,6 +128,17 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 
 			rc := &responseCapture{ResponseWriter: w}
 
+			// Create a wrapper that captures the context after the request is processed
+			var capturedCtx = r.Context()
+
+			// Wrap the response writer to capture context on WriteHeader
+			wrappedW := &contextCapturingWriter{
+				ResponseWriter: rc,
+				captureCtx: func(ctx context.Context) {
+					capturedCtx = ctx
+				},
+			}
+
 			defer func() {
 				duration := time.Since(start)
 				status := rc.statusCode
@@ -138,7 +150,7 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 				event := logger.WithLevel(level)
 
 				event.
-					Str("request_id", middleware.GetReqID(r.Context())).
+					Str("request_id", middleware.GetReqID(capturedCtx)).
 					Str("method", r.Method).
 					Str("path", r.URL.Path).
 					Str("query", r.URL.RawQuery).
@@ -146,8 +158,8 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 					Int("bytes", rc.bytes).
 					Dur("duration", duration).
 					Str("remote_addr", r.RemoteAddr).
-					Str("tenant_id", GetTenantID(r.Context())).
-					Str("user_id", GetUserID(r.Context()))
+					Str("tenant_id", GetTenantID(capturedCtx)).
+					Str("user_id", GetUserID(capturedCtx))
 
 				if status >= 400 && len(requestBody) > 0 {
 					event.Str("request_body", redactSensitiveData(requestBody))
@@ -160,7 +172,17 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 				event.Msg("request completed")
 			}()
 
-			next.ServeHTTP(rc, r)
+			next.ServeHTTP(wrappedW, r)
 		})
 	}
+}
+
+// contextCapturingWriter wraps ResponseWriter to capture context changes
+type contextCapturingWriter struct {
+	http.ResponseWriter
+	captureCtx func(context.Context)
+}
+
+func (w *contextCapturingWriter) WriteHeader(statusCode int) {
+	w.ResponseWriter.WriteHeader(statusCode)
 }

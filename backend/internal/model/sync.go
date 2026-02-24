@@ -10,8 +10,16 @@ type SyncRequest struct {
 	Events           []TrackingEventInput `json:"events"`
 	PODs             []PODInput           `json:"pods"`
 	Statuses         []StatusUpdateInput  `json:"statuses"`
+	StatusUpdates    []StatusUpdateInput  `json:"status_updates"`
 	BatteryLevel     int                  `json:"battery_level"`
 	StorageRemaining int                  `json:"storage_remaining_kb"`
+}
+
+func (r *SyncRequest) GetStatusUpdates() []StatusUpdateInput {
+	if len(r.StatusUpdates) > 0 {
+		return r.StatusUpdates
+	}
+	return r.Statuses
 }
 
 type TrackingEventInput struct {
@@ -28,16 +36,18 @@ type TrackingEventInput struct {
 }
 
 type PODInput struct {
-	ShipmentID      string    `json:"shipment_id"`
-	RecipientName   string    `json:"recipient_name"`
-	RecipientPhone  string    `json:"recipient_phone"`
-	SignatureData   string    `json:"signature_data"`
-	PhotoURLs       []string  `json:"photo_urls"`
-	DeliveryAddress string    `json:"delivery_address"`
-	DeliveryLat     float64   `json:"delivery_lat"`
-	DeliveryLng     float64   `json:"delivery_lng"`
-	DeliveryNotes   string    `json:"delivery_notes"`
-	RecordedAt      time.Time `json:"recorded_at"`
+	ShipmentID             string    `json:"shipment_id"`
+	RecipientName          string    `json:"recipient_name"`
+	RecipientPhone         string    `json:"recipient_phone"`
+	SignatureData          string    `json:"signature_data"`
+	PhotoURLs              []string  `json:"photo_urls"`
+	DeliveryAddress        string    `json:"delivery_address"`
+	DeliveryLat            float64   `json:"delivery_lat"`
+	DeliveryLng            float64   `json:"delivery_lng"`
+	DeliveryNotes          string    `json:"delivery_notes"`
+	RecordedAt             time.Time `json:"recorded_at"`
+	LocationVerified       bool      `json:"location_verified"`
+	LocationMismatchMeters float64   `json:"location_mismatch_meters"`
 }
 
 type StatusUpdateInput struct {
@@ -46,13 +56,23 @@ type StatusUpdateInput struct {
 	Note       string    `json:"note"`
 	Reason     string    `json:"reason"`
 	RecordedAt time.Time `json:"recorded_at"`
+	Timestamp  time.Time `json:"timestamp"`
+}
+
+func (s *StatusUpdateInput) GetRecordedAt() time.Time {
+	if !s.RecordedAt.IsZero() {
+		return s.RecordedAt
+	}
+	return s.Timestamp
 }
 
 type SyncResponse struct {
-	ServerTime     time.Time    `json:"server_time"`
-	EventsReceived int          `json:"events_received"`
-	Conflicts      []Conflict   `json:"conflicts,omitempty"`
-	Pull           SyncPullData `json:"pull"`
+	ServerTime         time.Time    `json:"server_time"`
+	SyncTime           time.Time    `json:"sync_time"`
+	EventsReceived     int          `json:"events_received"`
+	Conflicts          []Conflict   `json:"conflicts,omitempty"`
+	DeletedShipmentIDs []string     `json:"deleted_shipment_ids,omitempty"`
+	Pull               SyncPullData `json:"pull"`
 }
 
 type Conflict struct {

@@ -11,6 +11,10 @@ export { useConflictResolution } from './useConflictResolution';
 export { useSyncStatus } from './useSyncStatus';
 export { useInitialSync } from './useInitialSync';
 export { useGeofencing } from './useGeofencing';
+export { useErrorHandler, createAppError } from './useErrorHandler';
+export { useDriverStats } from './useDriverStats';
+export { useDriverVehicle } from './useDriverVehicle';
+export { useStorageUsage } from './useStorageUsage';
 
 export type { LocationCoords, LocationError } from './useLocation';
 export type { ConnectionType, ConnectionQuality, ConnectionHistoryEntry } from './useConnectivity';
@@ -20,3 +24,4 @@ export type { OfflineFirstResult, OfflineFirstOptions } from './useOfflineFirst'
 export type { QueuedOperation, NetworkSyncOptions } from './useNetworkSync';
 export type { SyncStatus as SyncStatusType } from './useSyncStatus';
 export type { UseGeofencingResult } from './useGeofencing';
+export type { StorageUsage } from './useStorageUsage';

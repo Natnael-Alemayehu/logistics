@@ -12,6 +12,7 @@ import { useState, useCallback } from 'react';
 import { useNetworkStore } from '@store/networkStore';
 import { useTrackingStore } from '@store/trackingStore';
 import { useShipments, type Shipment } from '@hooks/useShipments';
+import { useTranslation } from 'react-i18next';
 
 type TabFilter = 'active' | 'completed' | 'all';
 
@@ -42,6 +43,7 @@ function formatStatus(status: string): string {
 }
 
 export default function ShipmentsListScreen() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabFilter>('active');
   const [refreshing, setRefreshing] = useState(false);
   const isOnline = useNetworkStore((state) => state.isOnline);
@@ -67,6 +69,17 @@ export default function ShipmentsListScreen() {
     }
   }, [refetch]);
 
+  const getTabLabel = (tab: TabFilter): string => {
+    switch (tab) {
+      case 'active':
+        return t('shipments.active');
+      case 'completed':
+        return t('shipments.completed');
+      case 'all':
+        return t('shipments.all');
+    }
+  };
+
   const renderShipment = ({ item }: { item: Shipment }) => {
     const isBeingTracked = isTracking && activeShipmentId === item.id;
     
@@ -84,7 +97,7 @@ export default function ShipmentsListScreen() {
             {isBeingTracked && (
               <View style={styles.trackingBadge}>
                 <View style={styles.trackingDot} />
-                <Text style={styles.trackingBadgeText}>Tracking</Text>
+                <Text style={styles.trackingBadgeText}>{t('shipments.tracking')}</Text>
               </View>
             )}
             <View
@@ -99,12 +112,12 @@ export default function ShipmentsListScreen() {
                   { color: STATUS_TEXT_COLORS[item.status] ?? '#6b7280' },
                 ]}
               >
-                {formatStatus(item.status)}
+                {t(`status.${item.status}`)}
               </Text>
             </View>
           </View>
         </View>
-        <Text style={styles.destination}>{item.destination ?? item.origin ?? ''}</Text>
+        <Text style={styles.destination}>{item.destination_address ?? item.origin_address ?? ''}</Text>
         <View style={styles.cardFooter}>
           <Text style={styles.customer}>{item.customer_name}</Text>
         </View>
@@ -115,13 +128,13 @@ export default function ShipmentsListScreen() {
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyIcon}>📦</Text>
-      <Text style={styles.emptyTitle}>No shipments</Text>
+      <Text style={styles.emptyTitle}>{t('shipments.noShipments')}</Text>
       <Text style={styles.emptyText}>
         {activeTab === 'active'
-          ? 'You have no active shipments'
+          ? t('shipments.noActiveShipments')
           : activeTab === 'completed'
-          ? 'No completed shipments yet'
-          : 'No shipments found'}
+          ? t('shipments.noCompletedShipments')
+          : t('shipments.noShipments')}
       </Text>
     </View>
   );
@@ -138,7 +151,7 @@ export default function ShipmentsListScreen() {
             <Text
               style={[styles.tabText, activeTab === tab && styles.tabTextActive]}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {getTabLabel(tab)}
             </Text>
           </Pressable>
         ))}

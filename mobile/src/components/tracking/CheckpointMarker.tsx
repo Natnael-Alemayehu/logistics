@@ -1,9 +1,9 @@
 import React, { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import MapLibreGL from '@maplibre/maplibre-react-native';
 import { MARKER_COLORS, type CheckpointMarkerData } from '@/types/maps';
 import { colors, spacing } from '@/utils/theme';
 import { formatDateTime } from '@/utils/format';
+import { isMapAvailable, getMapLibre } from '@/services/maps/native';
 
 type CheckpointType = 'pickup' | 'dropoff' | 'waypoint' | 'custom';
 
@@ -62,6 +62,13 @@ function CheckpointMarkerComponent({
   isSelected = false,
   onPress,
 }: CheckpointMarkerProps) {
+  const MapLibreGL = getMapLibre();
+  
+  // If MapLibreGL isn't available, return null
+  if (!MapLibreGL || !isMapAvailable()) {
+    return null;
+  }
+  
   const icon = getCheckpointIcon(checkpointType);
   const color = getCheckpointColor(checkpointType, passed);
   
