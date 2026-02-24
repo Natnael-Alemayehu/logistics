@@ -10,6 +10,9 @@ import * as shipmentsRepo from '@/db/repositories/shipments';
 import * as syncMetadataRepo from '@/db/repositories/syncMetadata';
 import { ResolutionStrategy, SyncConflict, ResolvedData } from '@/types/conflict';
 import { getDatabase } from '@/db/database';
+import { useSettingsStore } from '@/store/settingsStore';
+import { getCurrentConnectionInfo, ConnectionInfo } from '@/services/connectivity';
+import Constants from 'expo-constants';
 
 export interface SyncOptions {
   forceFullSync?: boolean;
@@ -90,6 +93,28 @@ class SyncService {
     this.conflictResolver = conflictResolver;
   }
 
+  private getDeviceId(): string {
+    return Constants.deviceId || Constants.sessionId || 'unknown';
+  }
+
+  private async getSyncDeviceId(): Promise<string> {
+    const metadata = await syncMetadataRepo.get();
+    if (metadata?.device_id) {
+      return metadata.device_id;
+    }
+    const deviceId = this.getDeviceId();
+    await syncMetadataRepo.upsert({ device_id: deviceId });
+    return deviceId;
+  }
+
+  private getBatteryLevel(): number | null {
+    return null;
+  }
+
+  private getStorageRemainingKb(): number | null {
+    return null;
+  }
+
   static getInstance(): SyncService {
     if (!SyncService.instance) {
       SyncService.instance = new SyncService();
@@ -108,6 +133,25 @@ class SyncService {
     };
   }
 
+  private async canSync(): Promise<{ allowed: boolean; reason?: string }> {
+    const settings = useSettingsStore.getState();
+    
+    if (!settings.wifiOnlySync) {
+      return { allowed: true };
+    }
+
+    const connectionInfo = await getCurrentConnectionInfo();
+    
+    if (connectionInfo.connectionType === 'wifi') {
+      return { allowed: true };
+    }
+
+    return { 
+      allowed: false, 
+      reason: 'WiFi-only sync is enabled. Waiting for WiFi connection.' 
+    };
+  }
+
   async sync(options?: SyncOptions): Promise<SyncResult> {
     if (this.isSyncing) {
       return {
@@ -116,6 +160,19 @@ class SyncService {
         pushed: 0,
         conflicts: 0,
         errors: [{ entityType: 'system', entityId: 'sync', error: 'Sync already in progress', timestamp: new Date().toISOString() }],
+        duration: 0,
+        syncTime: new Date().toISOString(),
+      };
+    }
+
+    const syncCheck = await this.canSync();
+    if (!syncCheck.allowed) {
+      return {
+        success: false,
+        pulled: 0,
+        pushed: 0,
+        conflicts: 0,
+        errors: [{ entityType: 'system', entityId: 'sync', error: syncCheck.reason ?? 'Sync not allowed', timestamp: new Date().toISOString() }],
         duration: 0,
         syncTime: new Date().toISOString(),
       };
@@ -209,33 +266,45 @@ class SyncService {
 
   async pullChanges(since?: Date): Promise<PullResult> {
     const payload: Record<string, unknown> = {
+      device_id: await this.getSyncDeviceId(),
+      battery_level: this.getBatteryLevel(),
       last_sync_at: since?.toISOString(),
     };
 
     try {
       const response = await api.post<{
-        sync_time: string;
+        sync_time?: string;
+        server_time?: string;
         shipments?: shipmentsRepo.Shipment[];
+        pull?: {
+          shipments?: shipmentsRepo.Shipment[];
+          deleted_shipment_ids?: string[];
+        };
         deleted_shipment_ids?: string[];
       }>(API_ENDPOINTS.sync.sync, payload);
 
       let shipmentsCount = 0;
       let deletedCount = 0;
 
-      if (response.shipments?.length) {
-        await shipmentsRepo.upsertMany(response.shipments);
-        shipmentsCount = response.shipments.length;
+      const shipments = response.shipments ?? response.pull?.shipments ?? [];
+      const deletedIds = response.deleted_shipment_ids ?? response.pull?.deleted_shipment_ids ?? [];
+
+      if (shipments.length) {
+        await shipmentsRepo.upsertMany(shipments);
+        shipmentsCount = shipments.length;
       }
 
-      if (response.deleted_shipment_ids?.length) {
-        await shipmentsRepo.batchDelete(response.deleted_shipment_ids);
-        deletedCount = response.deleted_shipment_ids.length;
+      if (deletedIds.length) {
+        await shipmentsRepo.batchDelete(deletedIds);
+        deletedCount = deletedIds.length;
       }
+
+      const syncTime = response.sync_time ?? response.server_time ?? new Date().toISOString();
 
       return {
         shipments: shipmentsCount,
         deletedShipments: deletedCount,
-        timestamp: response.sync_time,
+        timestamp: syncTime,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Pull failed';
@@ -290,6 +359,9 @@ class SyncService {
 
       try {
         const payload = {
+          device_id: await this.getSyncDeviceId(),
+          battery_level: this.getBatteryLevel(),
+          storage_remaining_kb: this.getStorageRemainingKb(),
           events: batch.map((e) => ({
             shipment_id: e.shipment_id,
             latitude: e.latitude,
@@ -301,8 +373,6 @@ class SyncService {
             status: e.status,
             note: e.note,
             recorded_at: e.recorded_at,
-            battery_level: e.battery_level,
-            device_id: e.device_id,
           })),
         };
 
@@ -349,19 +419,22 @@ class SyncService {
     for (const pod of pendingPODs) {
       try {
         const payload = {
+          device_id: await this.getSyncDeviceId(),
+          battery_level: this.getBatteryLevel(),
+          storage_remaining_kb: this.getStorageRemainingKb(),
           pods: [{
-            shipment_id: pod.shipment_id,
-            recipient_name: pod.recipient_name,
-            recipient_phone: pod.recipient_phone,
-            signature_data: pod.signature_data,
-            photo_urls: pod.photo_paths ?? [],
-            delivery_address: pod.delivery_address,
-            delivery_lat: pod.delivery_lat ?? 0,
-            delivery_lng: pod.delivery_lng ?? 0,
-            delivery_notes: pod.delivery_notes,
-            location_verified: pod.location_verified,
-            location_mismatch_meters: pod.location_mismatch_meters,
-            recorded_at: pod.recorded_at,
+            shipment_id: pod.shipmentId,
+            recipient_name: pod.recipientName,
+            recipient_phone: pod.recipientPhone,
+            signature_data: pod.signatureData,
+            photo_urls: pod.photos.map((photo) => photo.localUri),
+            delivery_address: pod.deliveryAddress,
+            delivery_lat: pod.deliveryLat ?? 0,
+            delivery_lng: pod.deliveryLng ?? 0,
+            delivery_notes: pod.deliveryNotes,
+            location_verified: pod.locationVerified,
+            location_mismatch_meters: pod.locationMismatchMeters,
+            recorded_at: pod.recordedAt,
           }],
         };
 
@@ -422,12 +495,15 @@ class SyncService {
 
       try {
         const payload = {
-          status_updates: batch.map((s) => ({
+          device_id: await this.getSyncDeviceId(),
+          battery_level: this.getBatteryLevel(),
+          storage_remaining_kb: this.getStorageRemainingKb(),
+          statuses: batch.map((s) => ({
             shipment_id: s.shipment_id,
             status: s.status,
             note: s.note,
             reason: s.reason,
-            timestamp: s.recorded_at,
+            recorded_at: s.recorded_at,
           })),
         };
 
@@ -651,7 +727,7 @@ class SyncService {
         await trackingEventsRepo.update(item.entity_id, resolved.resolved_value as Partial<trackingEventsRepo.TrackingEvent>);
         break;
       case 'pods':
-        await podsRepo.update(item.entity_id, resolved.resolved_value as Partial<podsRepo.POD>);
+        await podsRepo.update(item.entity_id, resolved.resolved_value as Partial<podsRepo.ProofOfDelivery>);
         break;
       case 'shipments':
         await shipmentsRepo.update(item.entity_id, resolved.resolved_value as Partial<shipmentsRepo.Shipment>);

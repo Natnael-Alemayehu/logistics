@@ -1,15 +1,18 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, spacing } from '../../utils/theme';
+import { useTranslation } from 'react-i18next';
 
 export function EmptyShipments() {
+  const { t } = useTranslation();
+  
   return (
     <View style={styles.container}>
       <View style={styles.iconContainer}>
         <Text style={styles.icon}>📦</Text>
       </View>
-      <Text style={styles.title}>No shipments found</Text>
+      <Text style={styles.title}>{t('shipments.noShipments')}</Text>
       <Text style={styles.subtitle}>
-        Pull down to refresh and check for updates
+        {t('shipments.pullToRefresh')}
       </Text>
     </View>
   );

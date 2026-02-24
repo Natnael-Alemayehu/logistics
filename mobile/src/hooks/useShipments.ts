@@ -9,20 +9,10 @@ import { useTrackingStore } from '@/store/trackingStore';
 import { startLocationTracking, stopLocationTracking, getCurrentLocation } from '@/services/location';
 import { getTrackingContext, clearTrackingContext } from '@/services/location/trackingContext';
 import { insert as insertTrackingEvent } from '@/db/repositories/trackingEvents';
+import type { Shipment } from '@/types/shipment';
+import type { Shipment as DbShipment } from '@/db/repositories/shipments';
 
-export interface Shipment {
-  id: string;
-  tracking_number: string;
-  status: string;
-  origin: string;
-  destination: string;
-  customer_name: string;
-  customer_phone: string;
-  scheduled_date: string;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-}
+export type { Shipment };
 
 export function useShipments() {
   const queryClient = useQueryClient();
@@ -60,12 +50,24 @@ export function useShipments() {
           apiShipments.map((s) => ({
             id: s.id,
             tracking_number: s.tracking_number,
-            origin_address: s.origin,
-            destination_address: s.destination,
+            origin_address: s.origin_address,
+            origin_lat: s.origin_lat,
+            origin_lng: s.origin_lng,
+            destination_address: s.destination_address,
+            destination_lat: s.destination_lat,
+            destination_lng: s.destination_lng,
             customer_name: s.customer_name,
             customer_phone: s.customer_phone,
+            cargo_description: s.cargo_description,
+            cargo_weight: s.cargo_weight,
+            cargo_value: s.cargo_value,
+            special_instructions: s.special_instructions,
             status: s.status,
-            driver_id: user?.id,
+            status_note: s.status_note,
+            status_reason: s.status_reason,
+            driver_id: s.driver_id,
+            vehicle_id: s.vehicle_id,
+            estimated_delivery: s.estimated_delivery,
             created_at: s.created_at,
             updated_at: s.updated_at,
           }))
@@ -253,18 +255,32 @@ export function useShipments() {
   };
 }
 
-function transformDbShipment(db: shipmentsDb.Shipment): Shipment {
+function transformDbShipment(db: DbShipment): Shipment {
   return {
     id: db.id,
+    tenant_id: db.tenant_id ?? '',
     tracking_number: db.tracking_number,
-    status: db.status,
-    origin: db.origin_address,
-    destination: db.destination_address,
+    origin_address: db.origin_address,
+    origin_lat: db.origin_lat,
+    origin_lng: db.origin_lng,
+    destination_address: db.destination_address,
+    destination_lat: db.destination_lat,
+    destination_lng: db.destination_lng,
     customer_name: db.customer_name,
     customer_phone: db.customer_phone,
-    scheduled_date: db.estimated_delivery ?? '',
-    notes: db.special_instructions,
+    cargo_description: db.cargo_description,
+    cargo_weight: db.cargo_weight,
+    cargo_value: db.cargo_value,
+    special_instructions: db.special_instructions,
+    driver_id: db.driver_id,
+    vehicle_id: db.vehicle_id,
+    status: db.status as Shipment['status'],
+    status_note: db.status_note,
+    status_reason: db.status_reason,
+    estimated_delivery: db.estimated_delivery,
+    actual_delivery: db.actual_delivery,
     created_at: db.created_at,
     updated_at: db.updated_at,
+    created_by: db.created_by,
   };
 }

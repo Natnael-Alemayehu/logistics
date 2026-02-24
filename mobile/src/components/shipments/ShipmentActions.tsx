@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Shipment, ShipmentStatus } from '../../types';
 import { colors, spacing } from '../../utils/theme';
+import { useTranslation } from 'react-i18next';
 
 interface ShipmentActionsProps {
   shipment: Shipment;
@@ -47,6 +48,18 @@ export function ShipmentActions({
   isTracking = false,
   activeTrackingShipmentId = null,
 }: ShipmentActionsProps) {
+  const { t } = useTranslation();
+  
+  const ACTION_CONFIG: Record<ValidAction, { label: string; style: 'primary' | 'secondary' | 'danger' }> = {
+    accept: { label: t('shipments.accept'), style: 'primary' },
+    start_transit: { label: t('shipments.startTransit'), style: 'primary' },
+    report_delay: { label: t('shipments.reportDelay'), style: 'secondary' },
+    report_delay_with_reason: { label: t('shipments.reportDelay'), style: 'secondary' },
+    mark_arrived: { label: t('shipments.markArrived'), style: 'primary' },
+    complete_delivery: { label: t('shipments.completeDelivery'), style: 'primary' },
+    report_issue: { label: t('shipments.reportIssue'), style: 'danger' },
+  };
+
   const availableActions = STATUS_TRANSITIONS[shipment.status] || [];
   const isThisShipmentTracking = activeTrackingShipmentId === shipment.id;
 
@@ -88,17 +101,17 @@ export function ShipmentActions({
       {isThisShipmentTracking && (
         <View style={styles.trackingIndicator}>
           <View style={styles.trackingDot} />
-          <Text style={styles.trackingText}>Tracking Active</Text>
+          <Text style={styles.trackingText}>{t('shipments.trackingActive')}</Text>
         </View>
       )}
       {isTracking && !isThisShipmentTracking && (
         <View style={styles.trackingWarning}>
           <Text style={styles.trackingWarningText}>
-            Stop tracking current shipment to perform actions
+            {t('shipments.stopTrackingWarning')}
           </Text>
         </View>
       )}
-      <Text style={styles.sectionTitle}>Actions</Text>
+      <Text style={styles.sectionTitle}>{t('shipments.actions')}</Text>
       <View style={styles.buttonsContainer}>
         {availableActions.map((action) => {
           const config = ACTION_CONFIG[action];

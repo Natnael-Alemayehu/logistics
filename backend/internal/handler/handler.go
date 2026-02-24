@@ -10,14 +10,16 @@ import (
 )
 
 type Handler struct {
-	Auth      *service.AuthService
-	Shipment  *service.ShipmentService
-	SyncSvc   *service.SyncService
-	User      *service.UserService
-	Vehicle   *service.VehicleService
-	Tracking  *service.TrackingService
-	WS        *WSHandler
-	Dashboard *DashboardService
+	Auth        *service.AuthService
+	Shipment    *service.ShipmentService
+	SyncSvc     *service.SyncService
+	User        *service.UserService
+	Vehicle     *service.VehicleService
+	Tracking    *service.TrackingService
+	WS          *WSHandler
+	Dashboard   *DashboardService
+	Driver      *service.DriverService
+	DeviceToken *service.DeviceTokenService
 }
 
 func New(
@@ -29,16 +31,20 @@ func New(
 	tracking *service.TrackingService,
 	ws *WSHandler,
 	dashboard *DashboardService,
+	driver *service.DriverService,
+	deviceToken *service.DeviceTokenService,
 ) *Handler {
 	return &Handler{
-		Auth:      auth,
-		Shipment:  shipment,
-		SyncSvc:   sync,
-		User:      user,
-		Vehicle:   vehicle,
-		Tracking:  tracking,
-		WS:        ws,
-		Dashboard: dashboard,
+		Auth:        auth,
+		Shipment:    shipment,
+		SyncSvc:     sync,
+		User:        user,
+		Vehicle:     vehicle,
+		Tracking:    tracking,
+		WS:          ws,
+		Dashboard:   dashboard,
+		Driver:      driver,
+		DeviceToken: deviceToken,
 	}
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,21 +9,24 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
-import { Camera, MapPin, FileText, User, Phone, PenLine } from 'lucide-react-native';
+import { Camera, MapPin, FileText, User, Phone, PenLine, WifiOff } from 'lucide-react-native';
 import { colors, spacing } from '../../utils/theme';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Card from '../ui/Card';
-import SignaturePad from './SignaturePad';
+import SignaturePad, { SignaturePadRef } from './SignaturePad';
 import PhotoCapture from './PhotoCapture';
-import LocationVerification, { Coordinates } from './LocationVerification';
+import LocationVerification from './LocationVerification';
+import { PODPhoto, Coordinates } from '../../types/pod';
+import { useTranslation } from 'react-i18next';
 
-interface PODInput {
+export interface PODFormData {
   recipientName: string;
   recipientPhone?: string;
   signatureBase64: string;
-  photos: string[];
+  photos: PODPhoto[];
   notes: string;
   locationVerified: boolean;
   locationMismatchMeters?: number;
@@ -33,47 +36,50 @@ interface PODInput {
 interface PODFormProps {
   shipmentId: string;
   destinationCoords?: Coordinates;
-  onSubmit: (pod: PODInput) => void;
+  onSubmit: (pod: PODFormData) => Promise<void> | void;
+  isOffline?: boolean;
 }
-
-const QUICK_NOTES = [
-  'Left with security',
-  'Door delivery',
-  'Partial delivery',
-  'Left with neighbor',
-  'Customer unavailable',
-  'Delivered to reception',
-];
 
 const PODForm: React.FC<PODFormProps> = ({
   shipmentId,
   destinationCoords,
   onSubmit,
+  isOffline = false,
 }) => {
+  const { t } = useTranslation();
   const [recipientName, setRecipientName] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
   const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<PODPhoto[]>([]);
   const [notes, setNotes] = useState('');
   const [locationVerified, setLocationVerified] = useState(false);
   const [locationMismatchMeters, setLocationMismatchMeters] = useState<number | undefined>();
   const [mismatchReason, setMismatchReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  
+  const signaturePadRef = useRef<SignaturePadRef>(null);
+
+  const QUICK_NOTES = [
+    t('pod.quickNotes.leftWithSecurity'),
+    t('pod.quickNotes.doorDelivery'),
+    t('pod.quickNotes.partialDelivery'),
+    t('pod.quickNotes.leftWithNeighbor'),
+    t('pod.quickNotes.customerUnavailable'),
+    t('pod.quickNotes.deliveredToReception'),
+  ];
 
   const handleSignatureChange = useCallback((base64: string | null) => {
     setSignatureBase64(base64);
   }, []);
 
-  const handleAddPhoto = useCallback(() => {
+  const handleAddPhoto = useCallback((photo: PODPhoto) => {
     if (photos.length >= 3) {
-      Alert.alert('Limit Reached', 'Maximum 3 photos allowed');
+      Alert.alert(t('pod.limitReached'), t('pod.maxPhotosAllowed'));
       return;
     }
-    // In real implementation, this would open camera
-    // For now, add a placeholder
-    const placeholderUri = `photo_${Date.now()}`;
-    setPhotos((prev) => [...prev, placeholderUri]);
-  }, [photos.length]);
+    setPhotos((prev) => [...prev, photo]);
+  }, [photos.length, t]);
 
   const handleRemovePhoto = useCallback((index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
@@ -104,18 +110,20 @@ const PODForm: React.FC<PODFormProps> = ({
   };
 
   const handleSubmit = async () => {
+    setSubmitError(null);
+    
     if (!recipientName.trim()) {
-      Alert.alert('Required', 'Please enter the recipient name');
+      setSubmitError(t('pod.recipientNameRequired'));
       return;
     }
 
     if (recipientPhone && !validateEthiopianPhone(recipientPhone)) {
-      Alert.alert('Invalid Phone', 'Please enter a valid Ethiopian phone number');
+      setSubmitError(t('pod.invalidPhone'));
       return;
     }
 
     if (!signatureBase64) {
-      Alert.alert('Required', 'Please capture the recipient signature');
+      setSubmitError(t('pod.signatureRequired'));
       return;
     }
 
@@ -133,7 +141,7 @@ const PODForm: React.FC<PODFormProps> = ({
         mismatchReason: mismatchReason.trim() || undefined,
       });
     } catch (error) {
-      Alert.alert('Error', 'Failed to submit proof of delivery');
+      setSubmitError(t('pod.submitError'));
     } finally {
       setIsSubmitting(false);
     }
@@ -156,7 +164,7 @@ const PODForm: React.FC<PODFormProps> = ({
           <Card style={styles.section}>
             <View style={styles.sectionHeader}>
               <MapPin size={20} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Location Verification</Text>
+              <Text style={styles.sectionTitle}>{t('pod.locationVerification')}</Text>
             </View>
             <LocationVerification
               destinationCoords={destinationCoords}
@@ -168,12 +176,12 @@ const PODForm: React.FC<PODFormProps> = ({
         <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <User size={20} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Recipient Information</Text>
+            <Text style={styles.sectionTitle}>{t('pod.recipientInfo')}</Text>
           </View>
           
           <Input
-            label="Recipient Name *"
-            placeholder="Enter recipient's full name"
+            label={`${t('pod.recipientName')} *`}
+            placeholder={t('pod.recipientNamePlaceholder')}
             value={recipientName}
             onChangeText={setRecipientName}
             autoCapitalize="words"
@@ -181,8 +189,8 @@ const PODForm: React.FC<PODFormProps> = ({
           />
           
           <Input
-            label="Recipient Phone (Optional)"
-            placeholder="e.g., +251 9XX XXX XXX"
+            label={`${t('pod.recipientPhone')} (${t('common.optional')})`}
+            placeholder={t('pod.recipientPhonePlaceholder')}
             value={recipientPhone}
             onChangeText={setRecipientPhone}
             keyboardType="phone-pad"
@@ -193,15 +201,18 @@ const PODForm: React.FC<PODFormProps> = ({
         <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <PenLine size={20} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Signature *</Text>
+            <Text style={styles.sectionTitle}>{t('pod.signature')} *</Text>
           </View>
-          <SignaturePad onSignatureChange={handleSignatureChange} />
+          <SignaturePad 
+            ref={signaturePadRef}
+            onSignatureChange={handleSignatureChange} 
+          />
         </Card>
 
         <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <Camera size={20} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Photos</Text>
+            <Text style={styles.sectionTitle}>{t('pod.photos')}</Text>
           </View>
           <PhotoCapture
             photos={photos}
@@ -214,11 +225,11 @@ const PODForm: React.FC<PODFormProps> = ({
         <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <FileText size={20} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Delivery Notes</Text>
+            <Text style={styles.sectionTitle}>{t('pod.deliveryNotes')}</Text>
           </View>
           
           <View style={styles.quickNotesContainer}>
-            <Text style={styles.quickNotesLabel}>Quick Select:</Text>
+            <Text style={styles.quickNotesLabel}>{t('pod.quickSelect')}:</Text>
             <View style={styles.quickNotesGrid}>
               {QUICK_NOTES.map((note) => (
                 <TouchableOpacity
@@ -245,7 +256,7 @@ const PODForm: React.FC<PODFormProps> = ({
           <View style={styles.notesInputContainer}>
             <TextInput
               style={styles.notesInput}
-              placeholder="Add additional delivery notes..."
+              placeholder={t('pod.notesPlaceholder')}
               value={notes}
               onChangeText={setNotes}
               multiline
@@ -256,9 +267,24 @@ const PODForm: React.FC<PODFormProps> = ({
           </View>
         </Card>
 
+        {submitError && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{submitError}</Text>
+          </View>
+        )}
+
+        {isOffline && (
+          <View style={styles.offlineBanner}>
+            <WifiOff size={16} color={colors.warning} />
+            <Text style={styles.offlineText}>
+              {t('pod.offlineMessage')}
+            </Text>
+          </View>
+        )}
+
         <View style={styles.submitContainer}>
           <Button
-            title="Submit Delivery"
+            title={isSubmitting ? t('pod.submitting') : t('pod.submitDelivery')}
             onPress={handleSubmit}
             loading={isSubmitting}
             disabled={!isFormValid || isSubmitting}
@@ -268,8 +294,8 @@ const PODForm: React.FC<PODFormProps> = ({
           {!isFormValid && (
             <Text style={styles.hint}>
               {!recipientName.trim()
-                ? 'Enter recipient name'
-                : 'Capture signature to submit'}
+                ? t('pod.enterRecipientName')
+                : t('pod.captureSignature')}
             </Text>
           )}
         </View>
@@ -350,6 +376,31 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 100,
   },
+  errorBanner: {
+    backgroundColor: '#fee2e2',
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    fontSize: 14,
+    color: colors.error,
+    textAlign: 'center',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fef3c7',
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  offlineText: {
+    fontSize: 14,
+    color: '#92400e',
+  },
   submitContainer: {
     marginTop: spacing.md,
   },
@@ -362,4 +413,4 @@ const styles = StyleSheet.create({
 });
 
 export default PODForm;
-export { PODFormProps, PODInput };
+export { PODFormProps };

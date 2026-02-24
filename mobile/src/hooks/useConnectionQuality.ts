@@ -19,6 +19,8 @@ interface ConnectionQualityResult {
   isFastConnection: boolean;
   isSlowConnection: boolean;
   isOffline: boolean;
+  isWifi: boolean;
+  isCellular: boolean;
 }
 
 export function useConnectionQuality(options: UseConnectionQualityOptions = {}): ConnectionQualityResult {
@@ -51,8 +53,10 @@ export function useConnectionQuality(options: UseConnectionQualityOptions = {}):
       isFastConnection: quality === 'fast',
       isSlowConnection: quality === 'slow',
       isOffline: quality === 'offline',
+      isWifi: connectionType === 'wifi',
+      isCellular: connectionType === 'cellular',
     };
-  }, [isOnline, connectionQuality, connectionInfo, shouldUseCellular]);
+  }, [isOnline, connectionQuality, connectionInfo, shouldUseCellular, connectionType]);
 
   return result;
 }

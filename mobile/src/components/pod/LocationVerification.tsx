@@ -6,12 +6,15 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Linking,
+  Platform,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { MapPin, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react-native';
+import { MapPin, AlertTriangle, CheckCircle, RefreshCw, Settings } from 'lucide-react-native';
 import { colors, spacing } from '../../utils/theme';
+import { useTranslation } from 'react-i18next';
 
-interface Coordinates {
+export interface Coordinates {
   latitude: number;
   longitude: number;
 }
@@ -19,6 +22,7 @@ interface Coordinates {
 interface LocationVerificationProps {
   destinationCoords: Coordinates;
   onVerified: (verified: boolean, mismatchMeters?: number) => void;
+  onPermissionDenied?: () => void;
 }
 
 const LOCATION_THRESHOLD_METERS = 500;
@@ -27,6 +31,7 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
   destinationCoords,
   onVerified,
 }) => {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
   const [currentCoords, setCurrentCoords] = useState<Coordinates | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
@@ -61,7 +66,7 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setError('Location permission denied');
+        setError(t('pod.locationPermissionDenied'));
         onVerified(false, undefined);
         setIsLoading(false);
         return;
@@ -95,12 +100,12 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
         onVerified(false, calculatedDistance);
       }
     } catch (err) {
-      setError('Failed to get location');
+      setError(t('pod.locationError'));
       onVerified(false, undefined);
     } finally {
       setIsLoading(false);
     }
-  }, [destinationCoords, onVerified]);
+  }, [destinationCoords, onVerified, t]);
 
   useEffect(() => {
     checkLocation();
@@ -123,7 +128,7 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
       <View style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.loadingText}>Verifying location...</Text>
+          <Text style={styles.loadingText}>{t('pod.verifyingLocation')}</Text>
         </View>
       </View>
     );
@@ -135,13 +140,13 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
         <View style={[styles.statusContainer, styles.errorContainer]}>
           <AlertTriangle size={24} color={colors.error} />
           <View style={styles.statusText}>
-            <Text style={styles.statusTitle}>Location Error</Text>
+            <Text style={styles.statusTitle}>{t('pod.locationError')}</Text>
             <Text style={styles.statusMessage}>{error}</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.reattemptButton} onPress={checkLocation}>
           <RefreshCw size={16} color={colors.primary} />
-          <Text style={styles.reattemptText}>Try Again</Text>
+          <Text style={styles.reattemptText}>{t('pod.tryAgain')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -155,9 +160,9 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
         <View style={[styles.statusContainer, styles.successContainer]}>
           <CheckCircle size={24} color={colors.success} />
           <View style={styles.statusText}>
-            <Text style={styles.statusTitle}>Location Verified</Text>
+            <Text style={styles.statusTitle}>{t('pod.locationVerified')}</Text>
             <Text style={styles.statusMessage}>
-              You are within {Math.round(distance!)}m of the destination
+              {t('pod.withinDistance', { distance: Math.round(distance!) })}
             </Text>
           </View>
         </View>
@@ -171,18 +176,18 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
         <View style={[styles.statusContainer, styles.warningContainer]}>
           <AlertTriangle size={24} color={colors.warning} />
           <View style={styles.statusText}>
-            <Text style={styles.statusTitle}>Location Mismatch</Text>
+            <Text style={styles.statusTitle}>{t('pod.locationMismatch')}</Text>
             <Text style={styles.statusMessage}>
-              {distance !== null && `You are ${Math.round(distance)}m from destination`}
+              {distance !== null && t('pod.distanceFromDestination', { distance: Math.round(distance) })}
             </Text>
           </View>
         </View>
         
         <View style={styles.reasonContainer}>
-          <Text style={styles.reasonLabel}>Reason for mismatch *</Text>
+          <Text style={styles.reasonLabel}>{t('pod.mismatchReason')} *</Text>
           <TextInput
             style={styles.reasonInput}
-            placeholder="e.g., Large building, GPS interference, gated access..."
+            placeholder={t('pod.mismatchReasonPlaceholder')}
             value={reason}
             onChangeText={setReason}
             multiline
@@ -195,7 +200,7 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
               style={styles.secondaryButton}
               onPress={handleReattempt}
             >
-              <Text style={styles.secondaryButtonText}>Re-attempt</Text>
+              <Text style={styles.secondaryButtonText}>{t('pod.reattempt')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -206,7 +211,7 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
               onPress={handleProceedAnyway}
               disabled={!reason.trim()}
             >
-              <Text style={styles.primaryButtonText}>Proceed Anyway</Text>
+              <Text style={styles.primaryButtonText}>{t('pod.proceedAnyway')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -219,11 +224,11 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
       <View style={[styles.statusContainer, styles.warningContainer]}>
         <MapPin size={24} color={colors.warning} />
         <View style={styles.statusText}>
-          <Text style={styles.statusTitle}>Location Mismatch</Text>
+          <Text style={styles.statusTitle}>{t('pod.locationMismatch')}</Text>
           <Text style={styles.statusMessage}>
             {distance !== null
-              ? `You are ${Math.round(distance)}m from destination (threshold: ${LOCATION_THRESHOLD_METERS}m)`
-              : 'Unable to calculate distance'}
+              ? t('pod.distanceWithThreshold', { distance: Math.round(distance), threshold: LOCATION_THRESHOLD_METERS })
+              : t('pod.unableToCalculate')}
           </Text>
         </View>
       </View>
@@ -231,14 +236,14 @@ const LocationVerification: React.FC<LocationVerificationProps> = ({
       <View style={styles.actionButtons}>
         <TouchableOpacity style={styles.reattemptButton} onPress={handleReattempt}>
           <RefreshCw size={16} color={colors.primary} />
-          <Text style={styles.reattemptText}>Re-attempt</Text>
+          <Text style={styles.reattemptText}>{t('pod.reattempt')}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
           style={styles.proceedButton}
           onPress={() => setProceedAnyway(true)}
         >
-          <Text style={styles.proceedText}>Proceed Anyway</Text>
+          <Text style={styles.proceedText}>{t('pod.proceedAnyway')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -377,4 +382,4 @@ const styles = StyleSheet.create({
 });
 
 export default LocationVerification;
-export { LocationVerificationProps, Coordinates };
+export { LocationVerificationProps };

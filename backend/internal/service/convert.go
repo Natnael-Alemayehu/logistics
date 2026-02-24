@@ -44,3 +44,7 @@ func toInt32Ptr(i int) *int32 {
 	v := int32(i)
 	return &v
 }
+
+func toBoolPtr(b bool) *bool {
+	return &b
+}

@@ -18,7 +18,8 @@ import {
 import { useNetworkStore } from '@/store/networkStore';
 import { useTrackingStore } from '@/store/trackingStore';
 import { useAuthStore } from '@/store/authStore';
-import { startLocationTracking, stopLocationTracking, getCurrentLocation } from '@/services/location';
+import { useSettingsStore } from '@/store/settingsStore';
+import { startLocationTracking, stopLocationTracking, getCurrentLocation, isTrackingEnabledInSettings } from '@/services/location';
 import { insertTrackingEvent } from '@db';
 
 interface UseAdaptiveTrackingResult {
@@ -58,6 +59,7 @@ export function useAdaptiveTracking(
   const isConnected = useNetworkStore(state => state.isOnline);
   const { updatePosition: updateStorePosition, incrementEventsCount } = useTrackingStore();
   const user = useAuthStore(state => state.user);
+  const trackingEnabled = useSettingsStore(state => state.trackingEnabled);
 
   useEffect(() => {
     getBatteryLevel().then(setBatteryLevel);
@@ -145,6 +147,11 @@ export function useAdaptiveTracking(
   }, [currentConfig]);
 
   const startAdaptiveTracking = useCallback(async (shipmentId: string) => {
+    if (!trackingEnabled) {
+      console.warn('[AdaptiveTracking] Tracking is disabled in settings');
+      return;
+    }
+
     const driverId = user?.id;
     if (!driverId) {
       console.error('[AdaptiveTracking] No driver ID available');
@@ -221,6 +228,12 @@ export function useAdaptiveTracking(
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!trackingEnabled && isTracking) {
+      stopAdaptiveTracking();
+    }
+  }, [trackingEnabled, isTracking, stopAdaptiveTracking]);
 
   useEffect(() => {
     return () => {

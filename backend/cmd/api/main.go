@@ -103,11 +103,13 @@ func main() {
 	userService := service.NewUserService(queries, auditService)
 	vehicleService := service.NewVehicleService(queries)
 	trackingService := service.NewTrackingService(queries, auditService)
+	driverService := service.NewDriverService(queries, pool)
+	deviceTokenService := service.NewDeviceTokenService(queries)
 
 	wsHandler := handler.NewWSHandler(wsHub, jwtManager)
 	dashboardService := handler.NewDashboardService(queries)
 
-	h := handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, wsHandler, dashboardService)
+	h := handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, wsHandler, dashboardService, driverService, deviceTokenService)
 
 	var rateLimiter *middleware.RateLimiter
 	if redisClient != nil {

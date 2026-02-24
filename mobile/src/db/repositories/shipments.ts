@@ -1,7 +1,9 @@
 import { getDatabase } from '../database';
+import type { ShipmentStatus } from '@/types/shipment';
 
 export interface Shipment {
   id: string;
+  tenant_id?: string;
   tracking_number: string;
   origin_address: string;
   origin_lat?: number;
@@ -12,14 +14,20 @@ export interface Shipment {
   customer_name: string;
   customer_phone: string;
   cargo_description?: string;
-  status: string;
+  cargo_weight?: number;
+  cargo_value?: number;
+  special_instructions?: string;
   driver_id?: string;
   vehicle_id?: string;
+  status: ShipmentStatus | string;
+  status_note?: string;
+  status_reason?: string;
   estimated_delivery?: string;
-  special_instructions?: string;
-  synced_at?: string;
+  actual_delivery?: string;
   created_at: string;
   updated_at: string;
+  created_by?: string;
+  synced_at?: string;
 }
 
 export async function getAll(): Promise<Shipment[]> {
@@ -51,9 +59,11 @@ export async function upsert(shipment: Shipment): Promise<void> {
     `INSERT OR REPLACE INTO shipments (
       id, tracking_number, origin_address, origin_lat, origin_lng,
       destination_address, destination_lat, destination_lng, customer_name,
-      customer_phone, cargo_description, status, driver_id, vehicle_id,
-      estimated_delivery, special_instructions, synced_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      customer_phone, cargo_description, cargo_weight, cargo_value,
+      special_instructions, status, status_note, status_reason,
+      driver_id, vehicle_id, estimated_delivery, actual_delivery,
+      synced_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       shipment.id,
       shipment.tracking_number,
@@ -66,11 +76,16 @@ export async function upsert(shipment: Shipment): Promise<void> {
       shipment.customer_name,
       shipment.customer_phone,
       shipment.cargo_description ?? null,
+      shipment.cargo_weight ?? null,
+      shipment.cargo_value ?? null,
+      shipment.special_instructions ?? null,
       shipment.status,
+      shipment.status_note ?? null,
+      shipment.status_reason ?? null,
       shipment.driver_id ?? null,
       shipment.vehicle_id ?? null,
       shipment.estimated_delivery ?? null,
-      shipment.special_instructions ?? null,
+      shipment.actual_delivery ?? null,
       shipment.synced_at ?? null,
       shipment.created_at,
       shipment.updated_at,

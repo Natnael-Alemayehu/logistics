@@ -1,8 +1,8 @@
 import React, { memo, useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
-import MapLibreGL from '@maplibre/maplibre-react-native';
 import { MARKER_COLORS } from '@/types/maps';
 import { colors } from '@/utils/theme';
+import { isMapAvailable, getMapLibre } from '@/services/maps/native';
 
 interface LocationMarkerProps {
   id: string;
@@ -30,6 +30,7 @@ function LocationMarkerComponent({
   isSelected = false,
   onPress,
 }: LocationMarkerProps) {
+  const MapLibreGL = getMapLibre();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(0.3)).current;
 
@@ -70,6 +71,11 @@ function LocationMarkerComponent({
       opacityAnim.setValue(0.3);
     }
   }, [isTracking, pulseAnim, opacityAnim]);
+
+  // If MapLibreGL isn't available, return null
+  if (!MapLibreGL || !isMapAvailable()) {
+    return null;
+  }
 
   const hasHeading = heading !== undefined && heading !== null && heading > 0;
   const markerColor = isTracking ? MARKER_COLORS.current : colors.gray[400];

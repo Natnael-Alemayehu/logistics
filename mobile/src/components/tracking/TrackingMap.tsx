@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import MapLibreGL, { type CameraRef, type MapViewRef } from '@maplibre/maplibre-react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import {
   DEFAULT_MAP_CENTER,
@@ -13,9 +12,6 @@ import {
   type BoundingBox,
 } from '@/types/maps';
 import type { Shipment } from '@/types/shipment';
-import { LocationMarker } from './LocationMarker';
-import { DestinationMarker } from './DestinationMarker';
-import { CheckpointMarker } from './CheckpointMarker';
 import { useLocation } from '@/hooks/useLocation';
 import {
   MAP_STYLE,
@@ -25,6 +21,8 @@ import {
   getBoundingBox,
 } from '@/services/maps';
 import { colors, spacing } from '@/utils/theme';
+import { FallbackMap } from './FallbackMap';
+import { isMapAvailable, getMapLibre } from '@/services/maps/native';
 
 interface TrackingMapProps {
   shipments?: Shipment[];
@@ -55,6 +53,9 @@ function shipmentToMapData(shipment: Shipment): ShipmentMapData {
   };
 }
 
+// Check if map is available
+const mapAvailable = isMapAvailable();
+
 function TrackingMapComponent({
   shipments = [],
   activeShipmentId,
@@ -66,8 +67,88 @@ function TrackingMapComponent({
   followUser = false,
   style,
 }: TrackingMapProps) {
-  const cameraRef = useRef<CameraRef>(null);
-  const mapRef = useRef<MapViewRef>(null);
+  const { lastKnownLocation, isTracking } = useLocation();
+  
+  const mapShipments = useMemo(() => 
+    shipments.map(shipmentToMapData), [shipments]
+  );
+  
+  const activeShipment = useMemo(() => 
+    mapShipments.find(s => s.id === activeShipmentId), 
+    [mapShipments, activeShipmentId]
+  );
+  
+  const currentLocationForMarker = useMemo(() => {
+    if (!lastKnownLocation) return undefined;
+    return {
+      latitude: lastKnownLocation.latitude,
+      longitude: lastKnownLocation.longitude,
+    };
+  }, [lastKnownLocation]);
+
+  // If map is not available, show fallback
+  if (!mapAvailable) {
+    return (
+      <FallbackMap
+        center={currentLocationForMarker || DEFAULT_MAP_CENTER}
+        shipments={shipments}
+        currentLocation={currentLocationForMarker}
+        onNavigate={(lat, lng) => {
+          const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+          const { Linking } = require('react-native');
+          Linking.openURL(url);
+        }}
+      />
+    );
+  }
+
+  // Only load the native map component if available
+  const MapLibreGL = getMapLibre();
+  if (!MapLibreGL) {
+    return (
+      <FallbackMap
+        center={currentLocationForMarker || DEFAULT_MAP_CENTER}
+        shipments={shipments}
+        currentLocation={currentLocationForMarker}
+      />
+    );
+  }
+
+  return (
+    <NativeTrackingMap
+      shipments={shipments}
+      activeShipmentId={activeShipmentId}
+      showCurrentLocation={showCurrentLocation}
+      onMarkerPress={onMarkerPress}
+      onMapPress={onMapPress}
+      showRoute={showRoute}
+      showAccuracyCircle={showAccuracyCircle}
+      followUser={followUser}
+      style={style}
+      MapLibreGL={MapLibreGL}
+    />
+  );
+}
+
+// Separate component for native map that only loads when MapLibreGL is available
+interface NativeTrackingMapProps extends TrackingMapProps {
+  MapLibreGL: NonNullable<ReturnType<typeof getMapLibre>>;
+}
+
+function NativeTrackingMap({
+  shipments = [],
+  activeShipmentId,
+  showCurrentLocation = true,
+  onMarkerPress,
+  onMapPress,
+  showRoute = false,
+  showAccuracyCircle = true,
+  followUser = false,
+  style,
+  MapLibreGL,
+}: NativeTrackingMapProps) {
+  const cameraRef = useRef<React.ComponentRef<typeof MapLibreGL.Camera>>(null);
+  const mapRef = useRef<React.ComponentRef<typeof MapLibreGL.MapView>>(null);
   
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
@@ -250,35 +331,61 @@ function TrackingMapComponent({
         />
         
         {showCurrentLocation && currentLocationForMarker && (
-          <LocationMarker
+          <MapLibreGL.PointAnnotation
             id="current-location"
-            coordinate={currentLocationForMarker}
-            heading={lastKnownLocation?.heading ?? undefined}
-            accuracy={lastKnownLocation?.accuracy ?? undefined}
-            speed={lastKnownLocation?.speed ?? undefined}
-            isTracking={isTracking}
-            showAccuracyCircle={showAccuracyCircle}
-            isSelected={selectedMarkerId === 'current-location'}
-          />
+            coordinate={[currentLocationForMarker.longitude, currentLocationForMarker.latitude]}
+          >
+            <View style={styles.currentLocationMarker}>
+              <View style={[
+                styles.currentLocationDot,
+                isTracking && styles.currentLocationDotActive
+              ]} />
+              {showAccuracyCircle && lastKnownLocation?.accuracy && (
+                <View style={[
+                  styles.accuracyCircle,
+                  { 
+                    width: lastKnownLocation.accuracy * 2,
+                    height: lastKnownLocation.accuracy * 2,
+                  }
+                ]} />
+              )}
+            </View>
+          </MapLibreGL.PointAnnotation>
         )}
         
         {destinationMarkers.map(marker => (
-          <DestinationMarker
+          <MapLibreGL.PointAnnotation
             key={marker.id}
-            {...marker}
-            currentLocation={currentLocationForMarker}
-            isSelected={selectedMarkerId === marker.id}
-            onPress={() => handleDestinationPress(marker)}
-          />
+            id={marker.id}
+            coordinate={[marker.coordinate.longitude, marker.coordinate.latitude]}
+            onSelected={() => handleDestinationPress(marker)}
+          >
+            <View style={[
+              styles.destinationMarker,
+              marker.isActive && styles.destinationMarkerActive
+            ]}>
+              <Text style={styles.markerText}>{marker.sequenceNumber}</Text>
+            </View>
+          </MapLibreGL.PointAnnotation>
         ))}
         
         {checkpointMarkers.map(marker => (
-          <CheckpointMarker
+          <MapLibreGL.PointAnnotation
             key={marker.id}
-            {...marker}
-            isSelected={selectedMarkerId === marker.id}
-            onPress={() => handleCheckpointPress(marker)}
-          />
+            id={marker.id}
+            coordinate={[marker.coordinate.longitude, marker.coordinate.latitude]}
+            onSelected={() => handleCheckpointPress(marker)}
+          >
+            <View style={[
+              styles.checkpointMarker,
+              marker.passed && styles.checkpointMarkerPassed
+            ]}>
+              <Text style={styles.checkpointText}>
+                {marker.checkpointType === 'pickup' ? 'P' : 
+                 marker.checkpointType === 'dropoff' ? 'D' : 'W'}
+              </Text>
+            </View>
+          </MapLibreGL.PointAnnotation>
         ))}
         
         {showRoute && activeShipment?.origin && activeShipment?.destination && (
@@ -334,6 +441,65 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  currentLocationMarker: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentLocationDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  currentLocationDotActive: {
+    backgroundColor: '#22c55e',
+  },
+  accuracyCircle: {
+    position: 'absolute',
+    borderRadius: 100,
+    backgroundColor: 'rgba(37, 99, 235, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.3)',
+  },
+  destinationMarker: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: MARKER_COLORS.destination,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  destinationMarkerActive: {
+    backgroundColor: MARKER_COLORS.current,
+    transform: [{ scale: 1.2 }],
+  },
+  markerText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  checkpointMarker: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: MARKER_COLORS.checkpoint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  checkpointMarkerPassed: {
+    backgroundColor: MARKER_COLORS.passed,
+  },
+  checkpointText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 12,
   },
 });
 

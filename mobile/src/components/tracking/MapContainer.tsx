@@ -1,11 +1,10 @@
 import React, { forwardRef, useState, useCallback, useRef } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import MapLibreGL, { type CameraRef, type MapViewRef } from '@maplibre/maplibre-react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Pressable, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { MAP_STYLE, DEFAULT_CENTER, DEFAULT_ZOOM, MAX_ZOOM, MIN_ZOOM } from '@/services/maps/config';
 import { Coordinates } from '@/types/maps';
-
-MapLibreGL.setAccessToken(null);
+import { isMapAvailable, getMapLibre } from '@/services/maps/native';
+import { colors } from '@/utils/theme';
 
 interface MapContainerProps {
   children?: React.ReactNode;
@@ -17,10 +16,13 @@ interface MapContainerProps {
 }
 
 export interface MapRef {
-  getCamera: () => CameraRef | null;
+  getCamera: () => unknown | null;
   moveTo: (coordinates: Coordinates, zoom?: number) => void;
   fitBounds: (ne: Coordinates, sw: Coordinates, padding?: number) => void;
 }
+
+// Check if map is available
+const mapAvailable = isMapAvailable();
 
 const MapContainer = forwardRef<MapRef, MapContainerProps>(
   (
@@ -38,8 +40,8 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(
     const [hasError, setHasError] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [hasLocationPermission, setHasLocationPermission] = useState(false);
-    const cameraRef = useRef<CameraRef>(null);
-    const mapRef = useRef<MapViewRef>(null);
+    const cameraRef = useRef<React.ComponentRef<NonNullable<ReturnType<typeof getMapLibre>>['Camera']>>(null);
+    const mapRef = useRef<React.ComponentRef<NonNullable<ReturnType<typeof getMapLibre>>['MapView']>>(null);
 
     React.useImperativeHandle(ref, () => ({
       getCamera: () => cameraRef.current,
@@ -108,6 +110,43 @@ const MapContainer = forwardRef<MapRef, MapContainerProps>(
     const handleDidFailLoadingMap = useCallback(() => {
       handleMapError('Failed to load map');
     }, [handleMapError]);
+
+    const handleOpenInMaps = () => {
+      const center = initialCenter 
+        ? { lat: initialCenter.latitude, lng: initialCenter.longitude }
+        : { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
+      Linking.openURL(`https://www.google.com/maps?q=${center.lat},${center.lng}`);
+    };
+
+    // If map is not available (Expo Go), show fallback
+    if (!mapAvailable) {
+      return (
+        <View style={[styles.container, style, styles.fallbackContainer]}>
+          <View style={styles.fallbackContent}>
+            <Text style={styles.fallbackIcon}>🗺️</Text>
+            <Text style={styles.fallbackTitle}>Map View</Text>
+            <Text style={styles.fallbackMessage}>
+              Interactive map requires a development build.
+            </Text>
+            <Text style={styles.fallbackSubtext}>
+              You're running in Expo Go, which doesn't support the native map library.
+            </Text>
+            <Pressable style={styles.fallbackButton} onPress={handleOpenInMaps}>
+              <Text style={styles.fallbackButtonText}>Open in Google Maps</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    const MapLibreGL = getMapLibre();
+    if (!MapLibreGL) {
+      return (
+        <View style={[styles.container, style, styles.fallbackContainer]}>
+          <Text style={styles.fallbackMessage}>Map unavailable</Text>
+        </View>
+      );
+    }
 
     if (hasError) {
       return (
@@ -203,6 +242,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#7f1d1d',
     textAlign: 'center',
+  },
+  fallbackContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+  },
+  fallbackContent: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  fallbackIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  fallbackTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  fallbackMessage: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  fallbackSubtext: {
+    fontSize: 12,
+    color: colors.gray[500],
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  fallbackButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  fallbackButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

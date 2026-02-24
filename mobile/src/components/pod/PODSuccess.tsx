@@ -9,6 +9,7 @@ import {
 import { CheckCircle, Package } from 'lucide-react-native';
 import { colors, spacing } from '../../utils/theme';
 import Button from '../ui/Button';
+import { useTranslation } from 'react-i18next';
 
 interface PODSuccessProps {
   shipmentId: string;
@@ -21,6 +22,7 @@ const PODSuccess: React.FC<PODSuccessProps> = ({
   trackingNumber,
   onDone,
 }) => {
+  const { t } = useTranslation();
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const checkmarkAnim = useRef(new Animated.Value(0)).current;
@@ -76,9 +78,9 @@ const PODSuccess: React.FC<PODSuccessProps> = ({
             { opacity: fadeAnim },
           ]}
         >
-          <Text style={styles.title}>Delivery Complete</Text>
+          <Text style={styles.title}>{t('pod.deliveryComplete')}</Text>
           <Text style={styles.message}>
-            Proof of delivery has been successfully submitted
+            {t('pod.podSubmitted')}
           </Text>
         </Animated.View>
 
@@ -91,7 +93,7 @@ const PODSuccess: React.FC<PODSuccessProps> = ({
           <View style={styles.trackingCard}>
             <Package size={24} color={colors.primary} />
             <View style={styles.trackingInfo}>
-              <Text style={styles.trackingLabel}>Tracking Number</Text>
+              <Text style={styles.trackingLabel}>{t('shipments.trackingNumber')}</Text>
               <Text style={styles.trackingNumber}>{trackingNumber}</Text>
             </View>
           </View>
@@ -100,7 +102,7 @@ const PODSuccess: React.FC<PODSuccessProps> = ({
 
       <Animated.View style={[styles.buttonContainer, { opacity: fadeAnim }]}>
         <Button
-          title="View Shipments"
+          title={t('pod.viewShipments')}
           onPress={onDone}
           fullWidth
           size="lg"

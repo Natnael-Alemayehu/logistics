@@ -3,6 +3,7 @@ import { Shipment } from '../../types';
 import { ShipmentStatusBadge } from './ShipmentStatusBadge';
 import { colors, spacing } from '../../utils/theme';
 import { formatDateTime } from '../../utils/format';
+import { useTranslation } from 'react-i18next';
 
 interface ShipmentCardProps {
   shipment: Shipment;
@@ -11,6 +12,8 @@ interface ShipmentCardProps {
 }
 
 export function ShipmentCard({ shipment, onPress, isSynced = true }: ShipmentCardProps) {
+  const { t } = useTranslation();
+  
   const truncateAddress = (address: string, maxLength = 35) => {
     if (address.length <= maxLength) return address;
     return `${address.substring(0, maxLength)}...`;
@@ -41,7 +44,7 @@ export function ShipmentCard({ shipment, onPress, isSynced = true }: ShipmentCar
 
       {shipment.estimated_delivery && (
         <View style={styles.footer}>
-          <Text style={styles.footerLabel}>Est. delivery:</Text>
+          <Text style={styles.footerLabel}>{t('shipments.estDelivery')}:</Text>
           <Text style={styles.footerValue}>
             {formatDateTime(shipment.estimated_delivery)}
           </Text>
