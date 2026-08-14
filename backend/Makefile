@@ -1,4 +1,26 @@
-.PHONY: run dev build test clean migrate-up migrate-down seed sqlc docker-up docker-down swagger
+.PHONY: help run dev build test clean migrate-up migrate-down seed sqlc docker-up docker-down swagger deps
+
+help:
+	@echo "Backend - Logistics API Server"
+	@echo "==============================="
+	@echo "  make deps        - Download Go dependencies"
+	@echo "  make dev         - Start development server with hot reload"
+	@echo "  make build       - Build API and worker binaries"
+	@echo "  make run         - Run API server"
+	@echo "  make run-worker  - Run worker"
+	@echo "  make test        - Run unit tests"
+	@echo "  make test-integration - Run integration tests"
+	@echo "  make migrate-up  - Run database migrations"
+	@echo "  make migrate-down - Rollback database migrations"
+	@echo "  make seed        - Seed database with test data"
+	@echo "  make sqlc        - Generate SQLC code"
+	@echo "  make swagger     - Generate Swagger docs"
+	@echo "  make docker-up   - Start Docker containers"
+	@echo "  make docker-down - Stop Docker containers"
+	@echo "  make setup       - Full development setup"
+
+deps:
+	go mod download
 
 GOCMD=go
 GOBUILD=$(GOCMD) build
