@@ -8,15 +8,16 @@ import (
 )
 
 // GetDriverStats godoc
-// @Summary Get driver delivery statistics
-// @Description Get delivery counts for today, week, month, and total for the authenticated driver
-// @Tags driver
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} model.DriverStats
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /driver/stats [get]
+//
+//	@Summary		Get driver delivery statistics
+//	@Description	Get delivery counts for today, week, month, and total for the authenticated driver
+//	@Tags			driver
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	model.DriverStats
+//	@Failure		401	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/driver/stats [get]
 func (h *Handler) GetDriverStats(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 	driverID := middleware.GetUserID(r.Context())
@@ -31,15 +32,16 @@ func (h *Handler) GetDriverStats(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetDriverVehicle godoc
-// @Summary Get driver's current vehicle assignment
-// @Description Get the vehicle assigned to the driver for their current active shipment
-// @Tags driver
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} model.Vehicle
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /driver/vehicle [get]
+//
+//	@Summary		Get driver's current vehicle assignment
+//	@Description	Get the vehicle assigned to the driver for their current active shipment
+//	@Tags			driver
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	model.Vehicle
+//	@Failure		401	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/driver/vehicle [get]
 func (h *Handler) GetDriverVehicle(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 	driverID := middleware.GetUserID(r.Context())

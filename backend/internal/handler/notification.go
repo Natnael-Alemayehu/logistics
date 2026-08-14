@@ -19,18 +19,19 @@ type RegisterPushTokenInput struct {
 }
 
 // RegisterPushToken godoc
-// @Summary Register push notification token
-// @Description Register or update a device's push notification token
-// @Tags notifications
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param input body RegisterPushTokenInput true "Push token data"
-// @Success 200 {object} model.DeviceToken
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /notifications/register [post]
+//
+//	@Summary		Register push notification token
+//	@Description	Register or update a device's push notification token
+//	@Tags			notifications
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			input	body		RegisterPushTokenInput	true	"Push token data"
+//	@Success		200		{object}	model.DeviceToken
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/notifications/register [post]
 func (h *Handler) RegisterPushToken(w http.ResponseWriter, r *http.Request) {
 	var input RegisterPushTokenInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -60,17 +61,18 @@ func (h *Handler) RegisterPushToken(w http.ResponseWriter, r *http.Request) {
 }
 
 // UnregisterDevice godoc
-// @Summary Unregister a device
-// @Description Remove a device's push notification token
-// @Tags notifications
-// @Produce json
-// @Security BearerAuth
-// @Param deviceId path string true "Device ID"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /notifications/device/{deviceId} [delete]
+//
+//	@Summary		Unregister a device
+//	@Description	Remove a device's push notification token
+//	@Tags			notifications
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			deviceId	path		string	true	"Device ID"
+//	@Success		200			{object}	map[string]string
+//	@Failure		400			{object}	response.Response
+//	@Failure		401			{object}	response.Response
+//	@Failure		500			{object}	response.Response
+//	@Router			/notifications/device/{deviceId} [delete]
 func (h *Handler) UnregisterDevice(w http.ResponseWriter, r *http.Request) {
 	deviceID := chi.URLParam(r, "deviceId")
 	if deviceID == "" {

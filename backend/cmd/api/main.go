@@ -21,20 +21,20 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// @title Ethiopian Logistics Tracking Platform API
-// @version 1.0
-// @description API for managing logistics operations including shipments, drivers, vehicles, and tracking
-// @termsOfService http://swagger.io/terms/
+//	@title			Ethiopian Logistics Tracking Platform API
+//	@version		1.0
+//	@description	API for managing logistics operations including shipments, drivers, vehicles, and tracking
+//	@termsOfService	http://swagger.io/terms/
 
-// @contact.name API Support
-// @contact.email support@logistics.et
+//	@contact.name	API Support
+//	@contact.email	support@logistics.et
 
-// @host localhost:8080
-// @BasePath /api/v1
-// @securityDefinitions.apikey BearerAuth
-// @in header
-// @name Authorization
-// @description Type "Bearer" followed by a space and JWT token.
+// @host						localhost:8080
+// @BasePath					/api/v1
+// @securityDefinitions.apikey	BearerAuth
+// @in							header
+// @name						Authorization
+// @description				Type "Bearer" followed by a space and JWT token.
 func main() {
 	cfg := config.Load()
 
@@ -106,7 +106,7 @@ func main() {
 	driverService := service.NewDriverService(queries, pool)
 	deviceTokenService := service.NewDeviceTokenService(queries)
 
-	wsHandler := handler.NewWSHandler(wsHub, jwtManager)
+	wsHandler := handler.NewWSHandler(wsHub)
 	dashboardService := handler.NewDashboardService(queries)
 
 	h := handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, wsHandler, dashboardService, driverService, deviceTokenService)

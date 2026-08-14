@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -51,6 +52,8 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 
 		r.Get("/track/{tracking_number}", h.TrackShipment)
 
+		r.Get("/ws", middleware.WsAuth(jwtManager)(http.HandlerFunc(h.WS.HandleWebSocket)).ServeHTTP)
+
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(jwtManager))
 
@@ -60,8 +63,6 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 
 			r.Post("/notifications/register", h.RegisterPushToken)
 			r.Delete("/notifications/device/{deviceId}", h.UnregisterDevice)
-
-			r.Get("/ws", h.WS.HandleWebSocket)
 
 			r.Get("/sessions", h.ListSessions)
 			r.Delete("/sessions/{id}", h.RevokeSession)
@@ -73,6 +74,8 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 				r.Get("/my-shipments", h.ListMyShipments)
 				r.Get("/driver/stats", h.GetDriverStats)
 				r.Get("/driver/vehicle", h.GetDriverVehicle)
+				r.Put("/shipments/{id}/status", h.UpdateShipmentStatus)
+				r.Patch("/shipments/{id}/status", h.UpdateShipmentStatus)
 			})
 
 			r.Group(func(r chi.Router) {
@@ -85,6 +88,7 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 				r.Put("/shipments/{id}", h.UpdateShipment)
 				r.Put("/shipments/{id}/assign", h.AssignDriver)
 				r.Put("/shipments/{id}/status", h.UpdateShipmentStatus)
+				r.Patch("/shipments/{id}/status", h.UpdateShipmentStatus)
 				r.Post("/shipments/{id}/cancel", h.CancelShipment)
 				r.Get("/shipments/{id}/tracking", h.ListShipmentTrackingEvents)
 				r.Get("/shipments/{id}/pod", h.GetShipmentPOD)

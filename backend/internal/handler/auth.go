@@ -18,17 +18,18 @@ func getIPAddress(r *http.Request) string {
 }
 
 // DriverLogin godoc
-// @Summary Driver login
-// @Description Authenticate a driver using phone number and PIN
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param input body service.DriverLoginInput true "Login credentials"
-// @Success 200 {object} service.LoginOutput
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 403 {object} response.Response
-// @Router /auth/login/driver [post]
+//
+//	@Summary		Driver login
+//	@Description	Authenticate a driver using phone number and PIN
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			input	body		service.DriverLoginInput	true	"Login credentials"
+//	@Success		200		{object}	service.LoginOutput
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		403		{object}	response.Response
+//	@Router			/auth/login/driver [post]
 func (h *Handler) DriverLogin(w http.ResponseWriter, r *http.Request) {
 	var input service.DriverLoginInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -58,17 +59,18 @@ func (h *Handler) DriverLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // DispatcherLogin godoc
-// @Summary Dispatcher login
-// @Description Authenticate a dispatcher or admin using email and password
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param input body service.DispatcherLoginInput true "Login credentials"
-// @Success 200 {object} service.LoginOutput
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 403 {object} response.Response
-// @Router /auth/login/dispatcher [post]
+//
+//	@Summary		Dispatcher login
+//	@Description	Authenticate a dispatcher or admin using email and password
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			input	body		service.DispatcherLoginInput	true	"Login credentials"
+//	@Success		200		{object}	service.LoginOutput
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		403		{object}	response.Response
+//	@Router			/auth/login/dispatcher [post]
 func (h *Handler) DispatcherLogin(w http.ResponseWriter, r *http.Request) {
 	var input service.DispatcherLoginInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -102,16 +104,17 @@ func (h *Handler) DispatcherLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // RefreshToken godoc
-// @Summary Refresh access token
-// @Description Get a new access token using a refresh token
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param input body map[string]string true "Refresh token"
-// @Success 200 {object} service.LoginOutput
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Router /auth/refresh [post]
+//
+//	@Summary		Refresh access token
+//	@Description	Get a new access token using a refresh token
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			input	body		map[string]string	true	"Refresh token"
+//	@Success		200		{object}	service.LoginOutput
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Router			/auth/refresh [post]
 func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		RefreshToken string `json:"refresh_token" validate:"required"`
@@ -136,14 +139,15 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 }
 
 // Logout godoc
-// @Summary Logout user
-// @Description Logout and revoke the current session
-// @Tags auth
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} map[string]string
-// @Failure 401 {object} response.Response
-// @Router /auth/logout [post]
+//
+//	@Summary		Logout user
+//	@Description	Logout and revoke the current session
+//	@Tags			auth
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	map[string]string
+//	@Failure		401	{object}	response.Response
+//	@Router			/auth/logout [post]
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	sessionID := middleware.GetSessionID(r.Context())
@@ -162,14 +166,15 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListSessions godoc
-// @Summary List active sessions
-// @Description Get all active sessions for the current user
-// @Tags sessions
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {array} model.Session
-// @Failure 401 {object} response.Response
-// @Router /sessions [get]
+//
+//	@Summary		List active sessions
+//	@Description	Get all active sessions for the current user
+//	@Tags			sessions
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{array}		model.Session
+//	@Failure		401	{object}	response.Response
+//	@Router			/sessions [get]
 func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
@@ -187,16 +192,17 @@ func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 // RevokeSession godoc
-// @Summary Revoke a session
-// @Description Revoke a specific session by ID
-// @Tags sessions
-// @Produce json
-// @Security BearerAuth
-// @Param id path string true "Session ID"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Router /sessions/{id} [delete]
+//
+//	@Summary		Revoke a session
+//	@Description	Revoke a specific session by ID
+//	@Tags			sessions
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		string	true	"Session ID"
+//	@Success		200	{object}	map[string]string
+//	@Failure		400	{object}	response.Response
+//	@Failure		401	{object}	response.Response
+//	@Router			/sessions/{id} [delete]
 func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
@@ -219,17 +225,18 @@ func (h *Handler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // RevokeOtherSessions godoc
-// @Summary Revoke other sessions
-// @Description Revoke all sessions except the current one
-// @Tags sessions
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param input body map[string]string true "Current session ID"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Router /sessions/others [delete]
+//
+//	@Summary		Revoke other sessions
+//	@Description	Revoke all sessions except the current one
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			input	body		map[string]string	true	"Current session ID"
+//	@Success		200		{object}	map[string]string
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Router			/sessions/others [delete]
 func (h *Handler) RevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 	if userID == "" {
@@ -260,18 +267,19 @@ type ChangePasswordInput struct {
 }
 
 // ChangePassword godoc
-// @Summary Change password
-// @Description Change the current user's password. Requires current password for verification.
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param input body ChangePasswordInput true "Password change data"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /auth/change-password [post]
+//
+//	@Summary		Change password
+//	@Description	Change the current user's password. Requires current password for verification.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			input	body		ChangePasswordInput	true	"Password change data"
+//	@Success		200		{object}	map[string]string
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/auth/change-password [post]
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	var input ChangePasswordInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -308,19 +316,20 @@ type ForgotPINInput struct {
 }
 
 // ForgotPIN godoc
-// @Summary Request PIN reset for driver
-// @Description Request a PIN reset for a driver. Sends new PIN via SMS. Requires admin role or self.
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param input body ForgotPINInput true "Driver ID"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 403 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /auth/forgot-pin [post]
+//
+//	@Summary		Request PIN reset for driver
+//	@Description	Request a PIN reset for a driver. Sends new PIN via SMS. Requires admin role or self.
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			input	body		ForgotPINInput	true	"Driver ID"
+//	@Success		200		{object}	map[string]string
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		403		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/auth/forgot-pin [post]
 func (h *Handler) ForgotPIN(w http.ResponseWriter, r *http.Request) {
 	var input ForgotPINInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {

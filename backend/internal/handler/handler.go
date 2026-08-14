@@ -56,12 +56,13 @@ type HealthResponse struct {
 }
 
 // Health godoc
-// @Summary Health check
-// @Description Check if the service is running and healthy
-// @Tags system
-// @Produce json
-// @Success 200 {object} HealthResponse
-// @Router /health [get]
+//
+//	@Summary		Health check
+//	@Description	Check if the service is running and healthy
+//	@Tags			system
+//	@Produce		json
+//	@Success		200	{object}	HealthResponse
+//	@Router			/health [get]
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	response := HealthResponse{
 		Status:    "healthy",

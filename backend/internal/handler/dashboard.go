@@ -182,15 +182,16 @@ func toUUID(s string) pgtype.UUID {
 }
 
 // GetDashboardStats godoc
-// @Summary Get dashboard statistics
-// @Description Get overview statistics for the dispatcher dashboard including active shipments, drivers on duty, deliveries today, and issues count
-// @Tags dashboard
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} DashboardStatsOutput
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /dashboard/stats [get]
+//
+//	@Summary		Get dashboard statistics
+//	@Description	Get overview statistics for the dispatcher dashboard including active shipments, drivers on duty, deliveries today, and issues count
+//	@Tags			dashboard
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	DashboardStatsOutput
+//	@Failure		401	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/dashboard/stats [get]
 func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 
@@ -204,15 +205,16 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetDashboardAlerts godoc
-// @Summary Get dashboard alerts
-// @Description Get recent alerts for the dispatcher dashboard
-// @Tags dashboard
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} map[string][]AlertOutput
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /dashboard/alerts [get]
+//
+//	@Summary		Get dashboard alerts
+//	@Description	Get recent alerts for the dispatcher dashboard
+//	@Tags			dashboard
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	map[string][]AlertOutput
+//	@Failure		401	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/dashboard/alerts [get]
 func (h *Handler) GetDashboardAlerts(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 
@@ -230,15 +232,16 @@ func (h *Handler) GetDashboardAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetDashboardActivity godoc
-// @Summary Get dashboard activity
-// @Description Get recent activity for the dispatcher dashboard
-// @Tags dashboard
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} map[string][]ActivityOutput
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /dashboard/activity [get]
+//
+//	@Summary		Get dashboard activity
+//	@Description	Get recent activity for the dispatcher dashboard
+//	@Tags			dashboard
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	map[string][]ActivityOutput
+//	@Failure		401	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/dashboard/activity [get]
 func (h *Handler) GetDashboardActivity(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 
@@ -256,15 +259,16 @@ func (h *Handler) GetDashboardActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetDriverLocations godoc
-// @Summary Get latest driver locations
-// @Description Get the latest known locations of all drivers
-// @Tags drivers
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {array} DriverLocationOutput
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /drivers/locations [get]
+//
+//	@Summary		Get latest driver locations
+//	@Description	Get the latest known locations of all drivers
+//	@Tags			drivers
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{array}		DriverLocationOutput
+//	@Failure		401	{object}	response.Response
+//	@Failure		500	{object}	response.Response
+//	@Router			/drivers/locations [get]
 func (h *Handler) GetDriverLocations(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 

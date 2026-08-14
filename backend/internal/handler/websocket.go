@@ -2,11 +2,10 @@ package handler
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	gorillaws "github.com/gorilla/websocket"
-	"github.com/natnael-alemayehu/logistics/pkg/jwt"
+	"github.com/natnael-alemayehu/logistics/internal/middleware"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 )
 
@@ -26,27 +25,19 @@ var upgrader = gorillaws.Upgrader{
 }
 
 type WSHandler struct {
-	Hub        *websocket.Hub
-	JWTManager *jwt.JWTManager
+	Hub *websocket.Hub
 }
 
-func NewWSHandler(hub *websocket.Hub, jwtManager *jwt.JWTManager) *WSHandler {
+func NewWSHandler(hub *websocket.Hub) *WSHandler {
 	return &WSHandler{
-		Hub:        hub,
-		JWTManager: jwtManager,
+		Hub: hub,
 	}
 }
 
 func (h *WSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	token := h.extractToken(r)
-	if token == "" {
-		http.Error(w, "Missing authentication token", http.StatusUnauthorized)
-		return
-	}
-
-	claims, err := h.JWTManager.Validate(token)
-	if err != nil {
-		http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+	claims := middleware.GetClaims(r.Context())
+	if claims == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -62,21 +53,4 @@ func (h *WSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go client.WritePump()
 	go client.ReadPump()
-}
-
-func (h *WSHandler) extractToken(r *http.Request) string {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" {
-		parts := strings.Split(authHeader, " ")
-		if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-			return parts[1]
-		}
-	}
-
-	token := r.URL.Query().Get("token")
-	if token != "" {
-		return token
-	}
-
-	return ""
 }
