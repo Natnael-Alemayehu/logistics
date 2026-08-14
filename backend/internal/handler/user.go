@@ -13,18 +13,19 @@ import (
 )
 
 // CreateDriver godoc
-// @Summary Create a driver
-// @Description Create a new driver account
-// @Tags users
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param input body service.CreateDriverInput true "Driver data"
-// @Success 201 {object} model.User
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /drivers [post]
+//
+//	@Summary		Create a driver
+//	@Description	Create a new driver account
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			input	body		service.CreateDriverInput	true	"Driver data"
+//	@Success		201		{object}	model.User
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/drivers [post]
 func (h *Handler) CreateDriver(w http.ResponseWriter, r *http.Request) {
 	var input service.CreateDriverInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -49,17 +50,18 @@ func (h *Handler) CreateDriver(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListDrivers godoc
-// @Summary List drivers
-// @Description Get paginated list of drivers
-// @Tags users
-// @Produce json
-// @Security BearerAuth
-// @Param page query int false "Page number" default(1)
-// @Param per_page query int false "Items per page" default(25)
-// @Success 200 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /drivers [get]
+//
+//	@Summary		List drivers
+//	@Description	Get paginated list of drivers
+//	@Tags			users
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			page		query		int	false	"Page number"		default(1)
+//	@Param			per_page	query		int	false	"Items per page"	default(25)
+//	@Success		200			{object}	response.Response
+//	@Failure		401			{object}	response.Response
+//	@Failure		500			{object}	response.Response
+//	@Router			/drivers [get]
 func (h *Handler) ListDrivers(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 
@@ -82,18 +84,19 @@ func (h *Handler) ListDrivers(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreateUser godoc
-// @Summary Create a user
-// @Description Create a new user (dispatcher/admin)
-// @Tags users
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param input body service.CreateUserInput true "User data"
-// @Success 201 {object} model.User
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /users [post]
+//
+//	@Summary		Create a user
+//	@Description	Create a new user (dispatcher/admin)
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			input	body		service.CreateUserInput	true	"User data"
+//	@Success		201		{object}	model.User
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/users [post]
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var input service.CreateUserInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -118,18 +121,19 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListUsers godoc
-// @Summary List users
-// @Description Get paginated list of all users (admin only)
-// @Tags users
-// @Produce json
-// @Security BearerAuth
-// @Param page query int false "Page number" default(1)
-// @Param per_page query int false "Items per page" default(25)
-// @Success 200 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 403 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /users [get]
+//
+//	@Summary		List users
+//	@Description	Get paginated list of all users (admin only)
+//	@Tags			users
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			page		query		int	false	"Page number"		default(1)
+//	@Param			per_page	query		int	false	"Items per page"	default(25)
+//	@Success		200			{object}	response.Response
+//	@Failure		401			{object}	response.Response
+//	@Failure		403			{object}	response.Response
+//	@Failure		500			{object}	response.Response
+//	@Router			/users [get]
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 
@@ -158,21 +162,22 @@ type UpdateUserInput struct {
 }
 
 // UpdateUser godoc
-// @Summary Update user details
-// @Description Update user's name, phone, or email. Password change should use /auth/change-password.
-// @Tags users
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path string true "User ID"
-// @Param input body UpdateUserInput true "User update data"
-// @Success 200 {object} model.User
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 403 {object} response.Response
-// @Failure 404 {object} response.Response
-// @Failure 500 {object} response.Response
-// @Router /users/{id} [put]
+//
+//	@Summary		Update user details
+//	@Description	Update user's name, phone, or email. Password change should use /auth/change-password.
+//	@Tags			users
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id		path		string			true	"User ID"
+//	@Param			input	body		UpdateUserInput	true	"User update data"
+//	@Success		200		{object}	model.User
+//	@Failure		400		{object}	response.Response
+//	@Failure		401		{object}	response.Response
+//	@Failure		403		{object}	response.Response
+//	@Failure		404		{object}	response.Response
+//	@Failure		500		{object}	response.Response
+//	@Router			/users/{id} [put]
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
 	if userID == "" {

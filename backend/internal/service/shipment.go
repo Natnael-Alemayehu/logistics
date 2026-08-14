@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -59,6 +60,8 @@ type UpdateStatusInput struct {
 	StatusNote   string `json:"status_note"`
 	StatusReason string `json:"status_reason"`
 }
+
+var ErrNotAssigned = errors.New("driver not assigned to this shipment")
 
 type AssignDriverInput struct {
 	DriverID string `json:"driver_id" validate:"required,uuid"`
@@ -310,13 +313,23 @@ func (s *ShipmentService) AssignDriver(ctx context.Context, tenantID, userID, sh
 	return dbShipmentToModel(&shipment), nil
 }
 
-func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, userID, shipmentID string, input UpdateStatusInput, ipAddress, userAgent string) (*model.Shipment, error) {
+func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, userID, userRole, shipmentID string, input UpdateStatusInput, ipAddress, userAgent string) (*model.Shipment, error) {
 	oldShipment, err := s.queries.GetShipmentByID(ctx, db.GetShipmentByIDParams{
 		ID:       toUUID(shipmentID),
 		TenantID: toUUID(tenantID),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("shipment not found: %w", err)
+	}
+
+	if userRole == "driver" {
+		userUUID := toUUID(userID)
+		if !oldShipment.DriverID.Valid || !userUUID.Valid {
+			return nil, ErrNotAssigned
+		}
+		if oldShipment.DriverID.Bytes != userUUID.Bytes {
+			return nil, ErrNotAssigned
+		}
 	}
 
 	shipment, err := s.queries.UpdateShipmentStatus(ctx, db.UpdateShipmentStatusParams{

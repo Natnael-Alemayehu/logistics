@@ -5,8 +5,6 @@
 This is a logistics project. Agents working on this codebase should reference the following documents:
 
 ## Key Documents
-
-- **Business Model**: See `./business_plan.md` for details on what is being built
 - **Functional Requirements**: See `./functional_requirements.md` for functional requirements
 - **Non-Functional Requirements**: See `./non_functional_requirements.md` for non-functional requirements
 

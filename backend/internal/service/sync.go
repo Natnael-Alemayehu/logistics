@@ -102,7 +102,7 @@ func (s *SyncService) Sync(ctx context.Context, tenantID, driverID string, req m
 
 	for _, status := range req.GetStatusUpdates() {
 		// TODO: Pass status.GetRecordedAt() to UpdateStatus once UpdateStatusInput supports RecordedAt field
-		_, err := s.shipment.UpdateStatus(ctx, tenantID, driverID, status.ShipmentID, UpdateStatusInput{
+		_, err := s.shipment.UpdateStatus(ctx, tenantID, driverID, "driver", status.ShipmentID, UpdateStatusInput{
 			Status:       status.Status,
 			StatusNote:   status.Note,
 			StatusReason: status.Reason,

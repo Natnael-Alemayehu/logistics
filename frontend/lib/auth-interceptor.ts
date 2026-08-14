@@ -44,7 +44,8 @@ export async function refreshAccessToken(): Promise<string> {
     throw new Error('Failed to refresh token')
   }
 
-  const data: RefreshResponse = await response.json()
+  const responseData = await response.json()
+  const data: RefreshResponse = responseData.data ?? responseData
   const { access_token, refresh_token } = data
 
   useAuthStore.getState().setTokens(access_token, refresh_token)

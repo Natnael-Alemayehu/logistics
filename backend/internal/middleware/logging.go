@@ -128,16 +128,13 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 
 			rc := &responseCapture{ResponseWriter: w}
 
-			// Create a wrapper that captures the context after the request is processed
-			var capturedCtx = r.Context()
+			var finalCtx context.Context
 
-			// Wrap the response writer to capture context on WriteHeader
-			wrappedW := &contextCapturingWriter{
-				ResponseWriter: rc,
-				captureCtx: func(ctx context.Context) {
-					capturedCtx = ctx
-				},
-			}
+			// Wrap the handler to capture context after middleware runs
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				finalCtx = r.Context()
+				next.ServeHTTP(w, r)
+			})
 
 			defer func() {
 				duration := time.Since(start)
@@ -149,8 +146,13 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 				level := statusLevel(status)
 				event := logger.WithLevel(level)
 
+				ctx := finalCtx
+				if ctx == nil {
+					ctx = r.Context()
+				}
+
 				event.
-					Str("request_id", middleware.GetReqID(capturedCtx)).
+					Str("request_id", middleware.GetReqID(ctx)).
 					Str("method", r.Method).
 					Str("path", r.URL.Path).
 					Str("query", r.URL.RawQuery).
@@ -158,8 +160,8 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 					Int("bytes", rc.bytes).
 					Dur("duration", duration).
 					Str("remote_addr", r.RemoteAddr).
-					Str("tenant_id", GetTenantID(capturedCtx)).
-					Str("user_id", GetUserID(capturedCtx))
+					Str("tenant_id", GetTenantID(ctx)).
+					Str("user_id", GetUserID(ctx))
 
 				if status >= 400 && len(requestBody) > 0 {
 					event.Str("request_body", redactSensitiveData(requestBody))
@@ -172,17 +174,7 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 				event.Msg("request completed")
 			}()
 
-			next.ServeHTTP(wrappedW, r)
+			handler.ServeHTTP(rc, r)
 		})
 	}
-}
-
-// contextCapturingWriter wraps ResponseWriter to capture context changes
-type contextCapturingWriter struct {
-	http.ResponseWriter
-	captureCtx func(context.Context)
-}
-
-func (w *contextCapturingWriter) WriteHeader(statusCode int) {
-	w.ResponseWriter.WriteHeader(statusCode)
 }

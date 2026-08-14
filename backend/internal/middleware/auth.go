@@ -117,3 +117,47 @@ func GetClaims(ctx context.Context) *jwt.Claims {
 	}
 	return nil
 }
+
+func WsAuth(jwtManager *jwt.JWTManager) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := extractToken(r)
+			if token == "" {
+				response.ErrorJSON(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Missing authentication token")
+				return
+			}
+
+			claims, err := jwtManager.Validate(token)
+			if err != nil {
+				response.ErrorJSON(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired token")
+				return
+			}
+
+			ctx := r.Context()
+			ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
+			ctx = context.WithValue(ctx, TenantIDKey, claims.TenantID)
+			ctx = context.WithValue(ctx, SessionIDKey, claims.SessionID)
+			ctx = context.WithValue(ctx, RoleKey, claims.Role)
+			ctx = context.WithValue(ctx, ClaimsKey, claims)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func extractToken(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		parts := strings.Split(authHeader, " ")
+		if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+			return parts[1]
+		}
+	}
+
+	token := r.URL.Query().Get("token")
+	if token != "" {
+		return token
+	}
+
+	return ""
+}
