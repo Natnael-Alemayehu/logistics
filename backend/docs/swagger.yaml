@@ -1,0 +1,2132 @@
+definitions:
+  handler.ActivityOutput:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+    type: object
+  handler.AlertOutput:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+    type: object
+  handler.ChangePasswordInput:
+    properties:
+      current_password:
+        minLength: 8
+        type: string
+      new_password:
+        minLength: 8
+        type: string
+    required:
+    - current_password
+    - new_password
+    type: object
+  handler.DashboardStatsOutput:
+    properties:
+      active_shipments:
+        type: integer
+      deliveries_today:
+        type: integer
+      drivers_on_duty:
+        type: integer
+      issues_count:
+        type: integer
+    type: object
+  handler.DriverLocationOutput:
+    properties:
+      driver_id:
+        type: string
+      driver_name:
+        type: string
+      last_update:
+        type: string
+      lat:
+        type: number
+      lng:
+        type: number
+      status:
+        type: string
+    type: object
+  handler.ForgotPINInput:
+    properties:
+      driver_id:
+        type: string
+    required:
+    - driver_id
+    type: object
+  handler.HealthResponse:
+    properties:
+      database:
+        example: connected
+        type: string
+      status:
+        example: healthy
+        type: string
+      timestamp:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      version:
+        example: 1.0.0
+        type: string
+    type: object
+  handler.RegisterPushTokenInput:
+    properties:
+      app_version:
+        type: string
+      device_id:
+        type: string
+      platform:
+        enum:
+        - ios
+        - android
+        - web
+        type: string
+      push_token:
+        type: string
+    required:
+    - device_id
+    - platform
+    - push_token
+    type: object
+  handler.UpdateUserInput:
+    properties:
+      email:
+        type: string
+      full_name:
+        type: string
+      phone:
+        type: string
+    type: object
+  model.Conflict:
+    properties:
+      local_value:
+        type: string
+      resolution:
+        type: string
+      server_value:
+        type: string
+      shipment_id:
+        type: string
+      type:
+        type: string
+    type: object
+  model.DeviceToken:
+    properties:
+      app_version:
+        type: string
+      created_at:
+        type: string
+      device_id:
+        type: string
+      id:
+        type: string
+      platform:
+        type: string
+      push_token:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.DriverStats:
+    properties:
+      active_shipments:
+        type: integer
+      deliveries_month:
+        type: integer
+      deliveries_today:
+        type: integer
+      deliveries_week:
+        type: integer
+      total_deliveries:
+        type: integer
+    type: object
+  model.PODInput:
+    properties:
+      delivery_address:
+        type: string
+      delivery_lat:
+        type: number
+      delivery_lng:
+        type: number
+      delivery_notes:
+        type: string
+      location_mismatch_meters:
+        type: number
+      location_verified:
+        type: boolean
+      photo_urls:
+        items:
+          type: string
+        type: array
+      recipient_name:
+        type: string
+      recipient_phone:
+        type: string
+      recorded_at:
+        type: string
+      shipment_id:
+        type: string
+      signature_data:
+        type: string
+    type: object
+  model.Session:
+    properties:
+      created_at:
+        type: string
+      device_id:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      ip_address:
+        type: string
+      is_current_session:
+        type: boolean
+      revoked_at:
+        type: string
+      tenant_id:
+        type: string
+      user_agent:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.Shipment:
+    properties:
+      actual_delivery:
+        type: string
+      cargo_description:
+        type: string
+      cargo_value:
+        type: number
+      cargo_weight:
+        type: number
+      created_at:
+        type: string
+      created_by:
+        type: string
+      customer_name:
+        type: string
+      customer_phone:
+        type: string
+      destination_address:
+        type: string
+      destination_lat:
+        type: number
+      destination_lng:
+        type: number
+      driver_id:
+        type: string
+      estimated_delivery:
+        type: string
+      id:
+        type: string
+      origin_address:
+        type: string
+      origin_lat:
+        type: number
+      origin_lng:
+        type: number
+      special_instructions:
+        type: string
+      status:
+        type: string
+      status_note:
+        type: string
+      status_reason:
+        type: string
+      tenant_id:
+        type: string
+      tracking_number:
+        type: string
+      updated_at:
+        type: string
+      vehicle_id:
+        type: string
+    type: object
+  model.StatusUpdateInput:
+    properties:
+      note:
+        type: string
+      reason:
+        type: string
+      recorded_at:
+        type: string
+      shipment_id:
+        type: string
+      status:
+        type: string
+      timestamp:
+        type: string
+    type: object
+  model.SyncPullData:
+    properties:
+      messages:
+        items:
+          type: string
+        type: array
+      shipments:
+        items:
+          $ref: '#/definitions/model.Shipment'
+        type: array
+      updates:
+        items:
+          type: string
+        type: array
+    type: object
+  model.SyncRequest:
+    properties:
+      battery_level:
+        type: integer
+      device_id:
+        type: string
+      events:
+        items:
+          $ref: '#/definitions/model.TrackingEventInput'
+        type: array
+      last_sync_at:
+        type: string
+      pods:
+        items:
+          $ref: '#/definitions/model.PODInput'
+        type: array
+      status_updates:
+        items:
+          $ref: '#/definitions/model.StatusUpdateInput'
+        type: array
+      statuses:
+        items:
+          $ref: '#/definitions/model.StatusUpdateInput'
+        type: array
+      storage_remaining_kb:
+        type: integer
+    type: object
+  model.SyncResponse:
+    properties:
+      conflicts:
+        items:
+          $ref: '#/definitions/model.Conflict'
+        type: array
+      deleted_shipment_ids:
+        items:
+          type: string
+        type: array
+      events_received:
+        type: integer
+      pull:
+        $ref: '#/definitions/model.SyncPullData'
+      server_time:
+        type: string
+      sync_time:
+        type: string
+    type: object
+  model.TrackingEventInput:
+    properties:
+      accuracy:
+        type: number
+      event_type:
+        type: string
+      heading:
+        type: number
+      latitude:
+        type: number
+      longitude:
+        type: number
+      note:
+        type: string
+      recorded_at:
+        type: string
+      shipment_id:
+        type: string
+      speed:
+        type: number
+      status:
+        type: string
+    type: object
+  model.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      phone:
+        type: string
+      role:
+        type: string
+      tenant_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.Vehicle:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      plate_number:
+        type: string
+      tenant_id:
+        type: string
+      updated_at:
+        type: string
+      vehicle_type:
+        type: string
+    type: object
+  response.Error:
+    properties:
+      code:
+        type: string
+      details: {}
+      message:
+        type: string
+    type: object
+  response.Meta:
+    properties:
+      page:
+        type: integer
+      per_page:
+        type: integer
+      request_id:
+        type: string
+      total:
+        type: integer
+    type: object
+  response.Response:
+    properties:
+      data: {}
+      error:
+        $ref: '#/definitions/response.Error'
+      meta:
+        $ref: '#/definitions/response.Meta'
+    type: object
+  service.AssignDriverInput:
+    properties:
+      driver_id:
+        type: string
+    required:
+    - driver_id
+    type: object
+  service.CancelShipmentInput:
+    properties:
+      reason:
+        type: string
+    required:
+    - reason
+    type: object
+  service.CreateDriverInput:
+    properties:
+      full_name:
+        type: string
+      phone:
+        type: string
+      pin:
+        type: string
+    required:
+    - full_name
+    - phone
+    - pin
+    type: object
+  service.CreateShipmentInput:
+    properties:
+      cargo_description:
+        type: string
+      cargo_value:
+        type: number
+      cargo_weight:
+        type: number
+      customer_name:
+        type: string
+      customer_phone:
+        type: string
+      destination_address:
+        type: string
+      driver_id:
+        type: string
+      origin_address:
+        type: string
+      special_instructions:
+        type: string
+      vehicle_id:
+        type: string
+    required:
+    - customer_name
+    - customer_phone
+    - destination_address
+    - origin_address
+    type: object
+  service.CreateUserInput:
+    properties:
+      email:
+        type: string
+      full_name:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      phone:
+        type: string
+      role:
+        enum:
+        - dispatcher
+        - fleet_manager
+        - admin
+        type: string
+    required:
+    - email
+    - full_name
+    - password
+    - role
+    type: object
+  service.CreateVehicleInput:
+    properties:
+      plate_number:
+        type: string
+      vehicle_type:
+        type: string
+    required:
+    - plate_number
+    type: object
+  service.DispatcherLoginInput:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  service.DriverLocationOutput:
+    properties:
+      accuracy_meters:
+        type: number
+      battery_level:
+        type: integer
+      driver_id:
+        type: string
+      event_type:
+        type: string
+      heading:
+        type: number
+      latitude:
+        type: number
+      longitude:
+        type: number
+      recorded_at:
+        type: string
+      speed_kph:
+        type: number
+      synced_at:
+        type: string
+    type: object
+  service.DriverLoginInput:
+    properties:
+      phone:
+        type: string
+      pin:
+        type: string
+    required:
+    - phone
+    - pin
+    type: object
+  service.LoginOutput:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/model.User'
+    type: object
+  service.PODOutput:
+    properties:
+      delivery_address:
+        type: string
+      delivery_lat:
+        type: number
+      delivery_lng:
+        type: number
+      delivery_notes:
+        type: string
+      driver_id:
+        type: string
+      id:
+        type: string
+      location_mismatch_meters:
+        type: number
+      location_verified:
+        type: boolean
+      photo_urls:
+        items:
+          type: string
+        type: array
+      recipient_name:
+        type: string
+      recipient_phone:
+        type: string
+      recorded_at:
+        type: string
+      shipment_id:
+        type: string
+      signature_url:
+        type: string
+      synced_at:
+        type: string
+    type: object
+  service.UpdateShipmentInput:
+    properties:
+      cargo_description:
+        type: string
+      cargo_value:
+        type: number
+      cargo_weight:
+        type: number
+      customer_name:
+        type: string
+      customer_phone:
+        type: string
+      destination_address:
+        type: string
+      driver_id:
+        type: string
+      estimated_delivery:
+        type: string
+      origin_address:
+        type: string
+      special_instructions:
+        type: string
+      vehicle_id:
+        type: string
+    type: object
+  service.UpdateStatusInput:
+    properties:
+      status:
+        enum:
+        - pending
+        - assigned
+        - in_transit
+        - delayed
+        - arrived
+        - delivered
+        - issue
+        - cancelled
+        type: string
+      status_note:
+        type: string
+      status_reason:
+        type: string
+    required:
+    - status
+    type: object
+  service.UpdateVehicleInput:
+    properties:
+      is_active:
+        type: boolean
+      plate_number:
+        type: string
+      vehicle_type:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /auth/change-password:
+    post:
+      consumes:
+      - application/json
+      description: Change the current user's password. Requires current password for
+        verification.
+      parameters:
+      - description: Password change data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ChangePasswordInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Change password
+      tags:
+      - auth
+  /auth/forgot-pin:
+    post:
+      consumes:
+      - application/json
+      description: Request a PIN reset for a driver. Sends new PIN via SMS. Requires
+        admin role or self.
+      parameters:
+      - description: Driver ID
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ForgotPINInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Request PIN reset for driver
+      tags:
+      - auth
+  /auth/login/dispatcher:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a dispatcher or admin using email and password
+      parameters:
+      - description: Login credentials
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.DispatcherLoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.LoginOutput'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Dispatcher login
+      tags:
+      - auth
+  /auth/login/driver:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a driver using phone number and PIN
+      parameters:
+      - description: Login credentials
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.DriverLoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.LoginOutput'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Driver login
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      description: Logout and revoke the current session
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Logout user
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Get a new access token using a refresh token
+      parameters:
+      - description: Refresh token
+        in: body
+        name: input
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.LoginOutput'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Refresh access token
+      tags:
+      - auth
+  /dashboard/activity:
+    get:
+      description: Get recent activity for the dispatcher dashboard
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/handler.ActivityOutput'
+              type: array
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get dashboard activity
+      tags:
+      - dashboard
+  /dashboard/alerts:
+    get:
+      description: Get recent alerts for the dispatcher dashboard
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/handler.AlertOutput'
+              type: array
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get dashboard alerts
+      tags:
+      - dashboard
+  /dashboard/stats:
+    get:
+      description: Get overview statistics for the dispatcher dashboard including
+        active shipments, drivers on duty, deliveries today, and issues count
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.DashboardStatsOutput'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get dashboard statistics
+      tags:
+      - dashboard
+  /driver/stats:
+    get:
+      description: Get delivery counts for today, week, month, and total for the authenticated
+        driver
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.DriverStats'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get driver delivery statistics
+      tags:
+      - driver
+  /driver/vehicle:
+    get:
+      description: Get the vehicle assigned to the driver for their current active
+        shipment
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Vehicle'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get driver's current vehicle assignment
+      tags:
+      - driver
+  /drivers:
+    get:
+      description: Get paginated list of drivers
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 25
+        description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List drivers
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Create a new driver account
+      parameters:
+      - description: Driver data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateDriverInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Create a driver
+      tags:
+      - users
+  /drivers/{id}/location:
+    get:
+      description: Get the last tracking event with coordinates for a driver, for
+        dispatcher dashboard
+      parameters:
+      - description: Driver ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.DriverLocationOutput'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get driver's last known location
+      tags:
+      - tracking
+  /drivers/locations:
+    get:
+      description: Get the latest known locations of all drivers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.DriverLocationOutput'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get latest driver locations
+      tags:
+      - drivers
+  /health:
+    get:
+      description: Check if the service is running and healthy
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+      summary: Health check
+      tags:
+      - system
+  /my-shipments:
+    get:
+      description: Get active shipments for the logged-in driver
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Shipment'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List driver's shipments
+      tags:
+      - shipments
+  /notifications/device/{deviceId}:
+    delete:
+      description: Remove a device's push notification token
+      parameters:
+      - description: Device ID
+        in: path
+        name: deviceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Unregister a device
+      tags:
+      - notifications
+  /notifications/register:
+    post:
+      consumes:
+      - application/json
+      description: Register or update a device's push notification token
+      parameters:
+      - description: Push token data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RegisterPushTokenInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.DeviceToken'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Register push notification token
+      tags:
+      - notifications
+  /sessions:
+    get:
+      description: Get all active sessions for the current user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Session'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List active sessions
+      tags:
+      - sessions
+  /sessions/{id}:
+    delete:
+      description: Revoke a specific session by ID
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Revoke a session
+      tags:
+      - sessions
+  /sessions/others:
+    delete:
+      consumes:
+      - application/json
+      description: Revoke all sessions except the current one
+      parameters:
+      - description: Current session ID
+        in: body
+        name: input
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Revoke other sessions
+      tags:
+      - sessions
+  /shipments:
+    get:
+      description: Get paginated list of shipments
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 25
+        description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List shipments
+      tags:
+      - shipments
+    post:
+      consumes:
+      - application/json
+      description: Create a new shipment
+      parameters:
+      - description: Shipment data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateShipmentInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Create a shipment
+      tags:
+      - shipments
+  /shipments/{id}:
+    get:
+      description: Get shipment details by ID
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get a shipment
+      tags:
+      - shipments
+    put:
+      consumes:
+      - application/json
+      description: Update shipment details
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Shipment data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.UpdateShipmentInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update a shipment
+      tags:
+      - shipments
+  /shipments/{id}/assign:
+    put:
+      consumes:
+      - application/json
+      description: Assign a driver to a shipment
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Driver ID
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.AssignDriverInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Assign driver to shipment
+      tags:
+      - shipments
+  /shipments/{id}/cancel:
+    post:
+      consumes:
+      - application/json
+      description: Cancel a shipment with a reason
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Cancellation reason
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.CancelShipmentInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Cancel a shipment
+      tags:
+      - shipments
+  /shipments/{id}/pod:
+    get:
+      description: Get POD details for a delivered shipment including recipient info,
+        signature URL, and photo URLs
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/service.PODOutput'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get proof of delivery for a shipment
+      tags:
+      - tracking
+  /shipments/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Update the status of a shipment
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.UpdateStatusInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update shipment status
+      tags:
+      - shipments
+    put:
+      consumes:
+      - application/json
+      description: Update the status of a shipment
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.UpdateStatusInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update shipment status
+      tags:
+      - shipments
+  /shipments/{id}/tracking:
+    get:
+      description: Get paginated list of tracking events for a shipment, sorted by
+        recorded_at descending
+      parameters:
+      - description: Shipment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 25
+        description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List tracking events for a shipment
+      tags:
+      - tracking
+  /shipments/search:
+    get:
+      description: Search shipments with various filters
+      parameters:
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - description: Filter by driver ID
+        in: query
+        name: driver_id
+        type: string
+      - description: Filter by origin address
+        in: query
+        name: origin
+        type: string
+      - description: Filter by destination address
+        in: query
+        name: destination
+        type: string
+      - description: Search query (tracking number, customer name, phone)
+        in: query
+        name: q
+        type: string
+      - description: From date (RFC3339)
+        in: query
+        name: date_from
+        type: string
+      - description: To date (RFC3339)
+        in: query
+        name: date_to
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 25
+        description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Search shipments
+      tags:
+      - shipments
+  /sync:
+    post:
+      consumes:
+      - application/json
+      description: Sync offline data from driver app (events, PODs, status updates)
+      parameters:
+      - description: Sync data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/model.SyncRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.SyncResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Sync offline data
+      tags:
+      - sync
+  /track/{tracking_number}:
+    get:
+      description: Get shipment details by tracking number (public endpoint)
+      parameters:
+      - description: Tracking number
+        in: path
+        name: tracking_number
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Shipment'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Track a shipment
+      tags:
+      - tracking
+  /users:
+    get:
+      description: Get paginated list of all users (admin only)
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 25
+        description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      description: Create a new user (dispatcher/admin)
+      parameters:
+      - description: User data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateUserInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Create a user
+      tags:
+      - users
+  /users/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Update user's name, phone, or email. Password change should use
+        /auth/change-password.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User update data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateUserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update user details
+      tags:
+      - users
+  /vehicles:
+    get:
+      description: Get paginated list of vehicles
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 25
+        description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List vehicles
+      tags:
+      - vehicles
+    post:
+      consumes:
+      - application/json
+      description: Create a new vehicle
+      parameters:
+      - description: Vehicle data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateVehicleInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Vehicle'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Create a vehicle
+      tags:
+      - vehicles
+  /vehicles/{id}:
+    delete:
+      description: Delete a vehicle (soft delete)
+      parameters:
+      - description: Vehicle ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Delete a vehicle
+      tags:
+      - vehicles
+    get:
+      description: Get vehicle details by ID
+      parameters:
+      - description: Vehicle ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Vehicle'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Get a vehicle
+      tags:
+      - vehicles
+    put:
+      consumes:
+      - application/json
+      description: Update vehicle details
+      parameters:
+      - description: Vehicle ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Vehicle data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/service.UpdateVehicleInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Vehicle'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: Update a vehicle
+      tags:
+      - vehicles
+  /vehicles/active:
+    get:
+      description: Get list of all active vehicles
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Vehicle'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - BearerAuth: []
+      summary: List active vehicles
+      tags:
+      - vehicles
+swagger: "2.0"

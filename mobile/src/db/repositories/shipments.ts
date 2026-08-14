@@ -1,0 +1,180 @@
+import { getDatabase } from '../database';
+import type { ShipmentStatus } from '@/types/shipment';
+
+export interface Shipment {
+  id: string;
+  tenant_id?: string;
+  tracking_number: string;
+  origin_address: string;
+  origin_lat?: number;
+  origin_lng?: number;
+  destination_address: string;
+  destination_lat?: number;
+  destination_lng?: number;
+  customer_name: string;
+  customer_phone: string;
+  cargo_description?: string;
+  cargo_weight?: number;
+  cargo_value?: number;
+  special_instructions?: string;
+  driver_id?: string;
+  vehicle_id?: string;
+  status: ShipmentStatus | string;
+  status_note?: string;
+  status_reason?: string;
+  estimated_delivery?: string;
+  actual_delivery?: string;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  synced_at?: string;
+}
+
+export async function getAll(): Promise<Shipment[]> {
+  const db = await getDatabase();
+  return await db.getAllAsync<Shipment>(
+    'SELECT * FROM shipments ORDER BY created_at DESC'
+  );
+}
+
+export async function getById(id: string): Promise<Shipment | null> {
+  const db = await getDatabase();
+  return await db.getFirstAsync<Shipment>(
+    'SELECT * FROM shipments WHERE id = ?',
+    [id]
+  );
+}
+
+export async function getByStatus(status: string): Promise<Shipment[]> {
+  const db = await getDatabase();
+  return await db.getAllAsync<Shipment>(
+    'SELECT * FROM shipments WHERE status = ? ORDER BY created_at DESC',
+    [status]
+  );
+}
+
+export async function upsert(shipment: Shipment): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO shipments (
+      id, tracking_number, origin_address, origin_lat, origin_lng,
+      destination_address, destination_lat, destination_lng, customer_name,
+      customer_phone, cargo_description, cargo_weight, cargo_value,
+      special_instructions, status, status_note, status_reason,
+      driver_id, vehicle_id, estimated_delivery, actual_delivery,
+      synced_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      shipment.id,
+      shipment.tracking_number,
+      shipment.origin_address,
+      shipment.origin_lat ?? null,
+      shipment.origin_lng ?? null,
+      shipment.destination_address,
+      shipment.destination_lat ?? null,
+      shipment.destination_lng ?? null,
+      shipment.customer_name,
+      shipment.customer_phone,
+      shipment.cargo_description ?? null,
+      shipment.cargo_weight ?? null,
+      shipment.cargo_value ?? null,
+      shipment.special_instructions ?? null,
+      shipment.status,
+      shipment.status_note ?? null,
+      shipment.status_reason ?? null,
+      shipment.driver_id ?? null,
+      shipment.vehicle_id ?? null,
+      shipment.estimated_delivery ?? null,
+      shipment.actual_delivery ?? null,
+      shipment.synced_at ?? null,
+      shipment.created_at,
+      shipment.updated_at,
+    ]
+  );
+}
+
+export async function upsertMany(shipments: Shipment[]): Promise<void> {
+  const db = await getDatabase();
+  
+  await db.withTransactionAsync(async () => {
+    for (const shipment of shipments) {
+      await upsert(shipment);
+    }
+  });
+}
+
+export async function update(id: string, updates: Partial<Shipment>): Promise<void> {
+  const db = await getDatabase();
+  
+  const fields: string[] = [];
+  const values: (string | number | null)[] = [];
+  
+  for (const [key, value] of Object.entries(updates)) {
+    fields.push(`${key} = ?`);
+    values.push(value ?? null);
+  }
+  
+  fields.push('updated_at = ?');
+  values.push(new Date().toISOString());
+  values.push(id);
+  
+  await db.runAsync(
+    `UPDATE shipments SET ${fields.join(', ')} WHERE id = ?`,
+    values
+  );
+}
+
+export async function deleteShipment(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM shipments WHERE id = ?', [id]);
+}
+
+export async function clearAll(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM shipments');
+}
+
+export async function getByDriverId(driverId: string): Promise<Shipment[]> {
+  const db = await getDatabase();
+  return await db.getAllAsync<Shipment>(
+    'SELECT * FROM shipments WHERE driver_id = ? ORDER BY created_at DESC',
+    [driverId]
+  );
+}
+
+export async function deleteByStatus(status: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM shipments WHERE status = ?', [status]);
+}
+
+export async function batchDelete(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  
+  const db = await getDatabase();
+  const placeholders = ids.map(() => '?').join(', ');
+  await db.runAsync(
+    `DELETE FROM shipments WHERE id IN (${placeholders})`,
+    ids
+  );
+}
+
+export async function getCountsByStatus(): Promise<Record<string, number>> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<{ status: string; count: number }>(
+    'SELECT status, COUNT(*) as count FROM shipments GROUP BY status'
+  );
+  
+  const counts: Record<string, number> = {};
+  for (const row of results) {
+    counts[row.status] = row.count;
+  }
+  return counts;
+}
+
+export async function getStaleSyncs(olderThan: Date): Promise<Shipment[]> {
+  const db = await getDatabase();
+  return await db.getAllAsync<Shipment>(
+    'SELECT * FROM shipments WHERE synced_at IS NULL OR synced_at < ? ORDER BY created_at DESC',
+    [olderThan.toISOString()]
+  );
+}

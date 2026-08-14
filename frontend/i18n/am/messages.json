@@ -1,0 +1,67 @@
+{
+  "common": {
+    "search": "ፈልግ",
+    "save": "አስቀምጥ",
+    "cancel": "ሰርዝ",
+    "delete": "ሰርዝ",
+    "edit": "አርትዕ",
+    "loading": "በመጫን ላይ...",
+    "error": "ስህተት"
+  },
+  "auth": {
+    "login": "ግባ",
+    "logout": "ውጣ",
+    "email": "ኢሜይል",
+    "password": "የይለፍ ቃል",
+    "loginTitle": "ዲስፓቸር ግባ",
+    "loginDescription": "ዳሽቦርዱን ለማሳየት ማረጋገጫዎን ያስገቡ"
+  },
+  "dashboard": {
+    "title": "ዳሽቦርድ",
+    "activeShipments": "ንቁ ማጓጓዣዎች",
+    "driversOnDuty": "በስራ ላይ ያሉ ነጂዎች",
+    "deliveriesToday": "ዛሬ የተላሉ እቃዎች",
+    "issues": "ችግሮች"
+  },
+  "shipments": {
+    "title": "ማጓጓዣዎች",
+    "newShipment": "አዲስ ማጓጓዣ",
+    "trackingNumber": "የመከታተያ ቁጥር",
+    "status": "ሁኔታ",
+    "customer": "ደንበኛ",
+    "origin": "መነሻ",
+    "destination": "መድረሻ"
+  },
+  "drivers": {
+    "title": "ነጂዎች",
+    "addDriver": "ነጂ አክል"
+  },
+  "vehicles": {
+    "title": "ተሽከርካሪዎች",
+    "addVehicle": "ተሽከርካሪ አክል"
+  },
+  "reports": {
+    "title": "ሪፖርቶች"
+  },
+  "settings": {
+    "title": "ቅንብሮች"
+  },
+  "admin": {
+    "users": "ተጠቃሚዎች"
+  },
+  "track": {
+    "title": "ማጓጓዣዎን ይከታተሉ",
+    "placeholder": "የመከታተያ ቁጥር ያስገቡ",
+    "notFound": "ማጓጓዣ አልተገኘም"
+  },
+  "status": {
+    "pending": "በመጠባበቅ ላይ",
+    "assigned": "ተመድቧል",
+    "in_transit": "በመንገድ ላይ",
+    "delayed": "ዘግይቷል",
+    "arrived": "ደርሷል",
+    "delivered": "ተልኳል",
+    "issue": "ችግር",
+    "cancelled": "ተሰርዟል"
+  }
+}
