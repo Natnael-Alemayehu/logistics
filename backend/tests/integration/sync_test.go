@@ -552,7 +552,7 @@ func TestSync_HTTP(t *testing.T) {
 		"statuses": []
 	}`, time.Now().Add(-1*time.Hour).Format(time.RFC3339), shipment.ID, now)
 
-	req := httptest.NewRequest(http.MethodPost, "/sync", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, apiPrefix+"/sync", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
 	rec := httptest.NewRecorder()

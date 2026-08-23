@@ -672,7 +672,7 @@ func TestShipmentCreation_HTTP(t *testing.T) {
 		"customer_phone": "0911111111",
 		"cargo_description": "Test cargo"
 	}`
-	req := httptest.NewRequest(http.MethodPost, "/shipments", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, apiPrefix+"/shipments", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
 	rec := httptest.NewRecorder()
@@ -699,7 +699,7 @@ func TestShipmentGet_HTTP(t *testing.T) {
 		Email:    "ship-get-http@test.com",
 		Password: "password123",
 	}, "127.0.0.1", "test-agent")
-	req := httptest.NewRequest(http.MethodGet, "/shipments/"+shipment.ID, nil)
+	req := httptest.NewRequest(http.MethodGet, apiPrefix+"/shipments/"+shipment.ID, nil)
 	req.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
 	rec := httptest.NewRecorder()
 	env.GetRouter().ServeHTTP(rec, req)
@@ -735,7 +735,7 @@ func TestShipmentCancel_HTTP(t *testing.T) {
 		Password: "password123",
 	}, "127.0.0.1", "test-agent")
 	body := `{"reason": "Customer requested cancellation"}`
-	req := httptest.NewRequest(http.MethodPost, "/shipments/"+shipment.ID+"/cancel", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, apiPrefix+"/shipments/"+shipment.ID+"/cancel", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
 	rec := httptest.NewRecorder()
@@ -766,7 +766,7 @@ func TestTrackShipment_HTTP_Public(t *testing.T) {
 		CustomerName:       "Test Customer",
 		CustomerPhone:      "0911111111",
 	}, "127.0.0.1", "test-agent")
-	req := httptest.NewRequest(http.MethodGet, "/track/"+shipment.TrackingNumber, nil)
+	req := httptest.NewRequest(http.MethodGet, apiPrefix+"/track/"+shipment.TrackingNumber, nil)
 	rec := httptest.NewRecorder()
 	env.GetRouter().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -802,7 +802,7 @@ func TestShipmentSearch_HTTP(t *testing.T) {
 		Email:    "ship-search-http@test.com",
 		Password: "password123",
 	}, "127.0.0.1", "test-agent")
-	req := httptest.NewRequest(http.MethodGet, "/shipments/search?status=pending&page=1&per_page=10", nil)
+	req := httptest.NewRequest(http.MethodGet, apiPrefix+"/shipments/search?status=pending&page=1&per_page=10", nil)
 	req.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
 	rec := httptest.NewRecorder()
 	env.GetRouter().ServeHTTP(rec, req)

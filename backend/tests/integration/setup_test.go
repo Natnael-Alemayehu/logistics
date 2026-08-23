@@ -47,6 +47,10 @@ func toInt32(i int) *int32 {
 	return &v
 }
 
+// apiPrefix is the version prefix every application route is mounted under.
+// Tests drive the real router, so request paths must include it.
+const apiPrefix = "/api/v1"
+
 // migrationsDir is the production migration directory, resolved relative to
 // this package. Tests run against the same files the API migrates with so the
 // two schemas cannot drift.

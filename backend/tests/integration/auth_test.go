@@ -610,7 +610,7 @@ func TestDriverLogin_HTTP(t *testing.T) {
 	_ = env.CreateTestDriver(ctx, tenant.ID.String(), "0988877766")
 
 	body := `{"phone": "0988877766", "pin": "1234"}`
-	req := httptest.NewRequest(http.MethodPost, "/auth/login/driver", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, apiPrefix+"/auth/login/driver", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -644,7 +644,7 @@ func TestDispatcherLogin_HTTP(t *testing.T) {
 	_ = env.CreateTestDispatcher(ctx, tenant.ID.String(), "dispatcher-http@test.com")
 
 	body := `{"email": "dispatcher-http@test.com", "password": "password123"}`
-	req := httptest.NewRequest(http.MethodPost, "/auth/login/dispatcher", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, apiPrefix+"/auth/login/dispatcher", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -693,7 +693,7 @@ func TestLogin_InvalidRequest_HTTP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, tt.endpoint, strings.NewReader(tt.body))
+			req := httptest.NewRequest(http.MethodPost, apiPrefix+tt.endpoint, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 
@@ -720,7 +720,7 @@ func TestLogout_HTTP(t *testing.T) {
 		Password: "password123",
 	}, "127.0.0.1", "test-agent")
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	req := httptest.NewRequest(http.MethodPost, apiPrefix+"/auth/logout", nil)
 	req.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
 	rec := httptest.NewRecorder()
 
@@ -746,7 +746,7 @@ func TestRefreshToken_HTTP(t *testing.T) {
 	}, "127.0.0.1", "test-agent")
 
 	body := fmt.Sprintf(`{"refresh_token": "%s"}`, loginResult.RefreshToken)
-	req := httptest.NewRequest(http.MethodPost, "/auth/refresh", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, apiPrefix+"/auth/refresh", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
