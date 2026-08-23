@@ -765,6 +765,8 @@ func TestTrackShipment_HTTP_Public(t *testing.T) {
 		DestinationAddress: "Dire Dawa",
 		CustomerName:       "Test Customer",
 		CustomerPhone:      "0911111111",
+		CargoDescription:   "40 laptops",
+		CargoValue:         1500000,
 	}, "127.0.0.1", "test-agent")
 	req := httptest.NewRequest(http.MethodGet, apiPrefix+"/track/"+shipment.TrackingNumber, nil)
 	rec := httptest.NewRecorder()
@@ -780,6 +782,25 @@ func TestTrackShipment_HTTP_Public(t *testing.T) {
 	}
 	if data["tracking_number"] != shipment.TrackingNumber {
 		t.Errorf("expected tracking number %s, got %v", shipment.TrackingNumber, data["tracking_number"])
+	}
+
+	// This endpoint is unauthenticated, so assert on the wire format itself:
+	// anyone holding a tracking number gets exactly this and no more.
+	for _, forbidden := range []string{
+		"customer_name", "customer_phone",
+		"cargo_description", "cargo_weight", "cargo_value",
+		"special_instructions",
+		"tenant_id", "driver_id", "vehicle_id", "created_by", "id",
+	} {
+		if _, present := data[forbidden]; present {
+			t.Errorf("public tracking response exposes %q: %s", forbidden, rec.Body.String())
+		}
+	}
+
+	if body := rec.Body.String(); strings.Contains(body, "Test Customer") ||
+		strings.Contains(body, "0911111111") ||
+		strings.Contains(body, "40 laptops") {
+		t.Errorf("public tracking response leaks customer or cargo details: %s", body)
 	}
 }
 func TestShipmentSearch_HTTP(t *testing.T) {

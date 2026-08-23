@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shipments/status-badge'
 import { EmptyState } from '@/components/shared'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Package, Search, Loader2, MapPin, Phone, Calendar, User } from 'lucide-react'
+import { Package, Search, Loader2, MapPin, Calendar } from 'lucide-react'
 
 function TrackingSkeleton() {
   return (
@@ -130,24 +130,6 @@ export default function TrackPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-start gap-3">
-                      <User className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Customer</p>
-                        <p className="font-medium">
-                          {shipment.customer_name}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <Phone className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Contact</p>
-                        <p className="font-medium">
-                          {shipment.customer_phone}
-                        </p>
-                      </div>
-                    </div>
                     <div className="flex items-start gap-3 sm:col-span-2">
                       <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
                       <div>
@@ -169,15 +151,6 @@ export default function TrackPage() {
                       </div>
                     </div>
                   </div>
-
-                  {shipment.cargo_description && (
-                    <div className="border-t pt-4">
-                      <p className="text-sm text-muted-foreground">Cargo</p>
-                      <p className="font-medium">
-                        {shipment.cargo_description}
-                      </p>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </div>

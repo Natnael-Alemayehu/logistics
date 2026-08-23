@@ -1795,7 +1795,7 @@ const docTemplate = `{
         },
         "/track/{tracking_number}": {
             "get": {
-                "description": "Get shipment details by tracking number (public endpoint)",
+                "description": "Get customer-facing shipment status by tracking number (public, unauthenticated). Returns a reduced projection: no customer contact details, cargo information or internal identifiers.",
                 "produces": [
                     "application/json"
                 ],
@@ -1816,7 +1816,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.Shipment"
+                            "$ref": "#/definitions/model.PublicShipment"
                         }
                     },
                     "404": {
@@ -2593,6 +2593,35 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "signature_data": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.PublicShipment": {
+            "type": "object",
+            "properties": {
+                "actual_delivery": {
+                    "type": "string"
+                },
+                "destination_address": {
+                    "type": "string"
+                },
+                "estimated_delivery": {
+                    "type": "string"
+                },
+                "origin_address": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "status_note": {
+                    "type": "string"
+                },
+                "tracking_number": {
+                    "type": "string"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }
