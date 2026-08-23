@@ -111,19 +111,24 @@ ORDER BY created_at DESC
 LIMIT $3 OFFSET $4;
 
 -- name: AdvancedSearchShipments :many
+-- Every filter is optional, and NULL means "no constraint". The parameters must
+-- be genuinely nullable for that to work: the caller previously passed an empty
+-- string for an unset filter, which is not NULL, so each guard fell through to
+-- `status = ''` and the search matched nothing at all.
 SELECT * FROM shipments
-WHERE tenant_id = $1
-  AND ($2::text IS NULL OR status = $2)
-  AND ($3::uuid IS NULL OR driver_id = $3)
-  AND ($4::timestamptz IS NULL OR created_at >= $4)
-  AND ($5::timestamptz IS NULL OR created_at <= $5)
-  AND ($6::text IS NULL OR origin_address ILIKE '%' || $6 || '%')
-  AND ($7::text IS NULL OR destination_address ILIKE '%' || $7 || '%')
-  AND ($8::text IS NULL OR tracking_number ILIKE '%' || $8 || '%'
-       OR customer_name ILIKE '%' || $8 || '%'
-       OR customer_phone ILIKE '%' || $8 || '%')
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
+  AND (sqlc.narg(driver_id)::uuid IS NULL OR driver_id = sqlc.narg(driver_id)::uuid)
+  AND (sqlc.narg(date_from)::timestamptz IS NULL OR created_at >= sqlc.narg(date_from)::timestamptz)
+  AND (sqlc.narg(date_to)::timestamptz IS NULL OR created_at <= sqlc.narg(date_to)::timestamptz)
+  AND (sqlc.narg(origin)::text IS NULL OR origin_address ILIKE '%' || sqlc.narg(origin)::text || '%')
+  AND (sqlc.narg(destination)::text IS NULL OR destination_address ILIKE '%' || sqlc.narg(destination)::text || '%')
+  AND (sqlc.narg(query)::text IS NULL
+       OR tracking_number ILIKE '%' || sqlc.narg(query)::text || '%'
+       OR customer_name ILIKE '%' || sqlc.narg(query)::text || '%'
+       OR customer_phone ILIKE '%' || sqlc.narg(query)::text || '%')
 ORDER BY created_at DESC
-LIMIT $9 OFFSET $10;
+LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 
 -- name: GetShipmentsForSync :many
 -- A NULL cursor means the client has never synced, so there is no lower bound

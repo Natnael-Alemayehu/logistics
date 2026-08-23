@@ -14,44 +14,49 @@ import (
 const advancedSearchShipments = `-- name: AdvancedSearchShipments :many
 SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tenant_id = $1
-  AND ($2::text IS NULL OR status = $2)
-  AND ($3::uuid IS NULL OR driver_id = $3)
-  AND ($4::timestamptz IS NULL OR created_at >= $4)
-  AND ($5::timestamptz IS NULL OR created_at <= $5)
-  AND ($6::text IS NULL OR origin_address ILIKE '%' || $6 || '%')
-  AND ($7::text IS NULL OR destination_address ILIKE '%' || $7 || '%')
-  AND ($8::text IS NULL OR tracking_number ILIKE '%' || $8 || '%'
-       OR customer_name ILIKE '%' || $8 || '%'
-       OR customer_phone ILIKE '%' || $8 || '%')
+  AND ($2::text IS NULL OR status = $2::text)
+  AND ($3::uuid IS NULL OR driver_id = $3::uuid)
+  AND ($4::timestamptz IS NULL OR created_at >= $4::timestamptz)
+  AND ($5::timestamptz IS NULL OR created_at <= $5::timestamptz)
+  AND ($6::text IS NULL OR origin_address ILIKE '%' || $6::text || '%')
+  AND ($7::text IS NULL OR destination_address ILIKE '%' || $7::text || '%')
+  AND ($8::text IS NULL
+       OR tracking_number ILIKE '%' || $8::text || '%'
+       OR customer_name ILIKE '%' || $8::text || '%'
+       OR customer_phone ILIKE '%' || $8::text || '%')
 ORDER BY created_at DESC
-LIMIT $9 OFFSET $10
+LIMIT $10 OFFSET $9
 `
 
 type AdvancedSearchShipmentsParams struct {
-	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	Column2  string             `db:"column_2" json:"column_2"`
-	Column3  pgtype.UUID        `db:"column_3" json:"column_3"`
-	Column4  pgtype.Timestamptz `db:"column_4" json:"column_4"`
-	Column5  pgtype.Timestamptz `db:"column_5" json:"column_5"`
-	Column6  string             `db:"column_6" json:"column_6"`
-	Column7  string             `db:"column_7" json:"column_7"`
-	Column8  string             `db:"column_8" json:"column_8"`
-	Limit    int32              `db:"limit" json:"limit"`
-	Offset   int32              `db:"offset" json:"offset"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Status      *string            `db:"status" json:"status"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
+	Query       *string            `db:"query" json:"query"`
+	RowOffset   int32              `db:"row_offset" json:"row_offset"`
+	RowLimit    int32              `db:"row_limit" json:"row_limit"`
 }
 
+// Every filter is optional, and NULL means "no constraint". The parameters must
+// be genuinely nullable for that to work: the caller previously passed an empty
+// string for an unset filter, which is not NULL, so each guard fell through to
+// `status = ”` and the search matched nothing at all.
 func (q *Queries) AdvancedSearchShipments(ctx context.Context, arg AdvancedSearchShipmentsParams) ([]Shipment, error) {
 	rows, err := q.db.Query(ctx, advancedSearchShipments,
 		arg.TenantID,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Limit,
-		arg.Offset,
+		arg.Status,
+		arg.DriverID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.Origin,
+		arg.Destination,
+		arg.Query,
+		arg.RowOffset,
+		arg.RowLimit,
 	)
 	if err != nil {
 		return nil, err

@@ -100,6 +100,16 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 	trackingNumber := generateTrackingNumber()
 	customerPhone := validation.NormalizeEthiopianPhone(input.CustomerPhone)
 
+	// A shipment created with a driver is already assigned. Leaving it 'pending'
+	// kept it out of ListActiveShipmentsByDriver and the driver's sync pull, so
+	// dispatching at creation time produced work the driver never saw — while
+	// assigning the same driver a moment later, via AssignDriverToShipment, set
+	// 'assigned' correctly.
+	status := "pending"
+	if input.DriverID != "" {
+		status = "assigned"
+	}
+
 	shipment, err := s.queries.CreateShipment(ctx, db.CreateShipmentParams{
 		TenantID:            toUUID(tenantID),
 		TrackingNumber:      trackingNumber,
@@ -113,7 +123,7 @@ func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string
 		SpecialInstructions: toText(input.SpecialInstructions),
 		DriverID:            toUUID(input.DriverID),
 		VehicleID:           toUUID(input.VehicleID),
-		Status:              "pending",
+		Status:              status,
 		CreatedBy:           toUUID(createdBy),
 	})
 	if err != nil {
@@ -494,37 +504,20 @@ func (s *ShipmentService) Search(ctx context.Context, tenantID string, input Sea
 		dateTo = pgtype.Timestamptz{Time: *input.DateTo, Valid: true}
 	}
 
-	status := ""
-	if input.Status != "" {
-		status = input.Status
-	}
-
-	query := ""
-	if input.Query != "" {
-		query = input.Query
-	}
-
-	origin := ""
-	if input.Origin != "" {
-		origin = input.Origin
-	}
-
-	destination := ""
-	if input.Destination != "" {
-		destination = input.Destination
-	}
-
+	// toText maps an empty filter to nil, which the query reads as "no
+	// constraint". Passing "" instead would compare against the empty string and
+	// match nothing.
 	shipments, err := s.queries.AdvancedSearchShipments(ctx, db.AdvancedSearchShipmentsParams{
-		TenantID: toUUID(tenantID),
-		Column2:  status,
-		Column3:  toUUID(input.DriverID),
-		Column4:  dateFrom,
-		Column5:  dateTo,
-		Column6:  origin,
-		Column7:  destination,
-		Column8:  query,
-		Limit:    int32(input.PerPage),
-		Offset:   int32(offset),
+		TenantID:    toUUID(tenantID),
+		Status:      toText(input.Status),
+		DriverID:    toUUID(input.DriverID),
+		DateFrom:    dateFrom,
+		DateTo:      dateTo,
+		Origin:      toText(input.Origin),
+		Destination: toText(input.Destination),
+		Query:       toText(input.Query),
+		RowLimit:    int32(input.PerPage),
+		RowOffset:   int32(offset),
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to search shipments: %w", err)
