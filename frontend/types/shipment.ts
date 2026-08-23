@@ -138,3 +138,23 @@ export interface UpdateStatusInput {
   status_note?: string
   status_reason?: string
 }
+
+/**
+ * Customer-facing shipment view returned by the public tracking endpoint.
+ *
+ * Mirrors model.PublicShipment on the backend. Deliberately narrower than
+ * Shipment: the endpoint is unauthenticated, so it carries no customer contact
+ * details, no cargo information and no internal identifiers. Typing the hook to
+ * this rather than Shipment means re-adding a field to the tracking page is a
+ * compile error instead of a quiet data leak.
+ */
+export interface PublicShipment {
+  tracking_number: string
+  status: ShipmentStatus
+  status_note?: string
+  origin_address: string
+  destination_address: string
+  estimated_delivery?: string
+  actual_delivery?: string
+  updated_at: string
+}

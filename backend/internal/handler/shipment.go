@@ -375,11 +375,11 @@ func (h *Handler) SearchShipments(w http.ResponseWriter, r *http.Request) {
 // TrackShipment godoc
 //
 //	@Summary		Track a shipment
-//	@Description	Get shipment details by tracking number (public endpoint)
+//	@Description	Get customer-facing shipment status by tracking number (public, unauthenticated). Returns a reduced projection: no customer contact details, cargo information or internal identifiers.
 //	@Tags			tracking
 //	@Produce		json
 //	@Param			tracking_number	path		string	true	"Tracking number"
-//	@Success		200				{object}	model.Shipment
+//	@Success		200				{object}	model.PublicShipment
 //	@Failure		404				{object}	response.Response
 //	@Router			/track/{tracking_number} [get]
 func (h *Handler) TrackShipment(w http.ResponseWriter, r *http.Request) {
@@ -391,5 +391,6 @@ func (h *Handler) TrackShipment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, r, http.StatusOK, shipment)
+	// Unauthenticated endpoint: never serve the full record here.
+	response.JSON(w, r, http.StatusOK, shipment.ToPublic())
 }

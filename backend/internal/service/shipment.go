@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"time"
@@ -97,7 +98,11 @@ type SearchShipmentsInput struct {
 }
 
 func (s *ShipmentService) Create(ctx context.Context, tenantID, createdBy string, input CreateShipmentInput, ipAddress, userAgent string) (*model.Shipment, error) {
-	trackingNumber := generateTrackingNumber()
+	trackingNumber, err := generateTrackingNumber()
+	if err != nil {
+		return nil, err
+	}
+
 	customerPhone := validation.NormalizeEthiopianPhone(input.CustomerPhone)
 
 	// A shipment created with a driver is already assigned. Leaving it 'pending'
@@ -576,6 +581,39 @@ func dbShipmentToModel(sh *db.Shipment) *model.Shipment {
 	return m
 }
 
-func generateTrackingNumber() string {
-	return fmt.Sprintf("ET-%s-%04d", time.Now().Format("20060102"), time.Now().Nanosecond()/100000)
+// trackingCodeAlphabet is Crockford base32: no I, L, O or U, so a code cannot be
+// misheard or mistyped between 1/I/L and 0/O. Customers read these out over the
+// phone and receive them by SMS, so that matters more than density.
+const trackingCodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+// trackingCodeLength gives 32^10 (~2^50) codes per day. The tracking endpoint is
+// public and unauthenticated, so the code is the only thing standing between an
+// outsider and the shipment: it has to be unguessable, not merely unique.
+const trackingCodeLength = 10
+
+// generateTrackingNumber returns an unpredictable tracking number.
+//
+// The previous implementation derived the suffix from the clock
+// (Nanosecond()/100000), giving 10,000 possible values per day in a documented
+// format. Anyone could walk the whole space for a given date and read every
+// shipment in the system — across all tenants — off the public tracking
+// endpoint. It also collided whenever two shipments were created within the
+// same 100 microseconds, which the UNIQUE constraint turned into a failed
+// creation.
+//
+// The date prefix is kept because support staff and drivers use it to age a
+// shipment at a glance; it narrows nothing, as the suffix carries the entropy.
+func generateTrackingNumber() (string, error) {
+	code := make([]byte, trackingCodeLength)
+	if _, err := rand.Read(code); err != nil {
+		return "", fmt.Errorf("failed to generate tracking number: %w", err)
+	}
+
+	// 256 is a whole multiple of the 32-character alphabet, so the modulo
+	// introduces no bias.
+	for i, b := range code {
+		code[i] = trackingCodeAlphabet[b%byte(len(trackingCodeAlphabet))]
+	}
+
+	return fmt.Sprintf("ET-%s-%s", time.Now().Format("20060102"), code), nil
 }
