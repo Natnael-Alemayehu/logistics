@@ -53,6 +53,10 @@ type Querier interface {
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
 	GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams) (Shipment, error)
 	GetShipmentByTrackingNumber(ctx context.Context, trackingNumber string) (Shipment, error)
+	// A NULL cursor means the client has never synced, so there is no lower bound
+	// and everything assigned to the driver is returned. Without the explicit NULL
+	// check, "updated_at > NULL" evaluates to NULL rather than true, and a first
+	// sync silently pulled only shipments already in an active status.
 	GetShipmentsForSync(ctx context.Context, arg GetShipmentsForSyncParams) ([]Shipment, error)
 	GetTenantByID(ctx context.Context, id pgtype.UUID) (Tenant, error)
 	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
