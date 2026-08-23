@@ -1,3 +1,4 @@
+basePath: /api/v1
 definitions:
   handler.ActivityOutput:
     properties:
@@ -152,6 +153,8 @@ definitions:
     type: object
   model.PODInput:
     properties:
+      client_id:
+        type: string
       delivery_address:
         type: string
       delivery_lat:
@@ -257,6 +260,8 @@ definitions:
     type: object
   model.StatusUpdateInput:
     properties:
+      client_id:
+        type: string
       note:
         type: string
       reason:
@@ -268,6 +273,19 @@ definitions:
       status:
         type: string
       timestamp:
+        type: string
+    type: object
+  model.SyncItemResult:
+    properties:
+      client_id:
+        type: string
+      code:
+        type: string
+      index:
+        type: integer
+      message:
+        type: string
+      status:
         type: string
     type: object
   model.SyncPullData:
@@ -322,12 +340,32 @@ definitions:
         items:
           type: string
         type: array
+      events:
+        description: |-
+          Per-item outcomes, positionally aligned with the corresponding request
+          collection. A client must only mark a record synced when its result says
+          accepted or duplicate.
+        items:
+          $ref: '#/definitions/model.SyncItemResult'
+        type: array
       events_received:
+        description: |-
+          EventsReceived counts accepted items across all three collections. It
+          predates the per-item results below and is retained so that clients which
+          have not yet shipped result handling keep working.
         type: integer
+      pods:
+        items:
+          $ref: '#/definitions/model.SyncItemResult'
+        type: array
       pull:
         $ref: '#/definitions/model.SyncPullData'
       server_time:
         type: string
+      statuses:
+        items:
+          $ref: '#/definitions/model.SyncItemResult'
+        type: array
       sync_time:
         type: string
     type: object
@@ -335,6 +373,8 @@ definitions:
     properties:
       accuracy:
         type: number
+      client_id:
+        type: string
       event_type:
         type: string
       heading:
@@ -621,6 +661,14 @@ definitions:
     type: object
   service.UpdateStatusInput:
     properties:
+      recorded_at:
+        description: |-
+          RecordedAt is when the client observed the change. Offline drivers queue
+          updates for hours, so one that predates the shipment's last modification
+          describes a world that has already moved on and must not overwrite newer
+          state. The zero value means "not supplied" and skips the check, which is
+          what online callers submitting a change right now send.
+        type: string
       status:
         enum:
         - pending
@@ -648,8 +696,16 @@ definitions:
       vehicle_type:
         type: string
     type: object
+host: localhost:8080
 info:
-  contact: {}
+  contact:
+    email: support@logistics.et
+    name: API Support
+  description: API for managing logistics operations including shipments, drivers,
+    vehicles, and tracking
+  termsOfService: http://swagger.io/terms/
+  title: Ethiopian Logistics Tracking Platform API
+  version: "1.0"
 paths:
   /auth/change-password:
     post:
@@ -2129,4 +2185,10 @@ paths:
       summary: List active vehicles
       tags:
       - vehicles
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

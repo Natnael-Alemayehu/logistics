@@ -9,7 +9,11 @@ const docTemplate = `{
     "info": {
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
-        "contact": {},
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "API Support",
+            "email": "support@logistics.et"
+        },
         "version": "{{.Version}}"
     },
     "host": "{{.Host}}",
@@ -2549,6 +2553,9 @@ const docTemplate = `{
         "model.PODInput": {
             "type": "object",
             "properties": {
+                "client_id": {
+                    "type": "string"
+                },
                 "delivery_address": {
                     "type": "string"
                 },
@@ -2708,6 +2715,9 @@ const docTemplate = `{
         "model.StatusUpdateInput": {
             "type": "object",
             "properties": {
+                "client_id": {
+                    "type": "string"
+                },
                 "note": {
                     "type": "string"
                 },
@@ -2724,6 +2734,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.SyncItemResult": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -2807,14 +2837,34 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "events": {
+                    "description": "Per-item outcomes, positionally aligned with the corresponding request\ncollection. A client must only mark a record synced when its result says\naccepted or duplicate.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.SyncItemResult"
+                    }
+                },
                 "events_received": {
+                    "description": "EventsReceived counts accepted items across all three collections. It\npredates the per-item results below and is retained so that clients which\nhave not yet shipped result handling keep working.",
                     "type": "integer"
+                },
+                "pods": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.SyncItemResult"
+                    }
                 },
                 "pull": {
                     "$ref": "#/definitions/model.SyncPullData"
                 },
                 "server_time": {
                     "type": "string"
+                },
+                "statuses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.SyncItemResult"
+                    }
                 },
                 "sync_time": {
                     "type": "string"
@@ -2826,6 +2876,9 @@ const docTemplate = `{
             "properties": {
                 "accuracy": {
                     "type": "number"
+                },
+                "client_id": {
+                    "type": "string"
                 },
                 "event_type": {
                     "type": "string"
@@ -3260,6 +3313,10 @@ const docTemplate = `{
                 "status"
             ],
             "properties": {
+                "recorded_at": {
+                    "description": "RecordedAt is when the client observed the change. Offline drivers queue\nupdates for hours, so one that predates the shipment's last modification\ndescribes a world that has already moved on and must not overwrite newer\nstate. The zero value means \"not supplied\" and skips the check, which is\nwhat online callers submitting a change right now send.",
+                    "type": "string"
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -3295,17 +3352,25 @@ const docTemplate = `{
                 }
             }
         }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Type \"Bearer\" followed by a space and JWT token.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
     }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "",
-	Host:             "",
-	BasePath:         "",
+	Version:          "1.0",
+	Host:             "localhost:8080",
+	BasePath:         "/api/v1",
 	Schemes:          []string{},
-	Title:            "",
-	Description:      "",
+	Title:            "Ethiopian Logistics Tracking Platform API",
+	Description:      "API for managing logistics operations including shipments, drivers, vehicles, and tracking",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
