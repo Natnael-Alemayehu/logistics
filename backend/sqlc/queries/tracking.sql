@@ -1,11 +1,15 @@
 -- name: CreateTrackingEvent :one
+-- client_id carries the offline client's own row identifier. Paired with
+-- device_id it is what a retried batch conflicts on, so replaying a batch whose
+-- response was lost cannot duplicate telemetry. Clients that send no client_id
+-- are excluded from the unique index and behave as before.
 INSERT INTO tracking_events (
     tenant_id, shipment_id, driver_id,
     coordinates, accuracy_meters, speed_kph, heading,
     event_type, status, note,
-    recorded_at, device_id, battery_level
+    recorded_at, device_id, battery_level, client_id
 ) VALUES (
-    $1, $2, $3, ST_MakePoint($4, $5)::geometry(Point, 4326), $6, $7, $8, $9, $10, $11, $12, $13, $14
+    $1, $2, $3, ST_MakePoint($4, $5)::geometry(Point, 4326), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
 ) RETURNING *;
 
 -- name: ListTrackingEventsByShipment :many

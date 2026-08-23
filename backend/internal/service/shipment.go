@@ -345,8 +345,12 @@ func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, userID, us
 		}
 	}
 
-	if !input.RecordedAt.IsZero() && oldShipment.UpdatedAt.Valid &&
-		input.RecordedAt.Before(oldShipment.UpdatedAt.Time) {
+	// Compare against the last status change, not updated_at: the latter moves
+	// for any modification at all, so using it would reject a driver reporting a
+	// transition they genuinely observed before an unrelated edit. A NULL means
+	// the status has never been changed, so there is nothing to be stale against.
+	if !input.RecordedAt.IsZero() && oldShipment.StatusChangedAt.Valid &&
+		input.RecordedAt.Before(oldShipment.StatusChangedAt.Time) {
 		return nil, ErrStaleUpdate
 	}
 

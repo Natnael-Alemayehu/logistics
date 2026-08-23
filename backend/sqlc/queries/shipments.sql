@@ -85,6 +85,7 @@ SET status = $1,
         WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, NOW())
         ELSE actual_delivery
     END,
+    status_changed_at = NOW(),
     updated_at = NOW()
 WHERE id = $4 AND tenant_id = $5
 RETURNING *;

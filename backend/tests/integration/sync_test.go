@@ -446,11 +446,28 @@ func TestSync_InvalidShipmentID(t *testing.T) {
 	})
 
 	if err != nil {
-		t.Fatalf("sync should not fail for invalid shipment: %v", err)
+		t.Fatalf("sync should not fail the whole batch for one bad item: %v", err)
 	}
 
 	if syncResp.EventsReceived != 0 {
 		t.Errorf("expected 0 events received for invalid shipment, got %d", syncResp.EventsReceived)
+	}
+
+	// The client must be told *why*, not just handed a lower count: silently
+	// dropping the event is what let unpersisted data be marked as synced.
+	if len(syncResp.Events) != 1 {
+		t.Fatalf("expected 1 per-item result, got %d", len(syncResp.Events))
+	}
+
+	result := syncResp.Events[0]
+	if result.Status != model.SyncItemRejected {
+		t.Errorf("expected event to be rejected, got %q", result.Status)
+	}
+	if result.Code != model.SyncErrInvalidShipmentID {
+		t.Errorf("expected code %q, got %q", model.SyncErrInvalidShipmentID, result.Code)
+	}
+	if result.Index != 0 {
+		t.Errorf("expected result to identify item 0, got %d", result.Index)
 	}
 }
 

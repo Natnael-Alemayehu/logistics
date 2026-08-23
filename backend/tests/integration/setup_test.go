@@ -24,6 +24,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/pkg/hash"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
+	"github.com/natnael-alemayehu/logistics/pkg/storage"
 	"github.com/natnael-alemayehu/logistics/pkg/validation"
 	"github.com/rs/zerolog"
 	"github.com/testcontainers/testcontainers-go"
@@ -63,6 +64,7 @@ type TestEnv struct {
 	jwtManager *jwt.JWTManager
 	router     *chi.Mux
 	handler    *handler.Handler
+	podStorage *service.PODStorageService
 	t          *testing.T
 	cleanupFns []func()
 }
@@ -173,7 +175,16 @@ func (e *TestEnv) setupServices() {
 	auditService := service.NewAuditService(e.queries)
 	authService := service.NewAuthService(e.queries, e.jwtManager, auditService)
 	shipmentService := service.NewShipmentService(e.queries, auditService, nil, nil)
-	syncService := service.NewSyncService(e.queries, shipmentService, nil)
+
+	// Real local-filesystem storage rooted in the test's temp dir, so the POD
+	// upload path is exercised rather than stubbed out.
+	podStore, err := storage.NewLocalStorage(e.t.TempDir())
+	if err != nil {
+		e.t.Fatalf("failed to create POD storage: %v", err)
+	}
+	e.podStorage = service.NewPODStorageServiceWithStorage(e.queries, podStore)
+
+	syncService := service.NewSyncService(e.queries, shipmentService, nil, e.podStorage, zerolog.Nop())
 	userService := service.NewUserService(e.queries, auditService)
 	vehicleService := service.NewVehicleService(e.queries)
 	trackingService := service.NewTrackingService(e.queries, auditService)
@@ -364,7 +375,11 @@ func (e *TestEnv) GetShipmentService() *service.ShipmentService {
 
 func (e *TestEnv) GetSyncService() *service.SyncService {
 	shipmentService := e.GetShipmentService()
-	return service.NewSyncService(e.queries, shipmentService, nil)
+	return service.NewSyncService(e.queries, shipmentService, nil, e.podStorage, zerolog.Nop())
+}
+
+func (e *TestEnv) GetPODStorageService() *service.PODStorageService {
+	return e.podStorage
 }
 
 func (e *TestEnv) GetQueries() *db.Queries {
