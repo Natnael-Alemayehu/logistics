@@ -96,6 +96,9 @@ type Querier interface {
 	UpdatePODSyncedAt(ctx context.Context, id pgtype.UUID) error
 	UpdatePassword(ctx context.Context, arg UpdatePasswordParams) (User, error)
 	UpdateShipment(ctx context.Context, arg UpdateShipmentParams) (Shipment, error)
+	// actual_delivery is stamped the first time a shipment reaches 'delivered' and
+	// preserved thereafter, so a re-sent status update cannot move the timestamp.
+	// The driver stats and delivery-count queries read this column.
 	UpdateShipmentStatus(ctx context.Context, arg UpdateShipmentStatusParams) (Shipment, error)
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
