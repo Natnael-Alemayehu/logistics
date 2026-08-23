@@ -525,7 +525,11 @@ const getShipmentsForSync = `-- name: GetShipmentsForSync :many
 SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
 WHERE driver_id = $1
   AND tenant_id = $2
-  AND (status IN ('assigned', 'in_transit', 'delayed', 'arrived') OR updated_at > $3)
+  AND (
+    status IN ('assigned', 'in_transit', 'delayed', 'arrived')
+    OR $3::timestamptz IS NULL
+    OR updated_at > $3::timestamptz
+  )
 ORDER BY created_at DESC
 `
 
@@ -535,6 +539,10 @@ type GetShipmentsForSyncParams struct {
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+// A NULL cursor means the client has never synced, so there is no lower bound
+// and everything assigned to the driver is returned. Without the explicit NULL
+// check, "updated_at > NULL" evaluates to NULL rather than true, and a first
+// sync silently pulled only shipments already in an active status.
 func (q *Queries) GetShipmentsForSync(ctx context.Context, arg GetShipmentsForSyncParams) ([]Shipment, error) {
 	rows, err := q.db.Query(ctx, getShipmentsForSync, arg.DriverID, arg.TenantID, arg.UpdatedAt)
 	if err != nil {

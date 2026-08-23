@@ -125,10 +125,18 @@ ORDER BY created_at DESC
 LIMIT $9 OFFSET $10;
 
 -- name: GetShipmentsForSync :many
+-- A NULL cursor means the client has never synced, so there is no lower bound
+-- and everything assigned to the driver is returned. Without the explicit NULL
+-- check, "updated_at > NULL" evaluates to NULL rather than true, and a first
+-- sync silently pulled only shipments already in an active status.
 SELECT * FROM shipments
 WHERE driver_id = $1
   AND tenant_id = $2
-  AND (status IN ('assigned', 'in_transit', 'delayed', 'arrived') OR updated_at > $3)
+  AND (
+    status IN ('assigned', 'in_transit', 'delayed', 'arrived')
+    OR sqlc.narg(updated_at)::timestamptz IS NULL
+    OR updated_at > sqlc.narg(updated_at)::timestamptz
+  )
 ORDER BY created_at DESC;
 
 -- name: CountActiveShipmentsByTenant :one

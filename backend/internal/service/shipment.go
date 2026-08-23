@@ -59,9 +59,22 @@ type UpdateStatusInput struct {
 	Status       string `json:"status" validate:"required,oneof=pending assigned in_transit delayed arrived delivered issue cancelled"`
 	StatusNote   string `json:"status_note"`
 	StatusReason string `json:"status_reason"`
+
+	// RecordedAt is when the client observed the change. Offline drivers queue
+	// updates for hours, so one that predates the shipment's last modification
+	// describes a world that has already moved on and must not overwrite newer
+	// state. The zero value means "not supplied" and skips the check, which is
+	// what online callers submitting a change right now send.
+	RecordedAt time.Time `json:"recorded_at"`
 }
 
-var ErrNotAssigned = errors.New("driver not assigned to this shipment")
+var (
+	ErrNotAssigned = errors.New("driver not assigned to this shipment")
+
+	// ErrStaleUpdate is returned when a status update is older than the state it
+	// would overwrite.
+	ErrStaleUpdate = errors.New("status update is older than the current shipment state")
+)
 
 type AssignDriverInput struct {
 	DriverID string `json:"driver_id" validate:"required,uuid"`
@@ -330,6 +343,11 @@ func (s *ShipmentService) UpdateStatus(ctx context.Context, tenantID, userID, us
 		if oldShipment.DriverID.Bytes != userUUID.Bytes {
 			return nil, ErrNotAssigned
 		}
+	}
+
+	if !input.RecordedAt.IsZero() && oldShipment.UpdatedAt.Valid &&
+		input.RecordedAt.Before(oldShipment.UpdatedAt.Time) {
+		return nil, ErrStaleUpdate
 	}
 
 	shipment, err := s.queries.UpdateShipmentStatus(ctx, db.UpdateShipmentStatusParams{
