@@ -319,6 +319,16 @@ func TestSync_PullDataIncremental(t *testing.T) {
 		DriverID:           driver.ID,
 	}, "127.0.0.1", "test-agent")
 
+	// Finished work is what the cursor is allowed to filter out. Shipments still
+	// in an active status are returned regardless of how long ago they changed,
+	// so that a driver never loses sight of an outstanding delivery — only a
+	// terminal one can legitimately fall behind the cursor.
+	if _, err := shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", oldShipment.ID, service.UpdateStatusInput{
+		Status: "delivered",
+	}, "127.0.0.1", "test-agent"); err != nil {
+		t.Fatalf("failed to complete old shipment: %v", err)
+	}
+
 	lastSyncTime := time.Now().Add(100 * time.Millisecond)
 
 	time.Sleep(150 * time.Millisecond)
@@ -351,7 +361,7 @@ func TestSync_PullDataIncremental(t *testing.T) {
 	}
 
 	if pulledIDs[oldShipment.ID] {
-		t.Error("old shipment should not be pulled with incremental sync")
+		t.Error("completed shipment predating the cursor should not be pulled")
 	}
 
 	if !pulledIDs[newShipment.ID] {

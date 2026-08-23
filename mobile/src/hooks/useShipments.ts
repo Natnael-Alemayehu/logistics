@@ -3,13 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as shipmentsApi from '@/services/api/shipments';
 import * as shipmentsDb from '@/db/repositories/shipments';
 import * as syncMetadataRepo from '@/db/repositories/syncMetadata';
+import * as statusUpdatesDb from '@/db/repositories/statusUpdates';
 import { useConnectivity } from './useConnectivity';
 import { useAuthStore } from '@/store/authStore';
 import { useTrackingStore } from '@/store/trackingStore';
 import { startLocationTracking, stopLocationTracking, getCurrentLocation } from '@/services/location';
 import { getTrackingContext, clearTrackingContext } from '@/services/location/trackingContext';
 import { insert as insertTrackingEvent } from '@/db/repositories/trackingEvents';
-import type { Shipment } from '@/types/shipment';
+import type { Shipment, ShipmentStatus } from '@/types/shipment';
 import type { Shipment as DbShipment } from '@/db/repositories/shipments';
 
 export type { Shipment };
@@ -112,14 +113,32 @@ export function useShipments() {
       reason,
     }: {
       shipmentId: string;
-      status: string;
+      status: ShipmentStatus;
       note?: string;
       reason?: string;
     }) => {
-      if (isOnline) {
-        await shipmentsApi.updateStatus(shipmentId, status, note, reason);
-      }
+      // Queue the change before touching local state. status_updates is what
+      // the sync push reads, and without a row here an offline status change
+      // lived only in the local shipments row and was silently overwritten by
+      // the next pull — the driver's update never reached the server at all.
+      await statusUpdatesDb.insert({
+        shipment_id: shipmentId,
+        status,
+        note,
+        reason,
+        recorded_at: new Date().toISOString(),
+      });
+
       await shipmentsDb.update(shipmentId, { status });
+
+      if (isOnline) {
+        // Best effort: on failure the queued row is picked up by the next sync.
+        try {
+          await shipmentsApi.updateStatus(shipmentId, status, note, reason);
+        } catch {
+          // Intentionally ignored; the change is already queued for sync.
+        }
+      }
     },
     onMutate: async ({ shipmentId, status }) => {
       await queryClient.cancelQueries({ queryKey: ['shipments'] });
@@ -166,7 +185,7 @@ export function useShipments() {
   }, [isOnline, refetch]);
 
   const updateStatus = useCallback(
-    (shipmentId: string, status: string, note?: string, reason?: string) => {
+    (shipmentId: string, status: ShipmentStatus, note?: string, reason?: string) => {
       return updateStatusMutation.mutateAsync({ shipmentId, status, note, reason });
     },
     [updateStatusMutation]

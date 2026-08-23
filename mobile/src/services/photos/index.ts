@@ -206,3 +206,22 @@ export function formatFileSize(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
+
+/**
+ * Reads a stored photo back as a base64 data URI for upload.
+ *
+ * The sync payload carries image bytes, not device paths: a localUri is
+ * meaningful only on the handset that captured it, so sending one produced
+ * proof-of-delivery records pointing at files nobody else could open.
+ *
+ * Photos are already compressed to 800x600 at quality 0.7 by createPODPhoto, so
+ * the encoded form stays small enough for a poor connection.
+ */
+export async function readPhotoAsBase64(uri: string): Promise<string> {
+  const file = new File(uri);
+  if (!file.exists) {
+    throw new Error(`photo no longer exists on device: ${uri}`);
+  }
+
+  return `data:image/jpeg;base64,${await file.base64()}`;
+}

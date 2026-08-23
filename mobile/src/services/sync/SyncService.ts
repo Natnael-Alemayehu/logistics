@@ -2,11 +2,15 @@ import { SyncQueueManager, syncQueueManager } from './SyncQueueManager';
 import { conflictResolver } from './ConflictResolver';
 import ConflictResolver from './ConflictResolver';
 import { SyncQueueItem, SyncBatch, SyncBatchResult, QueueStats } from './types';
+import { SyncItemResult, SyncResponse, indexResults, isPersisted } from './contract';
+import { readPhotoAsBase64 } from '@/services/photos';
+import type { PODPhoto } from '@/types/pod';
 import { api } from '@/services/api/client';
 import { API_ENDPOINTS } from '@/services/constants';
 import * as trackingEventsRepo from '@/db/repositories/trackingEvents';
 import * as podsRepo from '@/db/repositories/pods';
 import * as shipmentsRepo from '@/db/repositories/shipments';
+import * as statusUpdatesRepo from '@/db/repositories/statusUpdates';
 import * as syncMetadataRepo from '@/db/repositories/syncMetadata';
 import { ResolutionStrategy, SyncConflict, ResolvedData } from '@/types/conflict';
 import { getDatabase } from '@/db/database';
@@ -188,6 +192,15 @@ class SyncService {
     let conflicts = 0;
 
     try {
+      // Push before pull. pullChanges upserts server rows over local ones, so
+      // pulling first would overwrite local edits that have not been sent yet
+      // and the driver's work would vanish before it was ever transmitted.
+      if (!options?.skipPush) {
+        this.updateProgress({ phase: 'pushing', message: 'Pushing local changes...' });
+        const pushResult = await this.pushChanges(options?.entityTypes);
+        pushed = pushResult.trackingEvents + pushResult.pods + pushResult.statusUpdates;
+      }
+
       if (!options?.skipPull) {
         this.updateProgress({ phase: 'pulling', message: 'Pulling changes from server...' });
         const pullResult = await this.pullChanges(
@@ -196,27 +209,31 @@ class SyncService {
         pulled = pullResult.shipments + pullResult.deletedShipments;
       }
 
-      if (!options?.skipPush) {
-        this.updateProgress({ phase: 'pushing', message: 'Pushing local changes...' });
-        const pushResult = await this.pushChanges(options?.entityTypes);
-        pushed = pushResult.trackingEvents + pushResult.pods + pushResult.statusUpdates;
-      }
-
       this.updateProgress({ phase: 'processing_queue', message: 'Processing sync queue...' });
       const queueResult = await this.processSyncQueue();
       conflicts = queueResult.conflicts;
 
       const syncTime = new Date().toISOString();
-      await syncMetadataRepo.updateLastSync(new Date(syncTime));
+
+      // Anything still unsent means the device and server disagree, so the
+      // cursor must not move: advancing it would skip the server-side changes
+      // that arrive between now and the next successful sync. Reporting success
+      // here is what let syncStore clear the error banner after a total failure.
+      const succeeded = this.errors.length === 0;
+      if (succeeded) {
+        await syncMetadataRepo.updateLastSync(new Date(syncTime));
+      }
 
       this.updateProgress({
-        phase: 'completed',
-        message: 'Sync completed successfully',
+        phase: succeeded ? 'completed' : 'error',
+        message: succeeded
+          ? 'Sync completed successfully'
+          : `Sync finished with ${this.errors.length} unsynced item(s)`,
         percentage: 100,
       });
 
       return {
-        success: true,
+        success: succeeded,
         pulled,
         pushed,
         conflicts,
@@ -341,6 +358,75 @@ class SyncService {
     return result;
   }
 
+  /**
+   * Applies the server's per-item verdicts to a batch.
+   *
+   * Only rows the server confirmed are marked synced. Anything it rejected keeps
+   * synced_at NULL and records the reason, and anything missing from the
+   * response is left untouched so the next sync retries it. Marking a whole
+   * batch synced because the request did not throw is what silently discarded
+   * drivers' work.
+   */
+  private async applyResults(
+    entityType: 'tracking_events' | 'pods' | 'status_updates',
+    localIds: string[],
+    results: SyncItemResult[] | undefined,
+    markSynced: (id: string, syncedAt: string) => Promise<void>,
+    markRejected: (id: string, error: string) => Promise<void>
+  ): Promise<number> {
+    const byLocalId = indexResults(results, localIds);
+    const syncedAt = new Date().toISOString();
+    let persisted = 0;
+
+    for (const localId of localIds) {
+      const result = byLocalId.get(localId);
+
+      if (!result) {
+        // No verdict for this row. It stays pending and is retried; assuming
+        // success here is exactly the bug being fixed.
+        this.errors.push({
+          entityType,
+          entityId: localId,
+          error: 'server returned no result for this item',
+          timestamp: syncedAt,
+        });
+        continue;
+      }
+
+      if (isPersisted(result)) {
+        await markSynced(localId, syncedAt);
+        persisted++;
+        continue;
+      }
+
+      const reason = result.message ?? result.code ?? 'rejected by server';
+      await markRejected(localId, `${result.code ?? 'rejected'}: ${reason}`);
+      this.errors.push({
+        entityType,
+        entityId: localId,
+        error: reason,
+        timestamp: syncedAt,
+      });
+    }
+
+    return persisted;
+  }
+
+  /** Records a transport-level failure; the batch stays pending for retry. */
+  private recordBatchFailure(
+    entityType: 'tracking_events' | 'pods' | 'status_updates',
+    localIds: string[],
+    error: unknown,
+    fallbackMessage: string
+  ): void {
+    const message = error instanceof Error ? error.message : fallbackMessage;
+    const timestamp = new Date().toISOString();
+
+    for (const localId of localIds) {
+      this.errors.push({ entityType, entityId: localId, error: message, timestamp });
+    }
+  }
+
   private async pushTrackingEvents(): Promise<number> {
     const events = await trackingEventsRepo.getPendingSync();
     if (events.length === 0) return 0;
@@ -356,6 +442,7 @@ class SyncService {
 
     for (let i = 0; i < events.length; i += batchSize) {
       const batch = events.slice(i, i + batchSize);
+      const localIds = batch.map((e) => e.id);
 
       try {
         const payload = {
@@ -363,6 +450,9 @@ class SyncService {
           battery_level: this.getBatteryLevel(),
           storage_remaining_kb: this.getStorageRemainingKb(),
           events: batch.map((e) => ({
+            // The local row id doubles as the server's dedup key, so replaying a
+            // batch whose response was lost cannot duplicate telemetry.
+            client_id: e.id,
             shipment_id: e.shipment_id,
             latitude: e.latitude,
             longitude: e.longitude,
@@ -376,11 +466,15 @@ class SyncService {
           })),
         };
 
-        await api.post(API_ENDPOINTS.sync.sync, payload);
+        const response = await api.post<SyncResponse>(API_ENDPOINTS.sync.sync, payload);
 
-        const now = new Date().toISOString();
-        await Promise.all(batch.map((e) => trackingEventsRepo.markSynced(e.id, now)));
-        processed += batch.length;
+        processed += await this.applyResults(
+          'tracking_events',
+          localIds,
+          response?.events,
+          trackingEventsRepo.markSynced,
+          trackingEventsRepo.markRejected
+        );
 
         this.updateProgress({
           itemsProcessed: processed,
@@ -389,19 +483,26 @@ class SyncService {
 
         await this.delay(BATCH_DELAY_MS);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to sync tracking events batch';
-        for (const event of batch) {
-          this.errors.push({
-            entityType: 'tracking_events',
-            entityId: event.id,
-            error: errorMessage,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        this.recordBatchFailure('tracking_events', localIds, error, 'Failed to sync tracking events batch');
       }
     }
 
     return processed;
+  }
+
+  /**
+   * Reads a captured photo back as base64 for upload.
+   *
+   * Photos previously went to the server as their localUri — a file:// path
+   * meaningful only on the device — so proof of delivery arrived as unusable
+   * paths and the images never left the handset. Already-uploaded photos are
+   * sent as their remote URL instead, which the server passes through.
+   */
+  private async encodePhoto(photo: PODPhoto): Promise<string> {
+    if (photo.uploaded && photo.remoteUrl) {
+      return photo.remoteUrl;
+    }
+    return readPhotoAsBase64(photo.localUri);
   }
 
   private async pushPODs(): Promise<number> {
@@ -418,16 +519,19 @@ class SyncService {
 
     for (const pod of pendingPODs) {
       try {
+        const photoPayloads = await Promise.all(pod.photos.map((photo) => this.encodePhoto(photo)));
+
         const payload = {
           device_id: await this.getSyncDeviceId(),
           battery_level: this.getBatteryLevel(),
           storage_remaining_kb: this.getStorageRemainingKb(),
           pods: [{
+            client_id: pod.id,
             shipment_id: pod.shipmentId,
             recipient_name: pod.recipientName,
             recipient_phone: pod.recipientPhone,
             signature_data: pod.signatureData,
-            photo_urls: pod.photos.map((photo) => photo.localUri),
+            photo_urls: photoPayloads,
             delivery_address: pod.deliveryAddress,
             delivery_lat: pod.deliveryLat ?? 0,
             delivery_lng: pod.deliveryLng ?? 0,
@@ -438,11 +542,15 @@ class SyncService {
           }],
         };
 
-        await api.post(API_ENDPOINTS.sync.sync, payload);
+        const response = await api.post<SyncResponse>(API_ENDPOINTS.sync.sync, payload);
 
-        const now = new Date().toISOString();
-        await podsRepo.markSynced(pod.id, now);
-        processed++;
+        processed += await this.applyResults(
+          'pods',
+          [pod.id],
+          response?.pods,
+          podsRepo.markSynced,
+          podsRepo.markRejected
+        );
 
         this.updateProgress({
           itemsProcessed: processed,
@@ -451,14 +559,9 @@ class SyncService {
 
         await this.delay(BATCH_DELAY_MS);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to sync POD';
-        this.errors.push({
-          entityType: 'pods',
-          entityId: pod.id,
-          error: errorMessage,
-          timestamp: new Date().toISOString(),
-        });
-        await podsRepo.updateSyncStatus(pod.id, 'failed');
+        // Left pending rather than marked failed: a lost connection is not the
+        // POD's fault, and the delivery evidence must survive to be retried.
+        this.recordBatchFailure('pods', [pod.id], error, 'Failed to sync POD');
       }
     }
 
@@ -466,19 +569,9 @@ class SyncService {
   }
 
   private async pushStatusUpdates(): Promise<number> {
-    const db = await getDatabase();
-    const statusUpdates = await db.getAllAsync<{
-      id: string;
-      shipment_id: string;
-      status: string;
-      note?: string;
-      reason?: string;
-      recorded_at: string;
-      synced_at?: string;
-    }>(
-      "SELECT * FROM status_updates WHERE synced_at IS NULL ORDER BY recorded_at ASC"
-    );
-
+    // Uses the repository rather than hand-rolled SQL so the pending-selection
+    // rule lives in one place.
+    const statusUpdates = await statusUpdatesRepo.getPendingSync();
     if (statusUpdates.length === 0) return 0;
 
     const batchSize = BATCH_SIZES.status_updates;
@@ -492,6 +585,7 @@ class SyncService {
 
     for (let i = 0; i < statusUpdates.length; i += batchSize) {
       const batch = statusUpdates.slice(i, i + batchSize);
+      const localIds = batch.map((s) => s.id);
 
       try {
         const payload = {
@@ -499,23 +593,26 @@ class SyncService {
           battery_level: this.getBatteryLevel(),
           storage_remaining_kb: this.getStorageRemainingKb(),
           statuses: batch.map((s) => ({
+            client_id: s.id,
             shipment_id: s.shipment_id,
             status: s.status,
             note: s.note,
             reason: s.reason,
+            // The server compares this against the shipment's last status change
+            // and rejects updates it has already moved past.
             recorded_at: s.recorded_at,
           })),
         };
 
-        await api.post(API_ENDPOINTS.sync.sync, payload);
+        const response = await api.post<SyncResponse>(API_ENDPOINTS.sync.sync, payload);
 
-        const now = new Date().toISOString();
-        await Promise.all(
-          batch.map((s) =>
-            db.runAsync('UPDATE status_updates SET synced_at = ? WHERE id = ?', [now, s.id])
-          )
+        processed += await this.applyResults(
+          'status_updates',
+          localIds,
+          response?.statuses,
+          statusUpdatesRepo.markSynced,
+          statusUpdatesRepo.markRejected
         );
-        processed += batch.length;
 
         this.updateProgress({
           itemsProcessed: processed,
@@ -524,15 +621,7 @@ class SyncService {
 
         await this.delay(BATCH_DELAY_MS);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Failed to sync status updates batch';
-        for (const update of batch) {
-          this.errors.push({
-            entityType: 'status_updates',
-            entityId: update.id,
-            error: errorMessage,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        this.recordBatchFailure('status_updates', localIds, error, 'Failed to sync status updates batch');
       }
     }
 
