@@ -85,7 +85,7 @@ migrate-create:
 	goose -dir migrations create "$$name" sql
 
 sqlc:
-	sqlc generate
+	cd sqlc && sqlc generate
 
 swagger:
 	swag init -g cmd/api/main.go -o docs
