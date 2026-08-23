@@ -127,7 +127,7 @@ func main() {
 		rateLimiter = middleware.NewRateLimiter(redisClient, cfg.RateLimitIP, cfg.RateLimitUser, cfg.RateLimitAuth)
 	}
 
-	router := h.Routes(logger, jwtManager, rateLimiter)
+	router := h.Routes(logger, jwtManager, rateLimiter, queries)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

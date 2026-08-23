@@ -760,3 +760,53 @@ func TestRefreshToken_HTTP(t *testing.T) {
 func ptr[T any](v T) *T {
 	return &v
 }
+
+// Revocation must take effect immediately, not whenever the access token
+// happens to expire. ValidateSession is what enforces that: Auth alone only
+// checks the signature and expiry, so before it was wired into the router a
+// token kept after logout stayed usable for the remainder of JWT_ACCESS_TTL —
+// an hour by default. That made "log out" and "revoke this lost device"
+// cosmetic for every authenticated endpoint.
+func TestAccessTokenRejectedAfterLogout(t *testing.T) {
+	env := SetupTestEnv(t)
+	defer env.Cleanup()
+
+	ctx := context.Background()
+	tenant := env.CreateTestTenant(ctx, "revoke-after-logout")
+	_ = env.CreateTestDispatcher(ctx, tenant.ID.String(), "revoke-logout@test.com")
+
+	authService := env.GetAuthService()
+	loginResult, err := authService.DispatcherLogin(ctx, service.DispatcherLoginInput{
+		Email:    "revoke-logout@test.com",
+		Password: "password123",
+	}, "127.0.0.1", "test-agent")
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	authorized := func() int {
+		req := httptest.NewRequest(http.MethodGet, apiPrefix+"/sessions", nil)
+		req.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
+		rec := httptest.NewRecorder()
+		env.GetRouter().ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := authorized(); code != http.StatusOK {
+		t.Fatalf("expected the token to work before logout, got %d", code)
+	}
+
+	logout := httptest.NewRequest(http.MethodPost, apiPrefix+"/auth/logout", nil)
+	logout.Header.Set("Authorization", "Bearer "+loginResult.AccessToken)
+	logoutRec := httptest.NewRecorder()
+	env.GetRouter().ServeHTTP(logoutRec, logout)
+
+	if logoutRec.Code != http.StatusOK {
+		t.Fatalf("logout failed with %d: %s", logoutRec.Code, logoutRec.Body.String())
+	}
+
+	// Same token, same TTL — the only thing that changed is the revoked session.
+	if code := authorized(); code != http.StatusUnauthorized {
+		t.Errorf("expected 401 after logout, got %d: the access token outlived its session", code)
+	}
+}
