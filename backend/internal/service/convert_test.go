@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -46,29 +47,53 @@ func TestToText(t *testing.T) {
 }
 
 func TestToNumeric(t *testing.T) {
-	t.Run("converts positive float (note: Scan with float64 does not work)", func(t *testing.T) {
-		result := toNumeric(123.45)
-		assert.False(t, result.Valid)
+	tests := []struct {
+		name  string
+		input float64
+	}{
+		{"positive float", 123.45},
+		{"zero is a real measurement, not an absent one", 0},
+		{"negative", -1.5},
+		{"large value", 999999.999},
+		{"small decimal", 0.001},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := toNumeric(tt.input)
+			require.True(t, result.Valid, "expected a non-NULL numeric")
+
+			got, err := result.Float64Value()
+			require.NoError(t, err)
+			assert.InDelta(t, tt.input, got.Float64, 1e-9)
+		})
+	}
+
+	t.Run("rejects NaN", func(t *testing.T) {
+		assert.False(t, toNumeric(math.NaN()).Valid)
 	})
 
-	t.Run("returns invalid for zero", func(t *testing.T) {
-		result := toNumeric(0)
-		assert.False(t, result.Valid)
+	t.Run("rejects positive infinity", func(t *testing.T) {
+		assert.False(t, toNumeric(math.Inf(1)).Valid)
 	})
 
-	t.Run("handles large positive numbers (note: Scan with float64 does not work)", func(t *testing.T) {
-		result := toNumeric(999999.999)
-		assert.False(t, result.Valid)
+	t.Run("rejects negative infinity", func(t *testing.T) {
+		assert.False(t, toNumeric(math.Inf(-1)).Valid)
+	})
+}
+
+func TestToNumericOmitZero(t *testing.T) {
+	t.Run("maps zero to NULL", func(t *testing.T) {
+		assert.False(t, toNumericOmitZero(0).Valid)
 	})
 
-	t.Run("handles small positive decimals (note: Scan with float64 does not work)", func(t *testing.T) {
-		result := toNumeric(0.001)
-		assert.False(t, result.Valid)
-	})
+	t.Run("preserves a non-zero value", func(t *testing.T) {
+		result := toNumericOmitZero(42.5)
+		require.True(t, result.Valid)
 
-	t.Run("returns invalid for negative numbers", func(t *testing.T) {
-		result := toNumeric(-1.5)
-		assert.False(t, result.Valid)
+		got, err := result.Float64Value()
+		require.NoError(t, err)
+		assert.InDelta(t, 42.5, got.Float64, 1e-9)
 	})
 }
 
@@ -131,9 +156,9 @@ func TestToNumeric_ZeroBehavior(t *testing.T) {
 		input     float64
 		wantValid bool
 	}{
-		{"zero", 0, false},
-		{"negative", -1.5, false},
-		{"positive (note: Scan with float64 does not work)", 1.5, false},
+		{"zero", 0, true},
+		{"negative", -1.5, true},
+		{"positive", 1.5, true},
 	}
 
 	for _, tt := range tests {
