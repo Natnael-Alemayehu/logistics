@@ -468,3 +468,26 @@ func containsSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+// Refresh tokens are stored as a hash under a unique index, so two tokens
+// issued for the same user in the same second must still differ. They did not:
+// the claims held only the user, tenant and second-granularity timestamps, and
+// RS256 signatures are deterministic.
+func TestJWTManager_GenerateRefreshToken_UniquePerCall(t *testing.T) {
+	privateKey, publicKey := generateTestKeyPair(t)
+	manager := NewManager(privateKey, publicKey, "test-issuer", time.Hour, 24*time.Hour)
+
+	const issueCount = 50
+	seen := make(map[string]struct{}, issueCount)
+
+	for i := 0; i < issueCount; i++ {
+		token, err := manager.GenerateRefreshToken("user-123", "tenant-456")
+		if err != nil {
+			t.Fatalf("GenerateRefreshToken() error = %v", err)
+		}
+		if _, duplicate := seen[token]; duplicate {
+			t.Fatalf("GenerateRefreshToken() returned a duplicate token on call %d", i+1)
+		}
+		seen[token] = struct{}{}
+	}
+}

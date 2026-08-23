@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type Claims struct {
@@ -58,10 +59,19 @@ func (m *JWTManager) GenerateAccessToken(userID, tenantID, sessionID, role, phon
 	return token.SignedString(m.privateKey)
 }
 
+// GenerateRefreshToken issues a refresh token for the given user.
+//
+// The token carries a unique JWT ID. Without one the claims would consist
+// entirely of the user, tenant and timestamps, and JWT timestamps have
+// second granularity, so two refreshes within the same second would produce
+// byte-identical tokens — RS256 signatures being deterministic. Callers store a
+// hash of the token under a unique index, so the collision surfaced as a
+// constraint violation and the second refresh failed.
 func (m *JWTManager) GenerateRefreshToken(userID, tenantID string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid.NewString(),
 			Issuer:    m.issuer,
 			Subject:   userID,
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.refreshTTL)),
