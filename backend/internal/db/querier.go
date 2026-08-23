@@ -29,6 +29,10 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
+	// client_id carries the offline client's own row identifier. Paired with
+	// device_id it is what a retried batch conflicts on, so replaying a batch whose
+	// response was lost cannot duplicate telemetry. Clients that send no client_id
+	// are excluded from the unique index and behave as before.
 	CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (TrackingEvent, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)

@@ -98,8 +98,19 @@ func main() {
 
 	eventService := service.NewEventService(wsHub, logger)
 
+	// POD media storage. A misconfiguration here must not stop the API from
+	// serving: sync falls back to storing the client's values unchanged and logs
+	// loudly, which is preferable to refusing every delivery.
+	podStorageService, err := service.NewPODStorageService(queries, cfg)
+	if err != nil {
+		logger.Error().Err(err).
+			Str("storage_type", cfg.StorageType).
+			Msg("Failed to initialise POD storage; delivery photos will not be uploaded")
+		podStorageService = nil
+	}
+
 	shipmentService := service.NewShipmentService(queries, auditService, nil, eventService)
-	syncService := service.NewSyncService(queries, shipmentService, eventService)
+	syncService := service.NewSyncService(queries, shipmentService, eventService, podStorageService, logger)
 	userService := service.NewUserService(queries, auditService)
 	vehicleService := service.NewVehicleService(queries)
 	trackingService := service.NewTrackingService(queries, auditService)

@@ -12,7 +12,7 @@ import (
 )
 
 const advancedSearchShipments = `-- name: AdvancedSearchShipments :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tenant_id = $1
   AND ($2::text IS NULL OR status = $2)
   AND ($3::uuid IS NULL OR driver_id = $3)
@@ -84,6 +84,7 @@ func (q *Queries) AdvancedSearchShipments(ctx context.Context, arg AdvancedSearc
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -99,7 +100,7 @@ const assignDriverToShipment = `-- name: AssignDriverToShipment :one
 UPDATE shipments
 SET driver_id = $1, status = 'assigned', updated_at = NOW()
 WHERE id = $2 AND tenant_id = $3
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
+RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
 `
 
 type AssignDriverToShipmentParams struct {
@@ -135,6 +136,7 @@ func (q *Queries) AssignDriverToShipment(ctx context.Context, arg AssignDriverTo
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedBy,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
@@ -143,7 +145,7 @@ const cancelShipment = `-- name: CancelShipment :one
 UPDATE shipments
 SET status = 'cancelled', status_reason = $2, updated_at = NOW()
 WHERE id = $1 AND tenant_id = $3
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
+RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
 `
 
 type CancelShipmentParams struct {
@@ -179,6 +181,7 @@ func (q *Queries) CancelShipment(ctx context.Context, arg CancelShipmentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedBy,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
@@ -261,7 +264,7 @@ INSERT INTO shipments (
     created_by
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
-) RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
+) RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
 `
 
 type CreateShipmentParams struct {
@@ -327,12 +330,13 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedBy,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
 
 const getDashboardActivity = `-- name: GetDashboardActivity :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tenant_id = $1
 ORDER BY updated_at DESC
 LIMIT $2
@@ -376,6 +380,7 @@ func (q *Queries) GetDashboardActivity(ctx context.Context, arg GetDashboardActi
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -388,7 +393,7 @@ func (q *Queries) GetDashboardActivity(ctx context.Context, arg GetDashboardActi
 }
 
 const getDashboardAlerts = `-- name: GetDashboardAlerts :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tenant_id = $1
   AND status IN ('issue', 'delayed')
 ORDER BY updated_at DESC
@@ -433,6 +438,7 @@ func (q *Queries) GetDashboardAlerts(ctx context.Context, arg GetDashboardAlerts
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -445,7 +451,7 @@ func (q *Queries) GetDashboardAlerts(ctx context.Context, arg GetDashboardAlerts
 }
 
 const getShipmentByID = `-- name: GetShipmentByID :one
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -481,12 +487,13 @@ func (q *Queries) GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedBy,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
 
 const getShipmentByTrackingNumber = `-- name: GetShipmentByTrackingNumber :one
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tracking_number = $1
 `
 
@@ -517,12 +524,13 @@ func (q *Queries) GetShipmentByTrackingNumber(ctx context.Context, trackingNumbe
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedBy,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
 
 const getShipmentsForSync = `-- name: GetShipmentsForSync :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE driver_id = $1
   AND tenant_id = $2
   AND (
@@ -576,6 +584,7 @@ func (q *Queries) GetShipmentsForSync(ctx context.Context, arg GetShipmentsForSy
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -588,7 +597,7 @@ func (q *Queries) GetShipmentsForSync(ctx context.Context, arg GetShipmentsForSy
 }
 
 const listActiveShipmentsByDriver = `-- name: ListActiveShipmentsByDriver :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE driver_id = $1 
   AND tenant_id = $2
   AND status IN ('assigned', 'in_transit', 'delayed', 'arrived')
@@ -633,6 +642,7 @@ func (q *Queries) ListActiveShipmentsByDriver(ctx context.Context, arg ListActiv
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -645,7 +655,7 @@ func (q *Queries) ListActiveShipmentsByDriver(ctx context.Context, arg ListActiv
 }
 
 const listShipmentsByDriver = `-- name: ListShipmentsByDriver :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE driver_id = $1 AND tenant_id = $2
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $4
@@ -696,6 +706,7 @@ func (q *Queries) ListShipmentsByDriver(ctx context.Context, arg ListShipmentsBy
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -708,7 +719,7 @@ func (q *Queries) ListShipmentsByDriver(ctx context.Context, arg ListShipmentsBy
 }
 
 const listShipmentsByStatus = `-- name: ListShipmentsByStatus :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tenant_id = $1 AND status = $2
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $4
@@ -759,6 +770,7 @@ func (q *Queries) ListShipmentsByStatus(ctx context.Context, arg ListShipmentsBy
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -771,7 +783,7 @@ func (q *Queries) ListShipmentsByStatus(ctx context.Context, arg ListShipmentsBy
 }
 
 const listShipmentsByTenant = `-- name: ListShipmentsByTenant :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tenant_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -816,6 +828,7 @@ func (q *Queries) ListShipmentsByTenant(ctx context.Context, arg ListShipmentsBy
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -828,7 +841,7 @@ func (q *Queries) ListShipmentsByTenant(ctx context.Context, arg ListShipmentsBy
 }
 
 const searchShipments = `-- name: SearchShipments :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
 WHERE tenant_id = $1
   AND (
     tracking_number ILIKE '%' || $2 || '%'
@@ -884,6 +897,7 @@ func (q *Queries) SearchShipments(ctx context.Context, arg SearchShipmentsParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CreatedBy,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -914,7 +928,7 @@ SET
     estimated_delivery = COALESCE($16, estimated_delivery),
     actual_delivery = COALESCE($17, actual_delivery)
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
+RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
 `
 
 type UpdateShipmentParams struct {
@@ -982,6 +996,7 @@ func (q *Queries) UpdateShipment(ctx context.Context, arg UpdateShipmentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedBy,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
@@ -995,9 +1010,10 @@ SET status = $1,
         WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, NOW())
         ELSE actual_delivery
     END,
+    status_changed_at = NOW(),
     updated_at = NOW()
 WHERE id = $4 AND tenant_id = $5
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
+RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
 `
 
 type UpdateShipmentStatusParams struct {
@@ -1044,6 +1060,7 @@ func (q *Queries) UpdateShipmentStatus(ctx context.Context, arg UpdateShipmentSt
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CreatedBy,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }

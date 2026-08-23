@@ -89,6 +89,7 @@ type Shipment struct {
 	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	CreatedBy              pgtype.UUID        `db:"created_by" json:"created_by"`
+	StatusChangedAt        pgtype.Timestamptz `db:"status_changed_at" json:"status_changed_at"`
 }
 
 type SyncMetadatum struct {
@@ -128,6 +129,7 @@ type TrackingEvent struct {
 	SyncedAt       pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
 	DeviceID       *string            `db:"device_id" json:"device_id"`
 	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
+	ClientID       *string            `db:"client_id" json:"client_id"`
 }
 
 type User struct {

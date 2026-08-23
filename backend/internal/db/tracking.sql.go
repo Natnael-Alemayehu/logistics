@@ -27,10 +27,10 @@ INSERT INTO tracking_events (
     tenant_id, shipment_id, driver_id,
     coordinates, accuracy_meters, speed_kph, heading,
     event_type, status, note,
-    recorded_at, device_id, battery_level
+    recorded_at, device_id, battery_level, client_id
 ) VALUES (
-    $1, $2, $3, ST_MakePoint($4, $5)::geometry(Point, 4326), $6, $7, $8, $9, $10, $11, $12, $13, $14
-) RETURNING id, tenant_id, shipment_id, driver_id, coordinates, accuracy_meters, speed_kph, heading, event_type, status, note, recorded_at, synced_at, device_id, battery_level
+    $1, $2, $3, ST_MakePoint($4, $5)::geometry(Point, 4326), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+) RETURNING id, tenant_id, shipment_id, driver_id, coordinates, accuracy_meters, speed_kph, heading, event_type, status, note, recorded_at, synced_at, device_id, battery_level, client_id
 `
 
 type CreateTrackingEventParams struct {
@@ -48,8 +48,13 @@ type CreateTrackingEventParams struct {
 	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
 	DeviceID       *string            `db:"device_id" json:"device_id"`
 	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
+	ClientID       *string            `db:"client_id" json:"client_id"`
 }
 
+// client_id carries the offline client's own row identifier. Paired with
+// device_id it is what a retried batch conflicts on, so replaying a batch whose
+// response was lost cannot duplicate telemetry. Clients that send no client_id
+// are excluded from the unique index and behave as before.
 func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (TrackingEvent, error) {
 	row := q.db.QueryRow(ctx, createTrackingEvent,
 		arg.TenantID,
@@ -66,6 +71,7 @@ func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEve
 		arg.RecordedAt,
 		arg.DeviceID,
 		arg.BatteryLevel,
+		arg.ClientID,
 	)
 	var i TrackingEvent
 	err := row.Scan(
@@ -84,6 +90,7 @@ func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEve
 		&i.SyncedAt,
 		&i.DeviceID,
 		&i.BatteryLevel,
+		&i.ClientID,
 	)
 	return i, err
 }
