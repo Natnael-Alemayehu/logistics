@@ -194,7 +194,7 @@ func TestSync_DeliveredStatus(t *testing.T) {
 		DriverID:           driver.ID,
 	}, "127.0.0.1", "test-agent")
 
-	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.UpdateStatusInput{
+	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", shipment.ID, service.UpdateStatusInput{
 		Status: "in_transit",
 	}, "127.0.0.1", "test-agent")
 
