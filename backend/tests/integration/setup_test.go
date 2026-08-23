@@ -6,10 +6,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"embed"
 	"fmt"
-	"io/fs"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,8 +47,10 @@ func toInt32(i int) *int32 {
 	return &v
 }
 
-//go:embed testdata/migrations/*.sql
-var migrationsFS embed.FS
+// migrationsDir is the production migration directory, resolved relative to
+// this package. Tests run against the same files the API migrates with so the
+// two schemas cannot drift.
+const migrationsDir = "../../migrations"
 
 type TestEnv struct {
 	pool       *pgxpool.Pool
@@ -124,22 +127,38 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 }
 
 func (e *TestEnv) runMigrations(ctx context.Context) {
-	files, err := fs.Glob(migrationsFS, "testdata/migrations/*.sql")
-	sort.Strings(files)
+	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
-		e.t.Fatalf("failed to read migration files: %v", err)
+		e.t.Fatalf("failed to read migrations directory: %v", err)
 	}
 
-	for _, file := range files {
-		content, err := migrationsFS.ReadFile(file)
-		if err != nil {
-			e.t.Fatalf("failed to read migration %s: %v", file, err)
-		}
-		_, err = e.pool.Exec(ctx, string(content))
-		if err != nil {
-			e.t.Fatalf("failed to execute migration %s: %v", file, err)
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			names = append(names, entry.Name())
 		}
 	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		content, err := os.ReadFile(filepath.Join(migrationsDir, name))
+		if err != nil {
+			e.t.Fatalf("failed to read migration %s: %v", name, err)
+		}
+		if _, err := e.pool.Exec(ctx, gooseUp(string(content))); err != nil {
+			e.t.Fatalf("failed to execute migration %s: %v", name, err)
+		}
+	}
+}
+
+// gooseUp returns the Up half of a goose migration. The directives themselves
+// are ordinary SQL comments and pass through harmlessly, but the Down half must
+// be discarded: executing it would tear down the schema Up just created.
+func gooseUp(migration string) string {
+	if i := strings.Index(migration, "-- +goose Down"); i >= 0 {
+		return migration[:i]
+	}
+	return migration
 }
 
 func (e *TestEnv) setupServices() {

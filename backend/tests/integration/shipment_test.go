@@ -241,7 +241,7 @@ func TestShipmentUpdateStatus_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create shipment: %v", err)
 	}
-	inTransit, err := shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.UpdateStatusInput{
+	inTransit, err := shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", shipment.ID, service.UpdateStatusInput{
 		Status:     "in_transit",
 		StatusNote: "Driver started delivery",
 	}, "127.0.0.1", "test-agent")
@@ -273,10 +273,10 @@ func TestShipmentUpdateStatus_Delivered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create shipment: %v", err)
 	}
-	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.UpdateStatusInput{
+	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", shipment.ID, service.UpdateStatusInput{
 		Status: "in_transit",
 	}, "127.0.0.1", "test-agent")
-	delivered, err := shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.UpdateStatusInput{
+	delivered, err := shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", shipment.ID, service.UpdateStatusInput{
 		Status:     "delivered",
 		StatusNote: "Package delivered successfully",
 	}, "127.0.0.1", "test-agent")
@@ -366,10 +366,10 @@ func TestShipmentCancellation_CannotCancelDelivered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create shipment: %v", err)
 	}
-	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.UpdateStatusInput{
+	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", shipment.ID, service.UpdateStatusInput{
 		Status: "in_transit",
 	}, "127.0.0.1", "test-agent")
-	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.UpdateStatusInput{
+	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", shipment.ID, service.UpdateStatusInput{
 		Status: "delivered",
 	}, "127.0.0.1", "test-agent")
 	_, err = shipmentService.Cancel(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.CancelShipmentInput{
@@ -403,7 +403,7 @@ func TestShipmentSearch_ByStatus(t *testing.T) {
 			CustomerPhone:      "0922222222",
 			DriverID:           driver.ID,
 		}, "127.0.0.1", "test-agent")
-		_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, shipment.ID, service.UpdateStatusInput{
+		_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", shipment.ID, service.UpdateStatusInput{
 			Status: "in_transit",
 		}, "127.0.0.1", "test-agent")
 	}
@@ -601,7 +601,7 @@ func TestListActiveShipmentsByDriver(t *testing.T) {
 		CustomerPhone:      "0933333333",
 		DriverID:           driver.ID,
 	}, "127.0.0.1", "test-agent")
-	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, assigned2.ID, service.UpdateStatusInput{
+	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", assigned2.ID, service.UpdateStatusInput{
 		Status: "in_transit",
 	}, "127.0.0.1", "test-agent")
 	delivered, _ := shipmentService.Create(ctx, tenant.ID.String(), dispatcher.ID, service.CreateShipmentInput{
@@ -611,7 +611,7 @@ func TestListActiveShipmentsByDriver(t *testing.T) {
 		CustomerPhone:      "0944444444",
 		DriverID:           driver.ID,
 	}, "127.0.0.1", "test-agent")
-	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, delivered.ID, service.UpdateStatusInput{
+	_, _ = shipmentService.UpdateStatus(ctx, tenant.ID.String(), dispatcher.ID, "dispatcher", delivered.ID, service.UpdateStatusInput{
 		Status: "delivered",
 	}, "127.0.0.1", "test-agent")
 	activeShipments, err := shipmentService.ListActiveByDriver(ctx, tenant.ID.String(), driver.ID)
