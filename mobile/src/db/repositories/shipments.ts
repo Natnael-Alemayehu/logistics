@@ -57,15 +57,16 @@ export async function upsert(shipment: Shipment): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
     `INSERT OR REPLACE INTO shipments (
-      id, tracking_number, origin_address, origin_lat, origin_lng,
+      id, tenant_id, tracking_number, origin_address, origin_lat, origin_lng,
       destination_address, destination_lat, destination_lng, customer_name,
       customer_phone, cargo_description, cargo_weight, cargo_value,
       special_instructions, status, status_note, status_reason,
       driver_id, vehicle_id, estimated_delivery, actual_delivery,
-      synced_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      created_by, synced_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       shipment.id,
+      shipment.tenant_id ?? null,
       shipment.tracking_number,
       shipment.origin_address,
       shipment.origin_lat ?? null,
@@ -86,6 +87,7 @@ export async function upsert(shipment: Shipment): Promise<void> {
       shipment.vehicle_id ?? null,
       shipment.estimated_delivery ?? null,
       shipment.actual_delivery ?? null,
+      shipment.created_by ?? null,
       shipment.synced_at ?? null,
       shipment.created_at,
       shipment.updated_at,
