@@ -11,6 +11,10 @@ import (
 )
 
 type Querier interface {
+	// Every filter is optional, and NULL means "no constraint". The parameters must
+	// be genuinely nullable for that to work: the caller previously passed an empty
+	// string for an unset filter, which is not NULL, so each guard fell through to
+	// `status = ''` and the search matched nothing at all.
 	AdvancedSearchShipments(ctx context.Context, arg AdvancedSearchShipmentsParams) ([]Shipment, error)
 	AssignDriverToShipment(ctx context.Context, arg AssignDriverToShipmentParams) (Shipment, error)
 	CancelShipment(ctx context.Context, arg CancelShipmentParams) (Shipment, error)
