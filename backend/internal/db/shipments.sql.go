@@ -980,7 +980,14 @@ func (q *Queries) UpdateShipment(ctx context.Context, arg UpdateShipmentParams) 
 
 const updateShipmentStatus = `-- name: UpdateShipmentStatus :one
 UPDATE shipments
-SET status = $1, status_note = $2, status_reason = $3, updated_at = NOW()
+SET status = $1,
+    status_note = $2,
+    status_reason = $3,
+    actual_delivery = CASE
+        WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, NOW())
+        ELSE actual_delivery
+    END,
+    updated_at = NOW()
 WHERE id = $4 AND tenant_id = $5
 RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by
 `
@@ -993,6 +1000,9 @@ type UpdateShipmentStatusParams struct {
 	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 }
 
+// actual_delivery is stamped the first time a shipment reaches 'delivered' and
+// preserved thereafter, so a re-sent status update cannot move the timestamp.
+// The driver stats and delivery-count queries read this column.
 func (q *Queries) UpdateShipmentStatus(ctx context.Context, arg UpdateShipmentStatusParams) (Shipment, error) {
 	row := q.db.QueryRow(ctx, updateShipmentStatus,
 		arg.Status,

@@ -74,8 +74,18 @@ WHERE id = $2 AND tenant_id = $3
 RETURNING *;
 
 -- name: UpdateShipmentStatus :one
+-- actual_delivery is stamped the first time a shipment reaches 'delivered' and
+-- preserved thereafter, so a re-sent status update cannot move the timestamp.
+-- The driver stats and delivery-count queries read this column.
 UPDATE shipments
-SET status = $1, status_note = $2, status_reason = $3, updated_at = NOW()
+SET status = $1,
+    status_note = $2,
+    status_reason = $3,
+    actual_delivery = CASE
+        WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, NOW())
+        ELSE actual_delivery
+    END,
+    updated_at = NOW()
 WHERE id = $4 AND tenant_id = $5
 RETURNING *;
 
