@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
@@ -55,6 +56,15 @@ func Auth(jwtManager *jwt.JWTManager) func(http.Handler) http.Handler {
 	}
 }
 
+// ValidateSession rejects requests whose session has been revoked or deleted.
+//
+// It must run after Auth, which puts the session ID into the context. Without
+// it, revocation is cosmetic for access tokens: Auth only verifies the
+// signature and expiry, so a token kept after logout — or one an admin
+// explicitly revoked after a device was lost — stays usable for the remainder
+// of JWT_ACCESS_TTL. This costs one indexed primary-key lookup per
+// authenticated request, which is the price of revocation taking effect
+// immediately rather than up to an hour later.
 func ValidateSession(queries *db.Queries) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,10 +74,13 @@ func ValidateSession(queries *db.Queries) func(http.Handler) http.Handler {
 				return
 			}
 
-			var uuid pgtype.UUID
-			uuid.Scan(sessionID)
+			parsed, err := uuid.Parse(sessionID)
+			if err != nil {
+				response.ErrorJSON(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid session identifier")
+				return
+			}
 
-			session, err := queries.GetSessionByID(r.Context(), uuid)
+			session, err := queries.GetSessionByID(r.Context(), pgtype.UUID{Bytes: parsed, Valid: true})
 			if err != nil {
 				response.ErrorJSON(w, r, http.StatusUnauthorized, "SESSION_REVOKED", "Session not found")
 				return

@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
+	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/middleware"
 	"github.com/natnael-alemayehu/logistics/pkg/jwt"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -14,7 +15,7 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rateLimiter *middleware.RateLimiter) *chi.Mux {
+func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rateLimiter *middleware.RateLimiter, queries *db.Queries) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(chiMiddleware.RequestID)
@@ -56,6 +57,10 @@ func (h *Handler) Routes(logger zerolog.Logger, jwtManager *jwt.JWTManager, rate
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth(jwtManager))
+			// Auth alone only proves the token was signed and has not expired.
+			// Revocation — logout, or an admin killing a lost device's session —
+			// takes effect only because of this.
+			r.Use(middleware.ValidateSession(queries))
 
 			r.Post("/auth/logout", h.Logout)
 			r.Post("/auth/change-password", h.ChangePassword)

@@ -192,7 +192,7 @@ func (e *TestEnv) setupServices() {
 	deviceTokenService := service.NewDeviceTokenService(e.queries)
 
 	e.handler = handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, nil, nil, driverService, deviceTokenService)
-	e.router = e.handler.Routes(zerolog.Nop(), e.jwtManager, nil)
+	e.router = e.handler.Routes(zerolog.Nop(), e.jwtManager, nil, e.queries)
 }
 
 func (e *TestEnv) Cleanup() {
