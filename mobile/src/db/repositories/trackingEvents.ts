@@ -177,3 +177,18 @@ export async function getFailedSyncs(): Promise<TrackingEvent[]> {
     "SELECT * FROM tracking_events WHERE synced_at IS NULL ORDER BY recorded_at DESC"
   );
 }
+
+/**
+ * Records a server rejection against a record.
+ *
+ * The row keeps synced_at NULL so it is not mistaken for stored data, but the
+ * attempt count and reason let the caller stop retrying something the server
+ * will never accept, and give the driver something to show support.
+ */
+export async function markRejected(id: string, error: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    'UPDATE tracking_events SET attempts = attempts + 1, last_error = ? WHERE id = ?',
+    [error, id]
+  );
+}

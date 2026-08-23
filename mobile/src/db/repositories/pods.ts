@@ -193,3 +193,18 @@ export async function retrySync(id: string): Promise<void> {
 }
 
 export { toDBFormat, fromDBFormat };
+
+/**
+ * Records a server rejection against a POD.
+ *
+ * synced_at stays NULL so the record is never mistaken for stored evidence,
+ * while sync_status marks it failed for the UI and the attempt count lets the
+ * caller give up on something the server will never accept.
+ */
+export async function markRejected(id: string, error: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE proof_of_delivery SET attempts = attempts + 1, last_error = ?, sync_status = 'failed' WHERE id = ?",
+    [error, id]
+  );
+}
