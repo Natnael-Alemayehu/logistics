@@ -1,0 +1,82 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}{{$u := $d.Usage}}{{$t := $d.Tenant}}
+<div class="page-head">
+  <div><h1>Settings</h1><p class="muted">{{$t.Name}}</p></div>
+  <div class="actions">
+    <a class="btn" href="/app/settings/sms">Text messages</a>
+    <a class="btn" href="/app/audit">Audit log</a>
+  </div>
+</div>
+{{template "form-error" .}}
+<div class="grid-detail">
+<form method="post" action="/app/settings" class="col-main stack" novalidate>
+  <fieldset class="card">
+    <legend>Company</legend>
+    <label>Company name
+      <input name="name" value="{{field $f "name" ""}}" required {{if index $e "name"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "name")}}
+    </label>
+    <div class="row-2">
+      <label>Phone customers can call
+        <input name="contact_phone" type="tel" value="{{field $f "contact_phone" ""}}" {{if index $e "contact_phone"}}aria-invalid="true"{{end}}>
+        <span class="hint">Shown on the tracking page and in customer texts.</span>
+        {{template "field-error" (index $e "contact_phone")}}
+      </label>
+      <label>Email
+        <input name="contact_email" type="email" value="{{field $f "contact_email" ""}}" {{if index $e "contact_email"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "contact_email")}}
+      </label>
+    </div>
+    <div class="row-2">
+      <label>Home town
+        <input name="region_city" value="{{field $f "region_city" ""}}" list="towns" {{if index $e "region_city"}}aria-invalid="true"{{end}}>
+        <span class="hint">New shipments start here unless you change it.</span>
+        {{template "field-error" (index $e "region_city")}}
+      </label>
+      <label>Most active shipments per driver
+        <input name="max_active_per_driver" type="number" min="1" max="50" value="{{field $f "max_active_per_driver" "5"}}" {{if index $e "max_active_per_driver"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "max_active_per_driver")}}
+      </label>
+    </div>
+    <datalist id="towns">{{range $d.Towns}}<option value="{{.Name}}">{{end}}</datalist>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Text messages to customers</legend>
+    <p class="small muted">Each message includes the tracking link. Customers can reply STOP to opt out.</p>
+    <label class="check"><input type="checkbox" name="sms_on_created" {{if field $f "sms_on_created" ""}}checked{{end}}> When the shipment is booked</label>
+    <label class="check"><input type="checkbox" name="sms_on_dispatched" {{if field $f "sms_on_dispatched" ""}}checked{{end}}> When the truck departs</label>
+    <label class="check"><input type="checkbox" name="sms_on_delayed" {{if field $f "sms_on_delayed" ""}}checked{{end}}> When it is delayed</label>
+    <label class="check"><input type="checkbox" name="sms_on_arrived" {{if field $f "sms_on_arrived" ""}}checked{{end}}> When the truck arrives</label>
+    <label class="check"><input type="checkbox" name="sms_on_delivered" {{if field $f "sms_on_delivered" ""}}checked{{end}}> When it is delivered, with a link to confirm receipt</label>
+    <label class="check"><input type="checkbox" name="sms_on_cancelled" {{if field $f "sms_on_cancelled" ""}}checked{{end}}> If it is cancelled</label>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Text messages to drivers</legend>
+    <label class="check"><input type="checkbox" name="sms_driver_on_assign" {{if field $f "sms_driver_on_assign" ""}}checked{{end}}> Text the driver when a shipment is assigned to them</label>
+    <p class="small muted">Useful for drivers who rarely open the app. Drivers always see new work in the app on their next sync.</p>
+  </fieldset>
+
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+</form>
+
+<aside class="col-side">
+  <section class="card" id="plan">
+    <div class="card-head"><h2>Plan</h2><span class="badge">{{$u.Plan.Name}}</span></div>
+    {{with $u.TrialEnds}}<p>Free trial until <strong>{{date .}}</strong>.</p>{{end}}
+    <dl class="facts">
+      <div><dt>Drivers</dt><dd>{{$u.ActiveDrivers}} of {{$u.MaxDrivers}}</dd></div>
+      <div><dt>Office staff</dt><dd>{{$u.Staff}}</dd></div>
+      <div><dt>Vehicles</dt><dd>{{$u.Vehicles}}</dd></div>
+      <div><dt>Shipments this month</dt><dd>{{grouped $u.ShipmentsThisMonth}}</dd></div>
+      <div><dt>Texts this month</dt><dd>{{grouped $u.SMSThisMonth}}</dd></div>
+    </dl>
+    <h3 class="small">Plans</h3>
+    <ul class="plan-list">
+      {{range $d.Plans}}<li {{if eq .Code $u.Plan.Code}}class="is-current"{{end}}><strong>{{.Name}}</strong> · up to {{.MaxDrivers}} drivers · {{if .MonthlyETB}}{{money .MonthlyETB}}/month{{else}}contact us{{end}}</li>{{end}}
+    </ul>
+    <p class="small muted">To change plan, contact {{.App.Name}} support{{with .App.SMSNumber}} ({{.}}){{end}}.</p>
+  </section>
+</aside>
+</div>
+{{end}}

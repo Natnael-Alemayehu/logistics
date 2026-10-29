@@ -50,3 +50,5 @@ temp/
 # Test coverage
 coverage.html
 coverage.out
+# Signatures and delivery photos stored locally
+uploads/

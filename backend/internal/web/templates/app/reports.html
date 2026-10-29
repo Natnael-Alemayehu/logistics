@@ -1,0 +1,115 @@
+{{define "content"}}{{$d := .Data}}{{$r := $d.R}}{{$sum := $r.Summary}}{{$c := $d.Chart}}
+<div class="page-head">
+  <div>
+    <h1>Reports</h1>
+    <p class="muted">{{date $r.From}} – {{date $d.Last}}</p>
+  </div>
+</div>
+
+<form class="toolbar filter-row" method="get" action="/app/reports">
+  <div class="presets" role="group" aria-label="Date range">
+    {{range $d.Presets}}<a class="chip" href="?from={{.From}}&amp;to={{.To}}" {{if and (eq .From $d.FromInput) (eq .To $d.ToInput)}}aria-current="true"{{end}}>{{.Label}}</a>{{end}}
+  </div>
+  <label class="inline">From <input type="date" name="from" value="{{$d.FromInput}}"></label>
+  <label class="inline">To <input type="date" name="to" value="{{$d.ToInput}}"></label>
+  <button class="btn" type="submit">Apply</button>
+</form>
+
+<section class="kpis kpis-6">
+  <div class="kpi"><span class="kpi-l">Delivered</span><span class="kpi-n">{{grouped $sum.Delivered}}</span><span class="kpi-sub">of {{grouped $sum.Created}} booked</span></div>
+  <div class="kpi"><span class="kpi-l">On time</span><span class="kpi-n">{{pct $d.OnTime}}</span><span class="kpi-sub">{{if $sum.WithEta}}{{$sum.OnTime}} of {{$sum.WithEta}} with a due time{{else}}no due times yet{{end}}</span></div>
+  <div class="kpi"><span class="kpi-l">Average transit</span><span class="kpi-n">{{hours $sum.AvgTransitHours}}</span><span class="kpi-sub">departure to delivery</span></div>
+  <div class="kpi"><span class="kpi-l">With signature or photo</span><span class="kpi-n">{{pct $d.PODRate}}</span><span class="kpi-sub">{{$sum.WithPod}} deliveries</span></div>
+  <div class="kpi"><span class="kpi-l">Problems reported</span><span class="kpi-n">{{$sum.Issues}}</span><span class="kpi-sub">shipments with an issue</span></div>
+  <div class="kpi"><span class="kpi-l">Cancelled</span><span class="kpi-n">{{$sum.Cancelled}}</span><span class="kpi-sub">&nbsp;</span></div>
+</section>
+
+<section class="card chart-card">
+  <div class="card-head">
+    <h2>Deliveries {{if $c.Weekly}}per week{{else}}per day{{end}}</h2>
+    <div class="legend small" aria-hidden="true">
+      <span><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-on"/></svg> On time</span>
+      <span><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-other"/></svg> Late or no due time</span>
+    </div>
+  </div>
+  {{if $c.Empty}}
+  <p class="muted card-pad">No deliveries in this period.</p>
+  {{else}}
+  <div class="chart" data-chart>
+    <svg viewBox="-40 -14 768 242" role="img" aria-label="Deliveries {{if $c.Weekly}}per week{{else}}per day{{end}}, {{date $r.From}} to {{date $d.Last}}. The table below lists the values.">
+      <g class="viz-grid">
+        {{range $c.Ticks}}<line x1="0" x2="{{$c.Width}}" y1="{{.Y}}" y2="{{.Y}}"/><text x="-8" y="{{.Y}}" dy="0.32em" text-anchor="end">{{grouped .Value}}</text>{{end}}
+      </g>
+      <g class="viz-bars">
+        {{range $c.Bars}}
+        <g class="viz-bar" tabindex="0" data-tip="{{.Tip}}" aria-label="{{.Tip}}">
+          <rect class="viz-hit" x="{{.SlotX}}" y="0" width="{{.SlotW}}" height="{{$c.Height}}"/>
+          {{with .OnTimePath}}<path class="viz-on" d="{{.}}"/>{{end}}
+          {{with .OtherPath}}<path class="viz-other" d="{{.}}"/>{{end}}
+          {{if .Peak}}<text class="viz-peak" x="{{.CenterX}}" y="{{.TopY}}" dy="-6" text-anchor="middle">{{.Delivered}}</text>{{end}}
+        </g>
+        {{end}}
+      </g>
+      <line class="viz-base" x1="0" x2="{{$c.Width}}" y1="{{$c.Height}}" y2="{{$c.Height}}"/>
+      <g class="viz-x">
+        {{range $c.Bars}}{{$b := .}}{{with .Label}}<text x="{{$b.CenterX}}" y="{{$c.Height}}" dy="18" text-anchor="middle">{{.}}</text>{{end}}{{end}}
+      </g>
+    </svg>
+    <div class="viz-tip" role="tooltip" hidden></div>
+  </div>
+  <details class="table-view">
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th>{{if $c.Weekly}}Week of{{else}}Day{{end}}</th><th class="num">Delivered</th><th class="num">On time</th></tr></thead>
+      <tbody>{{range $c.Bars}}<tr><td>{{.Day.Format "Mon 2 Jan 2006"}}</td><td class="num">{{.Delivered}}</td><td class="num">{{.OnTime}}</td></tr>{{end}}</tbody>
+    </table>
+    </div>
+  </details>
+  {{end}}
+</section>
+
+<div class="grid-2">
+<section class="card">
+  <div class="card-head"><h2>Drivers</h2><a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=drivers">{{template "icon" "download"}} CSV</a></div>
+  {{if $r.Drivers}}
+  <div class="table-wrap">
+  <table class="table table-compact">
+    <thead><tr><th>Driver</th><th class="num">Delivered</th><th class="num">On time</th><th class="num">Avg transit</th><th class="num">Issues</th></tr></thead>
+    <tbody>{{range $r.Drivers}}
+    <tr><td><a href="/app/drivers/{{uuid .DriverID}}">{{.DriverName}}</a></td><td class="num">{{.Delivered}}</td><td class="num">{{pct (rate .OnTime .WithEta)}}</td><td class="num">{{hours .AvgTransitHours}}</td><td class="num">{{.Issues}}</td></tr>
+    {{end}}</tbody>
+  </table>
+  </div>
+  {{else}}<p class="muted">No deliveries in this period.</p>{{end}}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Routes</h2><a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=routes">{{template "icon" "download"}} CSV</a></div>
+  {{if $r.Routes}}
+  <div class="table-wrap">
+  <table class="table table-compact">
+    <thead><tr><th>Route</th><th class="num">Delivered</th><th class="num">On time</th><th class="num">Avg transit</th></tr></thead>
+    <tbody>{{range $r.Routes}}
+    <tr><td>{{.OriginCity}} → {{.DestinationCity}}</td><td class="num">{{.Delivered}}</td><td class="num">{{pct (rate .OnTime .WithEta)}}</td><td class="num">{{hours .AvgTransitHours}}</td></tr>
+    {{end}}</tbody>
+  </table>
+  </div>
+  {{else}}<p class="muted">No deliveries in this period.</p>{{end}}
+</section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>Top customers</h2><a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=customers">{{template "icon" "download"}} CSV</a></div>
+  {{if $r.Customers}}
+  <div class="table-wrap">
+  <table class="table table-compact">
+    <thead><tr><th>Customer</th><th>Phone</th><th class="num">Shipments</th><th class="num">Delivered</th><th class="num">Last shipment</th></tr></thead>
+    <tbody>{{range $r.Customers}}
+    <tr><td><a href="/app/shipments?q={{.CustomerPhone}}">{{.CustomerName}}</a></td><td>{{.CustomerPhone}}</td><td class="num">{{.Shipments}}</td><td class="num">{{.Delivered}}</td><td class="num">{{date .LastShipmentAt}}</td></tr>
+    {{end}}</tbody>
+  </table>
+  </div>
+  {{else}}<p class="muted">No shipments in this period.</p>{{end}}
+</section>
+{{end}}

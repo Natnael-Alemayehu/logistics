@@ -1,0 +1,60 @@
+{{define "head"}}<link rel="stylesheet" href="{{asset "vendor/leaflet/leaflet.css"}}">{{end}}
+{{define "scripts"}}<script src="{{asset "vendor/leaflet/leaflet.js"}}" defer></script><script src="{{asset "map.js"}}" defer></script>{{end}}
+{{define "content"}}{{$d := .Data}}{{$now := local .Now}}
+<div class="page-head">
+  <div>
+    <h1>Good {{if lt $now.Hour 12}}morning{{else if lt $now.Hour 17}}afternoon{{else}}evening{{end}}, {{firstName .Me.Name}}</h1>
+    <p class="muted">{{$now.Format "Monday 2 January"}} · <span class="live-state" data-live-state>Connecting…</span></p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="/app/shipments/new">+ New shipment</a>
+  </div>
+</div>
+
+{{if $d.GettingStarted}}
+<section class="card onboarding">
+  <h2>Get set up</h2>
+  <ol class="steps">
+    <li class="{{if gt $d.Usage.Vehicles 0}}done{{end}}"><a href="/app/vehicles/new">Add a vehicle</a><span class="muted">Plate number and type.</span></li>
+    <li class="{{if gt $d.Usage.ActiveDrivers 0}}done{{end}}"><a href="/app/drivers/new">Add a driver</a><span class="muted">They get a PIN by SMS for the driver app.</span></li>
+    <li class="{{if $d.Counts}}done{{end}}"><a href="/app/shipments/new">Book your first shipment</a><span class="muted">Assign it to a driver and it appears on their phone.</span></li>
+    <li><span>Ask drivers to open <strong>{{.App.PublicURL}}/driver</strong></span><span class="muted">It installs to the home screen and works without signal. Drivers with feature phones can report by SMS.</span></li>
+  </ol>
+</section>
+{{end}}
+
+<section class="kpis">
+  <a class="kpi" href="/app/shipments?tab=active"><span class="kpi-n">{{$d.Active}}</span><span class="kpi-l">Active shipments</span></a>
+  <a class="kpi {{if $d.Attention}}kpi-warn{{end}}" href="/app/shipments?tab=attention"><span class="kpi-n">{{$d.Attention}}</span><span class="kpi-l">Delayed or with a problem</span></a>
+  <a class="kpi {{if index $d.Counts "pending"}}kpi-info{{end}}" href="/app/shipments?tab=pending"><span class="kpi-n">{{index $d.Counts "pending"}}</span><span class="kpi-l">Waiting for a driver</span></a>
+  <a class="kpi kpi-good" href="/app/shipments?tab=delivered&amp;sort=updated_desc"><span class="kpi-n">{{$d.DeliveredToday}}</span><span class="kpi-l">Delivered today</span></a>
+</section>
+
+<div class="grid-dash">
+  <section class="card card-flush map-card">
+    <div class="card-head">
+      <h2>Live map</h2>
+      <div class="legend small">
+        <span>{{template "conn" "live"}} Online</span><span>{{template "conn" "stale"}} Quiet</span><span>{{template "conn" "offline"}} Offline</span>
+        <span><span class="dest-dot"></span> Destination</span>
+      </div>
+    </div>
+    <div class="map map-tall" data-map="fleet" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-source="map-data"></div>
+    <script type="application/json" id="map-data">{{$d.Map}}</script>
+    {{if not $d.Map.Drivers}}<p class="card-foot muted small">Drivers appear on the map once their app has sent a GPS position.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Needs attention</h2>
+      <a class="small" href="/app/alerts">All alerts{{if $d.OpenAlerts}} ({{$d.OpenAlerts}}){{end}}</a>
+    </div>
+    {{template "alert-items" (dict "Alerts" $d.Alerts "Back" "/app")}}
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>Recent activity</h2><a class="small" href="/app/shipments">All shipments</a></div>
+  {{template "timeline" (dict "Items" $d.Activity "Links" true)}}
+</section>
+{{end}}

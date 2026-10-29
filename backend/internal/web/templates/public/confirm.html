@@ -1,0 +1,50 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$c := .Data.C}}{{$s := $c.Shipment}}{{$tok := .Data.Token}}
+<section class="card auth">
+  <p class="muted small">{{$c.CompanyName}}</p>
+  <h1>Your delivery</h1>
+  <p class="mono">{{$s.TrackingNumber}}</p>
+  <p>{{str $s.OriginCity}} → {{str $s.DestinationCity}}{{with $s.CargoDescription}} · {{.}}{{end}}</p>
+
+  {{if eq $s.Status "delivered"}}
+    {{with $c.POD}}
+    <dl class="facts">
+      <div><dt>Delivered</dt><dd>{{when .RecordedAt}}</dd></div>
+      <div><dt>Received by</dt><dd>{{.RecipientName}}</dd></div>
+    </dl>
+    <div class="pod-media">
+      {{if .SignatureUrl}}<figure><img src="/c/{{$tok}}/media/0" alt="Signature" class="signature"><figcaption>Signature</figcaption></figure>{{end}}
+      {{range $i, $p := .PhotoUrls}}<figure><img src="/c/{{$tok}}/media/{{add $i 1}}" alt="Delivery photo {{add $i 1}}" loading="lazy"></figure>{{end}}
+    </div>
+    {{else}}
+    <p>Delivered {{when $s.ActualDelivery}}.</p>
+    {{end}}
+
+    {{if $s.CustomerConfirmedAt.Valid}}
+      {{if $s.CustomerFeedback}}
+      <p class="callout callout-warn">You reported a problem {{ago $s.CustomerConfirmedAt}}. {{$c.CompanyName}} has been told and will contact you.</p>
+      {{else}}
+      <p class="callout callout-good">You confirmed receipt {{ago $s.CustomerConfirmedAt}}. Thank you.</p>
+      {{end}}
+    {{else}}
+    <form method="post" action="/c/{{$tok}}" class="stack">
+      <input type="hidden" name="answer" value="ok">
+      <button class="btn btn-primary btn-block btn-lg" type="submit">Yes, I received it in good order</button>
+    </form>
+    <details class="mt-m" id="problem">
+      <summary>There is a problem</summary>
+      <form method="post" action="/c/{{$tok}}" class="stack">
+        <input type="hidden" name="answer" value="problem">
+        <label>What's wrong?
+          <textarea name="feedback" rows="3" maxlength="500" required placeholder="e.g. 3 bags missing, one carton damaged"></textarea>
+        </label>
+        <button class="btn btn-block" type="submit">Report the problem</button>
+      </form>
+    </details>
+    {{end}}
+  {{else}}
+  <p>This shipment is <strong>{{lower (statusLabel $s.Status)}}</strong>.</p>
+  {{end}}
+  <p class="small"><a href="/track/{{$s.TrackingNumber}}">See the full tracking page</a></p>
+</section>
+{{end}}

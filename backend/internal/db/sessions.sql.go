@@ -11,23 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countActiveSessionsByUser = `-- name: CountActiveSessionsByUser :one
-SELECT COUNT(*) FROM sessions
-WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
-`
-
-func (q *Queries) CountActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveSessionsByUser, userID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
-    user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at
+    user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address,
+    expires_at, kind, remember, last_seen_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+RETURNING id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at, kind, remember, last_seen_at
 `
 
 type CreateSessionParams struct {
@@ -38,6 +27,8 @@ type CreateSessionParams struct {
 	UserAgent        *string            `db:"user_agent" json:"user_agent"`
 	IpAddress        *string            `db:"ip_address" json:"ip_address"`
 	ExpiresAt        pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Kind             string             `db:"kind" json:"kind"`
+	Remember         bool               `db:"remember" json:"remember"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
@@ -49,6 +40,8 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		arg.UserAgent,
 		arg.IpAddress,
 		arg.ExpiresAt,
+		arg.Kind,
+		arg.Remember,
 	)
 	var i Session
 	err := row.Scan(
@@ -62,12 +55,16 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Kind,
+		&i.Remember,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
-DELETE FROM sessions WHERE expires_at < NOW()
+DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '7 days'
+   OR revoked_at < NOW() - INTERVAL '7 days'
 `
 
 func (q *Queries) DeleteExpiredSessions(ctx context.Context) error {
@@ -76,14 +73,20 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context) error {
 }
 
 const getActiveSessionByTokenHash = `-- name: GetActiveSessionByTokenHash :one
-SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at FROM sessions 
-WHERE refresh_token_hash = $1 
-  AND revoked_at IS NULL 
+SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at, kind, remember, last_seen_at FROM sessions
+WHERE refresh_token_hash = $1
+  AND kind = $2
+  AND revoked_at IS NULL
   AND expires_at > NOW()
 `
 
-func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error) {
-	row := q.db.QueryRow(ctx, getActiveSessionByTokenHash, refreshTokenHash)
+type GetActiveSessionByTokenHashParams struct {
+	RefreshTokenHash string `db:"refresh_token_hash" json:"refresh_token_hash"`
+	Kind             string `db:"kind" json:"kind"`
+}
+
+func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, arg GetActiveSessionByTokenHashParams) (Session, error) {
+	row := q.db.QueryRow(ctx, getActiveSessionByTokenHash, arg.RefreshTokenHash, arg.Kind)
 	var i Session
 	err := row.Scan(
 		&i.ID,
@@ -96,12 +99,15 @@ func (q *Queries) GetActiveSessionByTokenHash(ctx context.Context, refreshTokenH
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Kind,
+		&i.Remember,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at FROM sessions WHERE id = $1
+SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at, kind, remember, last_seen_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error) {
@@ -118,38 +124,85 @@ func (q *Queries) GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, 
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Kind,
+		&i.Remember,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
-const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at FROM sessions WHERE refresh_token_hash = $1
+const getSessionPrincipal = `-- name: GetSessionPrincipal :one
+SELECT s.id AS session_id, s.kind, s.remember, s.last_seen_at, s.expires_at,
+       u.id AS user_id, u.tenant_id, u.role, u.full_name, u.phone, u.email,
+       u.is_active AS user_active, u.password_reset_required,
+       t.name AS tenant_name, t.is_active AS tenant_active, t.plan AS tenant_plan,
+       t.trial_ends_at
+FROM sessions s
+JOIN users u ON u.id = s.user_id
+JOIN tenants t ON t.id = u.tenant_id
+WHERE s.refresh_token_hash = $1
+  AND s.kind = $2
+  AND s.revoked_at IS NULL
+  AND s.expires_at > NOW()
 `
 
-func (q *Queries) GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error) {
-	row := q.db.QueryRow(ctx, getSessionByTokenHash, refreshTokenHash)
-	var i Session
+type GetSessionPrincipalParams struct {
+	RefreshTokenHash string `db:"refresh_token_hash" json:"refresh_token_hash"`
+	Kind             string `db:"kind" json:"kind"`
+}
+
+type GetSessionPrincipalRow struct {
+	SessionID             pgtype.UUID        `db:"session_id" json:"session_id"`
+	Kind                  string             `db:"kind" json:"kind"`
+	Remember              bool               `db:"remember" json:"remember"`
+	LastSeenAt            pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
+	ExpiresAt             pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	UserID                pgtype.UUID        `db:"user_id" json:"user_id"`
+	TenantID              pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Role                  string             `db:"role" json:"role"`
+	FullName              string             `db:"full_name" json:"full_name"`
+	Phone                 *string            `db:"phone" json:"phone"`
+	Email                 *string            `db:"email" json:"email"`
+	UserActive            bool               `db:"user_active" json:"user_active"`
+	PasswordResetRequired bool               `db:"password_reset_required" json:"password_reset_required"`
+	TenantName            string             `db:"tenant_name" json:"tenant_name"`
+	TenantActive          bool               `db:"tenant_active" json:"tenant_active"`
+	TenantPlan            string             `db:"tenant_plan" json:"tenant_plan"`
+	TrialEndsAt           pgtype.Timestamptz `db:"trial_ends_at" json:"trial_ends_at"`
+}
+
+// Everything a request needs to know about who is calling, in one lookup.
+func (q *Queries) GetSessionPrincipal(ctx context.Context, arg GetSessionPrincipalParams) (GetSessionPrincipalRow, error) {
+	row := q.db.QueryRow(ctx, getSessionPrincipal, arg.RefreshTokenHash, arg.Kind)
+	var i GetSessionPrincipalRow
 	err := row.Scan(
-		&i.ID,
+		&i.SessionID,
+		&i.Kind,
+		&i.Remember,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
 		&i.UserID,
 		&i.TenantID,
-		&i.RefreshTokenHash,
-		&i.DeviceID,
-		&i.UserAgent,
-		&i.IpAddress,
-		&i.ExpiresAt,
-		&i.CreatedAt,
-		&i.RevokedAt,
+		&i.Role,
+		&i.FullName,
+		&i.Phone,
+		&i.Email,
+		&i.UserActive,
+		&i.PasswordResetRequired,
+		&i.TenantName,
+		&i.TenantActive,
+		&i.TenantPlan,
+		&i.TrialEndsAt,
 	)
 	return i, err
 }
 
 const listActiveSessionsByUser = `-- name: ListActiveSessionsByUser :many
-SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at FROM sessions
-WHERE user_id = $1 
-  AND revoked_at IS NULL 
+SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at, kind, remember, last_seen_at FROM sessions
+WHERE user_id = $1
+  AND revoked_at IS NULL
   AND expires_at > NOW()
-ORDER BY created_at DESC
+ORDER BY COALESCE(last_seen_at, created_at) DESC
 `
 
 func (q *Queries) ListActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error) {
@@ -172,43 +225,9 @@ func (q *Queries) ListActiveSessionsByUser(ctx context.Context, userID pgtype.UU
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.RevokedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSessionsByUser = `-- name: ListSessionsByUser :many
-SELECT id, user_id, tenant_id, refresh_token_hash, device_id, user_agent, ip_address, expires_at, created_at, revoked_at FROM sessions
-WHERE user_id = $1 AND revoked_at IS NULL
-ORDER BY created_at DESC
-`
-
-func (q *Queries) ListSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error) {
-	rows, err := q.db.Query(ctx, listSessionsByUser, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Session{}
-	for rows.Next() {
-		var i Session
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.TenantID,
-			&i.RefreshTokenHash,
-			&i.DeviceID,
-			&i.UserAgent,
-			&i.IpAddress,
-			&i.ExpiresAt,
-			&i.CreatedAt,
-			&i.RevokedAt,
+			&i.Kind,
+			&i.Remember,
+			&i.LastSeenAt,
 		); err != nil {
 			return nil, err
 		}
@@ -250,7 +269,7 @@ func (q *Queries) RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUs
 const revokeSession = `-- name: RevokeSession :exec
 UPDATE sessions
 SET revoked_at = NOW()
-WHERE id = $1
+WHERE id = $1 AND revoked_at IS NULL
 `
 
 func (q *Queries) RevokeSession(ctx context.Context, id pgtype.UUID) error {
@@ -261,7 +280,7 @@ func (q *Queries) RevokeSession(ctx context.Context, id pgtype.UUID) error {
 const revokeSessionByUser = `-- name: RevokeSessionByUser :exec
 UPDATE sessions
 SET revoked_at = NOW()
-WHERE id = $1 AND user_id = $2
+WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
 `
 
 type RevokeSessionByUserParams struct {
@@ -271,5 +290,22 @@ type RevokeSessionByUserParams struct {
 
 func (q *Queries) RevokeSessionByUser(ctx context.Context, arg RevokeSessionByUserParams) error {
 	_, err := q.db.Exec(ctx, revokeSessionByUser, arg.ID, arg.UserID)
+	return err
+}
+
+const touchSession = `-- name: TouchSession :exec
+UPDATE sessions
+SET last_seen_at = NOW(), expires_at = GREATEST(expires_at, $1)
+WHERE id = $2
+`
+
+type TouchSessionParams struct {
+	ExpiresAt pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ID        pgtype.UUID        `db:"id" json:"id"`
+}
+
+// Sliding expiry: a session in use is pushed out, never pulled in.
+func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
+	_, err := q.db.Exec(ctx, touchSession, arg.ExpiresAt, arg.ID)
 	return err
 }

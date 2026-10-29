@@ -1,0 +1,113 @@
+{{define "content"}}{{$d := .Data}}{{$q := .Query}}
+<div class="page-head">
+  <div>
+    <h1>Shipments</h1>
+    <p class="muted">{{grouped $d.Total}} {{if eq $d.Total 1}}shipment{{else}}shipments{{end}}{{if $d.Filtered}} match{{end}}</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{withQuery $q "format" "csv"}}" download>{{template "icon" "download"}} Export CSV</a>
+    <a class="btn btn-primary" href="/app/shipments/new">+ New shipment</a>
+  </div>
+</div>
+
+<nav class="tabs" aria-label="Shipment groups">
+  {{range $d.Tabs}}<a href="/app/shipments{{if .Key}}?tab={{.Key}}{{end}}" {{if eq .Key $d.Tab}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+</nav>
+
+<details class="filters card" {{if $d.Filtered}}open{{end}}>
+  <summary>Search and filter{{if $d.Filtered}} <span class="pill">on</span>{{end}}</summary>
+  <form method="get" action="/app/shipments" class="filter-grid">
+    {{with $q.Get "tab"}}<input type="hidden" name="tab" value="{{.}}">{{end}}
+    <label class="span-2">Search
+      <input type="search" name="q" value="{{$q.Get "q"}}" placeholder="Tracking number, customer, phone, address or cargo">
+    </label>
+    <label>Driver
+      <select name="driver">
+        <option value="">Any driver</option>
+        {{range $d.Drivers}}<option value="{{uuid .ID}}" {{if eq ($q.Get "driver") (uuid .ID)}}selected{{end}}>{{.FullName}}{{if not .IsActive}} (inactive){{end}}</option>{{end}}
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="">Any status</option>
+        {{range $d.Statuses}}<option value="{{.}}" {{if eq ($q.Get "status") .}}selected{{end}}>{{statusLabel .}}</option>{{end}}
+      </select>
+    </label>
+    <label>Priority
+      <select name="priority">
+        <option value="">Any priority</option>
+        {{range $d.Priorities}}<option value="{{.}}" {{if eq ($q.Get "priority") .}}selected{{end}}>{{title .}}</option>{{end}}
+      </select>
+    </label>
+    <label>From town
+      <input name="origin" value="{{$q.Get "origin"}}" list="towns" autocomplete="off">
+    </label>
+    <label>To town
+      <input name="destination" value="{{$q.Get "destination"}}" list="towns" autocomplete="off">
+    </label>
+    <label>Booked from
+      <input type="date" name="from" value="{{$q.Get "from"}}">
+    </label>
+    <label>Booked to
+      <input type="date" name="to" value="{{$q.Get "to"}}">
+    </label>
+    <label>Sort
+      <select name="sort">
+        {{$sort := $q.Get "sort"}}
+        <option value="created_desc">Newest first</option>
+        <option value="created_asc" {{if eq $sort "created_asc"}}selected{{end}}>Oldest first</option>
+        <option value="updated_desc" {{if eq $sort "updated_desc"}}selected{{end}}>Recently updated</option>
+        <option value="eta_asc" {{if eq $sort "eta_asc"}}selected{{end}}>Due soonest</option>
+        <option value="priority" {{if eq $sort "priority"}}selected{{end}}>Priority</option>
+        <option value="customer" {{if eq $sort "customer"}}selected{{end}}>Customer A–Z</option>
+        <option value="status" {{if eq $sort "status"}}selected{{end}}>Status</option>
+      </select>
+    </label>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Apply</button>
+      <a class="btn btn-ghost" href="/app/shipments{{with $q.Get "tab"}}?tab={{.}}{{end}}">Clear</a>
+    </div>
+  </form>
+  <datalist id="towns">{{range $d.Towns}}<option value="{{.Name}}">{{end}}</datalist>
+</details>
+
+{{if $d.Rows}}
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table rows-link table-cards">
+  <thead><tr>
+    <th>Shipment</th><th>Route</th><th>Customer</th><th>Driver</th><th>Status</th><th class="num">Due</th>
+  </tr></thead>
+  <tbody>
+  {{range $d.Rows}}{{$s := .Shipment}}
+  <tr {{if eq (uuid $s.ID) $d.Highlight}}class="is-highlight"{{end}} data-href="/app/shipments/{{uuid $s.ID}}">
+    <td><a class="mono" href="/app/shipments/{{uuid $s.ID}}">{{$s.TrackingNumber}}</a>{{template "priority" $s.Priority}}
+      <div class="muted small">{{with $s.CargoDescription}}{{truncate 40 .}}{{else}}—{{end}}{{if hasNum $s.CargoWeight}} · {{kg $s.CargoWeight}}{{end}}</div></td>
+    <td><span class="route">{{with $s.OriginCity}}{{.}}{{else}}{{truncate 24 $s.OriginAddress}}{{end}} <span aria-label="to">→</span> {{with $s.DestinationCity}}{{.}}{{else}}{{truncate 24 $s.DestinationAddress}}{{end}}</span></td>
+    <td>{{$s.CustomerName}}<div class="muted small">{{$s.CustomerPhone}}</div></td>
+    <td>{{with .DriverName}}{{.}}{{else}}<span class="muted">Unassigned</span>{{end}}{{with .VehiclePlate}}<div class="muted small">{{.}}</div>{{end}}</td>
+    <td>{{template "status" $s.Status}}{{with $s.StatusReason}}<div class="muted small">{{reasonLabel .}}</div>{{end}}</td>
+    <td class="num">{{if $s.ActualDelivery.Valid}}<span class="muted small">Delivered</span><br>{{date $s.ActualDelivery}}{{else if $s.EstimatedDelivery.Valid}}<span class="{{if late $s.EstimatedDelivery $s.Status}}text-bad{{end}}">{{when $s.EstimatedDelivery}}</span><div class="muted small">{{until $s.EstimatedDelivery}}</div>{{else}}—{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{template "pager" (dict "Page" $d.Page "Pages" $d.Pages "Query" $q)}}
+{{else}}
+<div class="card empty">
+  {{if $d.Filtered}}
+  <h2>No shipments match</h2>
+  <p class="muted">Try a different search, or <a href="/app/shipments">clear the filters</a>.</p>
+  {{else if $d.Tab}}
+  <h2>Nothing here</h2>
+  <p class="muted">No shipments are in this group right now.</p>
+  {{else}}
+  <h2>No shipments yet</h2>
+  <p class="muted">Book a shipment, assign a driver and it appears on their phone. The customer gets an SMS with a tracking link.</p>
+  <p><a class="btn btn-primary" href="/app/shipments/new">+ Book the first shipment</a></p>
+  {{end}}
+</div>
+{{end}}
+{{end}}

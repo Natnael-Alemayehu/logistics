@@ -1,266 +1,147 @@
-# Ethiopian Logistics Tracking Platform
+# Menged
 
-An **offline-first logistics tracking and proof-of-delivery (POD) platform** built for the Ethiopian market. Dispatchers get real-time fleet visibility, drivers operate fully offline in rural areas with unreliable connectivity, and customers can track shipments and confirm deliveries with digital proof.
+**Shipment tracking and proof of delivery for Ethiopian trucking companies.**
+መንገድ means "road".
 
-The platform tackles three core pain points in Ethiopian trucking: **no visibility** (dispatchers calling drivers all day), **no proof of delivery** (costly delivery disputes), and **customer anxiety** (no delivery status visibility). Everything is designed around Ethiopia's network reality — stable in major cities, unreliable on highways, and non-existent in rural areas.
+A dispatcher books a load and assigns a driver. The driver's phone keeps
+working with no signal: status changes, signatures, photos and GPS are saved on
+the phone and sent when a network returns. The customer gets an SMS with a
+tracking link when the load leaves, is delayed, arrives and is delivered, then
+confirms receipt with one tap. Each delivery is recorded with the recipient's
+name, their signature, up to three photos and where the phone was. A delivery
+recorded far from the destination is flagged.
 
----
+It is built for the road between Addis Ababa and Djibouti, not for a city with
+perfect coverage. Drivers with feature phones report by SMS instead
+(`ET 7K3M 3` means "arrived").
 
-## Key Features
+## What's in it
 
-- **Real-time GPS tracking** — live fleet map with last-known locations via WebSockets when connectivity is available
-- **Offline-first tracking** — checkpoint-based status updates work without network; data syncs automatically when connection returns
-- **Proof of delivery (POD)** — digital signature capture + geotagged, timestamped photo evidence with recipient verification
-- **Adaptive battery-conscious GPS** — tracking frequency adjusts based on power level and movement detection
-- **Background sync & conflict resolution** — offline changes queue locally (SQLite) and sync with server-side conflict resolution
-- **SMS fallback** — critical status updates via SMS (Twilio or Ethio Telecom providers, mock in dev)
-- **Dispatcher dashboard** — fleet overview map, shipment lifecycle, driver/vehicle management, alerts, analytics & reporting
-- **Customer tracking portal** — track shipments by tracking number, SMS notifications on status changes
-- **Multi-tenant & RBAC** — driver, dispatcher, and admin roles with tenant isolation
+| For | Where | What they get |
+|---|---|---|
+| Dispatchers, fleet managers, admins | `/app` | Live fleet map, shipment board with tabs and filters, booking with a town list or a dropped pin, assignment, status overrides, messages to drivers, alerts (late, problem reported, driver quiet with cargo), reports with CSV export, printable waybills, team and vehicle management, an audit log, company settings and SMS preferences |
+| Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) and a sync indicator that shows what is still waiting to send |
+| Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
+| Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
+| The operator | `/app/platform` | Every company on the platform, plans, driver limits, suspension |
 
----
+Companies sign up on their own and get a 14-day trial with up to 5 drivers.
+Data is separated per company throughout, and there are five roles: driver,
+dispatcher, fleet manager, admin and platform admin.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                            BACKEND                            │
-│   Go 1.25 · chi · PostgreSQL (PostGIS) · Redis · sqlc         │
-│   JWT auth · WebSockets · Prometheus · Swagger · S3 · SMS     │
-│        ┌──────────────┐              ┌─────────────────┐      │
-│        │  logistics-api│             │ logistics-worker│      │
-│        │  (REST/WS)    │             │ (async jobs)    │      │
-│        └──────┬───────┘              └────────┬────────┘      │
-│               └───────────────┬────────────────┘              │
-│                        ┌──────▼──────┐                        │
-│                        │  Postgres   │                        │
-│                        │  + PostGIS  │                        │
-│                        └─────────────┘                        │
-└─────────────────────────────┬────────────────────────────────┘
-                       REST/WS + sync
-        ┌───────────────┬──────┴────────┬──────────────┐
-        │               │               │              │
-  ┌─────▼─────┐  ┌──────▼──────┐  ┌─────▼─────┐  ┌─────▼─────┐
-  │ Driver     │  │ Dispatcher  │  │  Customer │  │  SMS      │
-  │ Mobile App │  │ Web Dashboard│  │  Portal  │  │  Gateway  │
-  │ (offline-  │  │ (Next.js)    │  │ (Next.js)│  │  (fallback│
-  │  first)    │  │              │  │           │  │   channel) │
-  └────────────┘  └──────────────┘  └───────────┘  └───────────┘
-```
-
-### Tech Stack
-
-| Component | Directory | Stack |
-|-----------|-----------|-------|
-| **Backend API & Worker** | [`backend/`](backend/) | Go 1.25, [chi](https://github.com/go-chi/chi), PostgreSQL + PostGIS, Redis, [sqlc](https://sqlc.dev/), [goose](https://github.com/pressly/goose) migrations, JWT (RSA), gorilla/websocket, zerolog, Prometheus, swag/Swagger, AWS S3, testcontainers |
-| **Web Frontend** | [`frontend/`](frontend/) | Next.js 16, React 19, TypeScript, Tailwind CSS v4, shadcn/ui, next-intl (i18n), Zustand, TanStack Query, react-leaflet, Recharts, react-hook-form + Zod |
-| **Mobile App** | [`mobile/`](mobile/) | Expo SDK 54, React Native 0.81, expo-router, TypeScript, MapLibre, expo-sqlite, background-sync queue + conflict resolution, adaptive GPS/geofencing, i18next, Zustand, expo-notifications |
-
-### Infrastructure & Integrations
-
-| Service | Purpose |
-|---------|---------|
-| PostgreSQL + PostGIS | Primary datastore (shipments, tracking events, PODs, geo queries) |
-| Redis | Rate limiting, caching, async job queue for the worker |
-| AWS S3 *(optional)* | Remote photo/POD object storage (`STORAGE_TYPE=s3`, local FS fallback) |
-| SMS provider *(optional)* | Twilio or Ethio Telecom (`SMS_PROVIDER`, mock in dev) |
-| Grafana + Prometheus + Nginx | Monitoring stack in [`backend/deployments/`](backend/deployments/) |
-
----
-
-## Monorepo Layout
+One Go binary serves everything:
 
 ```
-logistics/
-├── backend/                 # Go API + worker
-│   ├── cmd/
-│   │   ├── api/             # Application entry point (REST/WS server)
-│   │   └── worker/          # Async background worker
-│   ├── internal/
-│   │   ├── config/          # Environment configuration
-│   │   ├── db/              # sqlc-generated queries & models
-│   │   ├── handler/         # HTTP handlers & route definitions
-│   │   ├── middleware/      # Auth, RBAC, CORS, rate limiting, logging, metrics
-│   │   ├── model/           # Domain models
-│   │   └── service/         # Business logic layers
-│   ├── pkg/                 # Shared packages (jwt, redis, queue, storage, sms, ...)
-│   ├── migrations/          # goose SQL migrations
-│   ├── sqlc/                # Query definitions & sqlc config
-│   ├── tests/               # Integration tests (testcontainers) + fixtures
-│   ├── deployments/         # Docker Compose + Grafana/Prometheus/Nginx configs
-│   ├── docs/                # Generated Swagger docs
-│   ├── scripts/             # Seed & backup scripts
-│   └── docker-compose.yml   # Dev Postgres + Redis
-│
-├── frontend/                # Next.js web app (dispatcher dashboard, admin, customer portal)
-│   ├── app/
-│   │   ├── (auth)/          # Login flow
-│   │   ├── (dashboard)/     # Dashboard, shipments, drivers, vehicles, reports, settings
-│   │   ├── (admin)/         # Admin: tenants, users
-│   │   └── track/           # Public shipment tracking portal
-│   ├── components/          # UI components (shadcn/ui)
-│   ├── hooks/               # Data-fetching & real-time hooks
-│   ├── i18n/                # Translations
-│   ├── stores/              # Zustand stores
-│   └── lib/                 # Utilities & API client
-│
-└── mobile/                  # Expo driver app (offline-first)
-    └── src/
-        ├── app/             # expo-router screens (auth, shipments, map, POD, settings)
-        ├── components/      # Reusable UI
-        ├── hooks/           # Data hooks
-        ├── services/
-        │   ├── api/         # API clients
-        │   ├── sync/        # Sync queue, conflict resolution
-        │   ├── location/    # Adaptive tracking, geofencing, movement detection
-        │   ├── websocket/   # Realtime connectivity
-        │   ├── cache/       # Local caching layer
-        │   └── photos/      # POD photo capture & storage
-        └── db/              # Local SQLite schema
+          browsers (dashboard, tracking)        driver phones (PWA)        SMS provider
+                      │  HTML + WebSocket              │  JSON sync              │  webhook
+                      └───────────────┬────────────────┴─────────────┬──────────┘
+                                ┌─────▼──────────────────────────────▼─────┐
+                                │  menged (cmd/server)                       │
+                                │  internal/web      routes, templates, API  │
+                                │  internal/service  business rules          │
+                                │  background: SMS outbox, alerts, retention │
+                                └─────────────────────┬──────────────────────┘
+                                              PostgreSQL + PostGIS
 ```
 
----
+- **Server-rendered dashboard.** `html/template` with a little vanilla JS for
+  live updates, maps (Leaflet, vendored) and charts (inline SVG). No build step,
+  and a strict CSP (`script-src 'self'`).
+- **Driver app as a PWA** (`internal/web/static/driver`). A service worker
+  caches the shell, IndexedDB holds shipments and an outbox, and `POST
+  /api/v1/driver/sync` exchanges everything in one gzip-compressed request.
+  Every change carries a client ID, so a resend after a lost response is
+  harmless. When the phone and the office disagree, the office wins and the
+  driver is told why.
+- **SMS goes through an outbox** in the database, sent by a background worker
+  with retries. Customers can text STOP to opt out. The mock provider logs messages to
+  Settings → Text messages, where you can also simulate a driver's reply.
+- **Everything is embedded**: templates, static files and migrations are in the
+  binary, which migrates the database on start.
 
-## Getting Started
+Tradeoff: a web app cannot record GPS while it is fully closed, so positions
+come while the app is open or in the background on Android. Status changes,
+proof of delivery and SMS reporting don't depend on GPS.
 
-### Prerequisites
+### Code map
 
-- Go 1.25+
-- Node.js 20+ (with npm)
-- Docker (for Postgres + Redis, or install them natively)
-- [air](https://github.com/air-verse/air) *(optional, for backend hot-reload)*
+```
+backend/
+  cmd/server/          main: serve, migrate, seed
+  internal/web/        HTTP: routes, middleware, handlers, templates/, static/
+  internal/service/    shipments, status rules, sync, auth, SMS, alerts, reports, jobs
+  internal/model/      statuses, transitions, reasons, roles, plans
+  internal/db/         sqlc-generated queries (from sqlc/queries)
+  internal/geo/        Ethiopian towns, distances, transit-time estimates
+  internal/phone/      Ethiopian phone number normalisation
+  migrations/          goose migrations, embedded
+  pkg/                 sms providers, storage (local or S3), websocket hub, hashing
+  tests/integration/   end-to-end tests over HTTP against PostGIS
+  deployments/         production compose file, Caddy, Prometheus
+```
 
-### 1. Backend
+## Run it locally
 
-Commands must be run from the [`backend/`](backend/) directory.
+You need Go 1.25+ and Docker.
 
 ```bash
-# Start Postgres (PostGIS) and Redis
-docker compose up -d
-
-# Configure environment
-cp .env.example .env         # then edit to match your setup
-
-# Generate JWT RSA key pair if keys/ does not already exist
-mkdir -p keys
-openssl genrsa -out keys/private.pem 2048
-openssl rsa -in keys/private.pem -pubout -out keys/public.pem
-
-# Run database migrations and seed development data
-make migrate-up
-make seed
-
-# Start the API server (http://localhost:8080)
-make run
-
-# Start the background worker
-make run-worker
-
-# Hot-reload development
-make dev
+make db      # PostGIS on localhost:5434 (DB_PORT=… to change)
+make seed    # migrate and load a demo company
+make run     # http://localhost:8080
 ```
 
-Verify the API is healthy: `curl http://localhost:8080/health`
+The demo company, Abay Freight PLC, has six weeks of delivered loads, a few
+trucks on the road and two alerts:
 
-Other useful targets (see [`backend/Makefile`](backend/Makefile)): `make build`, `make test`, `make test-integration`, `make swagger`, `make sqlc`, `make docker-up`, `make docker-down`.
+| Sign in as | At | With |
+|---|---|---|
+| Administrator | `/login` | `demo@menged.et` / `menged-demo` |
+| Dispatcher | `/login` | `dispatch@menged.et` / `menged-demo` |
+| Platform admin | `/login` | `admin@menged.et` / `menged-admin` |
+| Driver | `/driver/` | `0912345601` … `0912345605`, PIN `2580` |
 
-### 2. Frontend
+SMS is simulated by default. To try a feature-phone driver, open Settings →
+Text messages and send `ET <last 4 of a tracking number> 3` from a driver's
+number.
 
-Commands must be run from the [`frontend/`](frontend/) directory.
+`make dev` rebuilds on Go changes (with [air](https://github.com/air-verse/air)).
+Templates and static files are reloaded from disk on every request either way.
+
+### Tests
 
 ```bash
-npm install
-
-# Configure environment
-cp .env.example .env.local   # set NEXT_PUBLIC_API_URL to your backend
-
-npm run dev                  # http://localhost:3000
+make test               # unit tests
+make test-integration   # end-to-end: signup → book → driver sync → POD → tracking → confirmation,
+                        # replayed syncs, conflicts, tenant isolation, roles, SMS commands
 ```
 
-Other scripts: `npm run build`, `npm run start`, `npm run lint`, `npm run typecheck`.
+The integration tests create a scratch database on the server from `make db`
+and drop it afterwards. Without `TEST_DATABASE_URL` they start their own PostGIS
+container instead.
 
-### 3. Mobile
-
-Commands must be run from the [`mobile/`](mobile/) directory.
+## Deploy
 
 ```bash
-npm install
-
-# Configure environment (point EXPO_PUBLIC_API_URL at your backend)
-cp .env.example .env
-
-npx expo start               # then press a / i / w for Android / iOS / web
+cd backend
+cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_PROVIDER and its keys, SMS_INBOUND_SECRET
+docker compose -f deployments/docker-compose.prod.yml up -d
 ```
 
-Other scripts: `npm run android`, `npm run ios`, `npm run web`, `npm run lint`, `npm run typecheck`.
+This runs the app, PostGIS and Caddy, which gets a TLS certificate for `DOMAIN`.
+Signatures and photos go to the `app-data` volume, or to S3 with
+`STORAGE_TYPE=s3`. Add `--profile monitoring` for Prometheus and Grafana; set
+`METRICS_TOKEN` and put the same value in `deployments/prometheus/metrics_token`.
 
-> Run the app with Expo Go, a development build, or `npx expo run:android` for a native build. Note: `useMaplibreNative()` routes (live map) require a development build rather than Expo Go — see [`mobile/src/services/maps/native.ts`](mobile/src/services/maps/native.ts).
+Point your SMS provider's inbound webhook at
+`https://DOMAIN/api/v1/sms/inbound?secret=SMS_INBOUND_SECRET`. Back up with
+`scripts/backup.sh`.
 
----
+Health checks: `/healthz` (process up) and `/readyz` (database reachable).
 
-## Testing
+## Documents
 
-| Command | Scope |
-|---------|-------|
-| `make test` | Unit tests (`-short`, no external services) |
-| `make test-integration` | Integration tests via testcontainers (boots real Postgres/Redis in Docker). Customize timeout: `make test-integration TIMEOUT=1h` |
-| `make test-all` / `make ci` | Unit + integration suite |
-| `npm run lint` + `npm run typecheck` | Frontend & mobile static checks |
-
-See [`E2E_TEST_GUIDE.md`](E2E_TEST_GUIDE.md) for the end-to-end test workflow covering backend, frontend, and mobile.
-
----
-
-## API & Observability
-
-- **Swagger UI**: `http://localhost:8080/swagger/` (generated via `make swagger`)
-- **Health check**: `GET /health`
-- **Prometheus metrics**: `GET /metrics`
-- **Realtime**: WebSocket endpoint `GET /ws` (JWT-authenticated) for live tracking events
-
-Main API surface (under `/api/v1`, all authenticated except login and tracking):
-
-| Area | Endpoints |
-|------|-----------|
-| Auth | `POST /auth/login/driver`, `/auth/login/dispatcher`, `/auth/refresh`, `/auth/logout`, `/auth/change-password`, `/auth/forgot-pin` |
-| Public tracking | `GET /track/{tracking_number}` |
-| Sync | `POST /sync` (offline delta sync) |
-| Shipments | `GET/POST/PUT /shipments`, `GET /shipments/search`, status updates, assignment, cancellation, tracking events, POD |
-| Drivers | `GET/POST /drivers`, `GET /drivers/locations`, per-driver location |
-| Vehicles | `GET/POST/PUT /vehicles`, active vehicles |
-| Dashboard | `GET /dashboard/stats`, `/alerts`, `/activity` |
-| Users (admin) | `GET/POST/PUT /users` |
-| Notifications | `POST /notifications/register`, `DELETE /notifications/device/{deviceId}` |
-| Sessions | `GET /sessions`, revoke by id or all others |
-
----
-
-## Configuration
-
-Each component is configured via environment variables; reference the `.env.example` files:
-
-- **Backend**: [`backend/.env.example`](backend/.env.example) — server port, database URL, Redis, JWT keys/TTLs, storage (local/S3), SMS provider, tracking URL base
-- **Frontend**: [`frontend/.env.example`](frontend/.env.example) — API/WebSocket URLs, map tile URL, default locale, app name
-- **Mobile**: [`mobile/.env.example`](mobile/.env.example) — API base URL
-
----
-
-## Key Documents
-
-| Document | Description |
-|----------|-------------|
-| [`plan.md`](plan.md) | Master development plan — consult before implementing features |
-| [`functional_requirements.md`](functional_requirements.md) | Functional requirements |
-| [`non_functional_requirements.md`](non_functional_requirements.md) | Non-functional requirements |
-| [`frontend-plan.md`](frontend-plan.md) | Frontend implementation plan |
-| [`mobile-plan.md`](mobile-plan.md) | Mobile implementation plan |
-| [`E2E_TEST_GUIDE.md`](E2E_TEST_GUIDE.md) | End-to-end testing workflow |
-
-Also see [`AGENTS.md`](AGENTS.md) for agent/developer notes on working with this codebase. Backend, frontend, and mobile must be worked on from within their respective directories.
-
----
-
-## Repository
-
-Source: [github.com/Natnael-Alemayehu/logistics](https://github.com/Natnael-Alemayehu/logistics)
-Feedback: [website](https://natnaelalemayehu.com)
+- [`functional_requirements.md`](functional_requirements.md): the original requirements
+- [`logistics.md`](logistics.md): background on the problem
+- [`E2E_TEST_GUIDE.md`](E2E_TEST_GUIDE.md): a manual walkthrough of every flow

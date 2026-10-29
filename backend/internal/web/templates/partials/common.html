@@ -1,0 +1,54 @@
+{{define "logo"}}<svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M7 22c4-1 6-4 9-8s5-6 9-6" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="7" cy="22" r="2.6" fill="#fff"/><circle cx="25" cy="8" r="2.6" fill="#fff"/></svg>{{end}}
+
+{{define "icon"}}<svg class="i" viewBox="0 0 24 24" aria-hidden="true">{{if eq . "home"}}<path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/>{{else if eq . "box"}}<path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>{{else if eq . "user"}}<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>{{else if eq . "users"}}<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5c2.5.5 4 2.5 4 5.5"/>{{else if eq . "truck"}}<path d="M2 6h12v10H2zM14 10h4l4 4v2h-8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>{{else if eq . "bell"}}<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/>{{else if eq . "chart"}}<path d="M3 3v18h18M7 15l4-4 3 3 5-6"/>{{else if eq . "gear"}}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>{{else if eq . "building"}}<path d="M4 21V4h10v17M14 9h6v12M8 8h2M8 12h2M8 16h2M3 21h18"/>{{else if eq . "pin"}}<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>{{else if eq . "phone"}}<path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/>{{else if eq . "print"}}<path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/>{{else if eq . "copy"}}<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>{{else if eq . "download"}}<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>{{end}}</svg>{{end}}
+
+{{define "flash"}}{{with .Flash}}<div class="flash flash-{{.Kind}}" role="{{if eq .Kind "error"}}alert{{else}}status{{end}}" data-flash>{{.Message}}<button type="button" class="flash-close" aria-label="Dismiss" data-dismiss>×</button></div>{{end}}{{end}}
+
+{{define "form-error"}}{{if and .Error (not .Errors)}}<div class="flash flash-error" role="alert">{{.Error}}</div>{{else if .Errors}}<div class="flash flash-error" role="alert">Please fix the highlighted field{{if gt (len .Errors) 1}}s{{end}} below.</div>{{end}}{{end}}
+
+{{define "status"}}<span class="badge s-{{.}}">{{statusLabel .}}</span>{{end}}
+
+{{define "priority"}}{{if ne . "normal"}}<span class="badge p-{{.}}">{{title .}}</span>{{end}}{{end}}
+
+{{define "conn"}}<span class="conn conn-{{.}}" title="{{if eq . "live"}}Online now{{else if eq . "stale"}}Not heard from recently{{else if eq . "offline"}}Offline for over 4 hours{{else}}Never connected{{end}}"></span>{{end}}
+
+{{define "severity"}}<span class="sev sev-{{.}}">{{if eq . "critical"}}Critical{{else if eq . "warning"}}Warning{{else}}Info{{end}}</span>{{end}}
+
+{{/* pager expects dict "Page" "Pages" "Query" */}}
+{{define "pager"}}{{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
+  {{if gt .Page 1}}<a class="btn btn-sm" href="{{withQuery .Query "page" (print (sub .Page 1))}}" rel="prev">← Previous</a>{{else}}<span class="btn btn-sm" aria-disabled="true">← Previous</span>{{end}}
+  <span class="muted">Page {{.Page}} of {{.Pages}}</span>
+  {{if lt .Page .Pages}}<a class="btn btn-sm" href="{{withQuery .Query "page" (print (add .Page 1))}}" rel="next">Next →</a>{{else}}<span class="btn btn-sm" aria-disabled="true">Next →</span>{{end}}
+</nav>{{end}}{{end}}
+
+{{/* timeline expects dict "Items" and optional "Links" (link each item to its shipment) */}}
+{{define "timeline"}}<ol class="timeline">
+{{range .Items}}<li class="tl tl-{{.Kind}}{{with .Status}} tl-s-{{.}}{{end}}">
+  <div class="tl-dot"></div>
+  <div class="tl-body">
+    <p class="tl-title">{{if and $.Links .TrackingNumber}}<a href="/app/shipments/{{.ShipmentID}}">{{.TrackingNumber}}</a> · {{end}}{{.Title}}</p>
+    {{with .Detail}}<p class="tl-detail">{{.}}</p>{{end}}
+    {{with .Note}}<p class="tl-note">“{{.}}”</p>{{end}}
+    <p class="tl-meta"><time datetime="{{rfc3339 .At}}" title="{{when .At}}">{{ago .At}}</time>{{with .Actor}} · {{.}}{{end}}{{with .Source}} · {{.}}{{end}}</p>
+  </div>
+</li>
+{{else}}<li class="tl-empty muted">Nothing yet.</li>{{end}}
+</ol>{{end}}
+
+{{define "field-error"}}{{with .}}<p class="field-error">{{.}}</p>{{end}}{{end}}
+
+{{/* alert-items expects dict "Alerts" ([]db.ListAlertsRow) and "Back" (where dismissing returns to) */}}
+{{define "alert-items"}}{{$back := .Back}}<ul class="alert-list" data-alert-list>
+{{range .Alerts}}{{$a := .}}<li class="alert-item sev-{{.Severity}}{{if .AcknowledgedAt.Valid}} is-done{{end}}">
+  <div class="alert-body">
+    <p class="alert-title">{{template "severity" .Severity}} <strong>{{alertLabel .AlertType}}</strong>{{with .TrackingNumber}} <a class="alert-ref" href="/app/shipments/{{uuid $a.ShipmentID}}">{{.}}</a>{{end}}</p>
+    <p>{{.Message}}</p>
+    <p class="muted small"><time datetime="{{rfc3339 .CreatedAt}}" title="{{when .CreatedAt}}">{{ago .CreatedAt}}</time>{{with .DriverName}} · {{.}}{{end}}{{if .AcknowledgedAt.Valid}} · dismissed {{ago .AcknowledgedAt}}{{end}}</p>
+  </div>
+  {{if not .AcknowledgedAt.Valid}}<form method="post" action="/app/alerts/{{uuid .ID}}/ack">
+    <input type="hidden" name="back" value="{{$back}}">
+    <button class="btn btn-sm btn-ghost" type="submit" title="Mark as dealt with">Dismiss</button>
+  </form>{{end}}
+</li>
+{{else}}<li class="empty-line muted">Nothing needs attention. Alerts appear here when a shipment is late, a driver reports a problem or goes offline.</li>{{end}}
+</ul>{{end}}

@@ -1,0 +1,8 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Metrics are for Prometheus on the internal network only.
+	respond /metrics 404
+
+	reverse_proxy app:8080
+}

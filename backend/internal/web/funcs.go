@@ -1,0 +1,391 @@
+package web
+
+import (
+	"errors"
+	"fmt"
+	"html/template"
+	"math"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/internal/phone"
+	"github.com/natnael-alemayehu/logistics/internal/service"
+)
+
+var errBadID = errors.New("malformed id")
+
+// pathID parses a UUID route parameter.
+func pathID(r *http.Request, name string) (pgtype.UUID, error) {
+	return parseID(chi.URLParam(r, name))
+}
+
+func parseID(s string) (pgtype.UUID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return pgtype.UUID{}, errBadID
+	}
+	return pgtype.UUID{Bytes: id, Valid: true}, nil
+}
+
+// toTime unwraps the time representations templates receive.
+func toTime(v any) (time.Time, bool) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, !t.IsZero()
+	case *time.Time:
+		if t == nil {
+			return time.Time{}, false
+		}
+		return *t, !t.IsZero()
+	case pgtype.Timestamptz:
+		return t.Time, t.Valid
+	case pgtype.Date:
+		return t.Time, t.Valid
+	}
+	return time.Time{}, false
+}
+
+func (s *Server) funcs() template.FuncMap {
+	loc := s.cfg.Timezone
+	return template.FuncMap{
+		"asset": func(p string) string { return "/static/" + p + "?v=" + s.version },
+
+		"statusLabel": model.StatusLabel,
+		"reasonLabel": model.ReasonLabel,
+		"roleLabel":   model.RoleLabel,
+		"planName":    model.PlanName,
+		"alertLabel":  service.AlertLabel,
+		"vehicleType": service.VehicleTypeLabel,
+		"reasonsFor":  model.ReasonsFor,
+		"isFinal":     model.IsFinalStatus,
+		"isOnRoad":    model.IsOnRoad,
+		"shortRef":    service.ShortRef,
+
+		// when formats a moment in the operating time zone; "—" for none.
+		"when": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return "—"
+			}
+			t = t.In(loc)
+			now := time.Now().In(loc)
+			if t.Year() == now.Year() {
+				return t.Format("Mon 2 Jan, 15:04")
+			}
+			return t.Format("2 Jan 2006, 15:04")
+		},
+		"date": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return "—"
+			}
+			return t.In(loc).Format("2 Jan 2006")
+		},
+		"isoDate": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return ""
+			}
+			return t.In(loc).Format("2006-01-02")
+		},
+		// localInput formats for <input type="datetime-local">.
+		"localInput": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return ""
+			}
+			return t.In(loc).Format("2006-01-02T15:04")
+		},
+		"rfc3339": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return ""
+			}
+			return t.UTC().Format(time.RFC3339)
+		},
+		"ago": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return "never"
+			}
+			return relative(time.Since(t))
+		},
+		"until": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return ""
+			}
+			d := time.Until(t)
+			switch {
+			case d > -time.Minute && d < time.Minute:
+				return "now"
+			case d < 0:
+				return span(-d) + " late"
+			}
+			return "in " + span(d)
+		},
+		"late": func(eta any, status string) bool {
+			t, ok := toTime(eta)
+			return ok && !model.IsFinalStatus(status) && time.Now().After(t)
+		},
+		"connState": func(v any) string {
+			t, _ := toTime(v)
+			return service.ConnectionState(t, time.Now())
+		},
+
+		"str": func(p *string) string {
+			if p == nil {
+				return ""
+			}
+			return *p
+		},
+		"uuid": func(u pgtype.UUID) string {
+			if !u.Valid {
+				return ""
+			}
+			return u.String()
+		},
+		"num": func(n pgtype.Numeric) float64 {
+			f, err := n.Float64Value()
+			if err != nil || !f.Valid {
+				return 0
+			}
+			return f.Float64
+		},
+		"hasNum": func(n pgtype.Numeric) bool { return n.Valid },
+		"int32": func(p *int32) string {
+			if p == nil {
+				return ""
+			}
+			return strconv.Itoa(int(*p))
+		},
+		"bool": func(p *bool) bool { return p != nil && *p },
+		"i32": func(p *int32) int32 {
+			if p == nil {
+				return 0
+			}
+			return *p
+		},
+		"money": func(v any) string {
+			f := toFloat(v)
+			return "ETB " + grouped(int64(math.Round(f)))
+		},
+		"grouped": func(v any) string { return grouped(int64(math.Round(toFloat(v)))) },
+		"kg": func(v any) string {
+			f := toFloat(v)
+			if f >= 1000 {
+				return strconv.FormatFloat(f/1000, 'f', 1, 64) + " t"
+			}
+			return strconv.FormatFloat(f, 'f', 0, 64) + " kg"
+		},
+		"pct": func(v float64) string {
+			if v < 0 {
+				return "—"
+			}
+			return strconv.Itoa(int(math.Round(v*100))) + "%"
+		},
+		"rate": func(a, b int64) float64 { return service.OnTimeRate(a, b) },
+		"hours": func(h float64) string {
+			switch {
+			case h <= 0:
+				return "—"
+			case h < 48:
+				return strconv.FormatFloat(h, 'f', 1, 64) + " h"
+			default:
+				return strconv.FormatFloat(h/24, 'f', 1, 64) + " days"
+			}
+		},
+		"distance": func(v any) string {
+			f := toFloat(v)
+			if f < 1000 {
+				return strconv.Itoa(int(f)) + " m"
+			}
+			return strconv.FormatFloat(f/1000, 'f', 1, 64) + " km"
+		},
+		"maskPhone": phone.Mask,
+		"telURL": func(p string) template.URL {
+			return template.URL("tel:" + strings.ReplaceAll(p, " ", ""))
+		},
+		"local": func(t time.Time) time.Time { return t.In(loc) },
+		"firstName": func(name string) string {
+			if f := strings.Fields(name); len(f) > 0 {
+				return f[0]
+			}
+			return name
+		},
+		"initials": func(name string) string {
+			var out []rune
+			for _, f := range strings.Fields(name) {
+				out = append(out, []rune(f)[0])
+				if len(out) == 2 {
+					break
+				}
+			}
+			return strings.ToUpper(string(out))
+		},
+
+		"in": func(v string, list []string) bool {
+			for _, x := range list {
+				if x == v {
+					return true
+				}
+			}
+			return false
+		},
+		"field": func(form url.Values, name, def string) string {
+			if form != nil {
+				if v, ok := form[name]; ok && len(v) > 0 {
+					return v[0]
+				}
+			}
+			return def
+		},
+		"checked": func(form url.Values, name string, def bool) bool {
+			if form != nil && len(form) > 0 {
+				return form.Get(name) != ""
+			}
+			return def
+		},
+		"add": func(a, b int) int { return a + b },
+		"sub": func(a, b int) int { return a - b },
+		"mul": func(a, b float64) float64 { return a * b },
+		"div": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
+		"float": toFloat,
+		"seq": func(n int) []int {
+			out := make([]int, n)
+			for i := range out {
+				out[i] = i
+			}
+			return out
+		},
+		"dict": func(kv ...any) map[string]any {
+			m := make(map[string]any, len(kv)/2)
+			for i := 0; i+1 < len(kv); i += 2 {
+				m[fmt.Sprint(kv[i])] = kv[i+1]
+			}
+			return m
+		},
+		"list": func(v ...string) []string { return v },
+		// withQuery returns the current query with one key replaced, for
+		// pagination and sort links.
+		"withQuery": func(q url.Values, key, value string) string {
+			c := url.Values{}
+			for k, v := range q {
+				c[k] = v
+			}
+			if value == "" {
+				c.Del(key)
+			} else {
+				c.Set(key, value)
+			}
+			if key != "page" {
+				c.Del("page")
+			}
+			return "?" + c.Encode()
+		},
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, //nolint:gosec // only for trusted config strings
+		"lower":    strings.ToLower,
+		"upper":    strings.ToUpper,
+		"title": func(s string) string {
+			if s == "" {
+				return s
+			}
+			return strings.ToUpper(s[:1]) + s[1:]
+		},
+		"join": strings.Join,
+		// bareURL drops the scheme, for addresses people read and type.
+		"bareURL": func(u string) string {
+			return strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+		},
+		"truncate": func(n int, s string) string {
+			r := []rune(s)
+			if len(r) <= n {
+				return s
+			}
+			return string(r[:n-1]) + "…"
+		},
+	}
+}
+
+func relative(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d >= 24*time.Hour && d < 48*time.Hour:
+		return "yesterday"
+	}
+	return span(d) + " ago"
+}
+
+// span is a rough length of time: "5 min", "3 h", "2 days".
+func span(d time.Duration) string {
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%d min", max(1, int(d.Minutes())))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d h", int(d.Hours()))
+	case d < 48*time.Hour:
+		return "1 day"
+	case d < 60*24*time.Hour:
+		return fmt.Sprintf("%d days", int(d.Hours()/24))
+	default:
+		return fmt.Sprintf("%d months", int(d.Hours()/24/30))
+	}
+}
+
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int32:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case *float64:
+		if n == nil {
+			return 0
+		}
+		return *n
+	case pgtype.Numeric:
+		f, err := n.Float64Value()
+		if err != nil || !f.Valid {
+			return 0
+		}
+		return f.Float64
+	}
+	return 0
+}
+
+func grouped(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	neg := strings.HasPrefix(s, "-")
+	s = strings.TrimPrefix(s, "-")
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(c)
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
+}

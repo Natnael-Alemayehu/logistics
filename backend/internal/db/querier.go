@@ -11,111 +11,189 @@ import (
 )
 
 type Querier interface {
-	// Every filter is optional, and NULL means "no constraint". The parameters must
-	// be genuinely nullable for that to work: the caller previously passed an empty
-	// string for an unset filter, which is not NULL, so each guard fell through to
-	// `status = ''` and the search matched nothing at all.
-	AdvancedSearchShipments(ctx context.Context, arg AdvancedSearchShipmentsParams) ([]Shipment, error)
-	AssignDriverToShipment(ctx context.Context, arg AssignDriverToShipmentParams) (Shipment, error)
-	CancelShipment(ctx context.Context, arg CancelShipmentParams) (Shipment, error)
-	CountActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) (int64, error)
-	CountActiveShipmentsByTenant(ctx context.Context, arg CountActiveShipmentsByTenantParams) (int64, error)
-	CountDeliveriesToday(ctx context.Context, arg CountDeliveriesTodayParams) (int64, error)
-	CountDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
-	CountDriversWithActiveShipments(ctx context.Context, tenantID pgtype.UUID) (int64, error)
-	CountShipmentsByStatus(ctx context.Context, arg CountShipmentsByStatusParams) (int64, error)
-	CountShipmentsByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
-	CountTrackingEventsByShipment(ctx context.Context, shipmentID pgtype.UUID) (int64, error)
-	CountUsersByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	AcknowledgeAlert(ctx context.Context, arg AcknowledgeAlertParams) error
+	// A driver who syncs again is no longer offline.
+	AcknowledgeDriverAlerts(ctx context.Context, arg AcknowledgeDriverAlertsParams) error
+	// A shipment that reaches a final state resolves whatever was open on it.
+	AcknowledgeShipmentAlerts(ctx context.Context, arg AcknowledgeShipmentAlertsParams) error
+	AddSMSOptOut(ctx context.Context, phone string) error
+	// SKIP LOCKED lets several API replicas drain the queue without sending the
+	// same message twice.
+	// The claim is a five-minute lease: next_attempt_at moves to when the row may
+	// be reclaimed if this process dies before recording the outcome.
+	ClaimQueuedSMS(ctx context.Context, limit int32) ([]SmsMessage, error)
+	ClearVehicleFromDrivers(ctx context.Context, arg ClearVehicleFromDriversParams) error
+	ConsumeVerificationCode(ctx context.Context, id pgtype.UUID) error
+	CountActiveDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountActiveShipmentsByDriver(ctx context.Context, arg CountActiveShipmentsByDriverParams) (int64, error)
+	CountAlerts(ctx context.Context, arg CountAlertsParams) (int64, error)
+	CountDeliveredSince(ctx context.Context, arg CountDeliveredSinceParams) (int64, error)
+	CountSMSByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountSMSSentSince(ctx context.Context, arg CountSMSSentSinceParams) (int64, error)
+	CountShipments(ctx context.Context, arg CountShipmentsParams) (int64, error)
+	CountShipmentsByStatus(ctx context.Context, tenantID pgtype.UUID) ([]CountShipmentsByStatusRow, error)
+	CountShipmentsCreatedSince(ctx context.Context, arg CountShipmentsCreatedSinceParams) (int64, error)
+	CountStaffByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountTrackingEventsByShipment(ctx context.Context, arg CountTrackingEventsByShipmentParams) (int64, error)
+	CountUnreadAlerts(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	CountVerificationCodesSince(ctx context.Context, arg CountVerificationCodesSinceParams) (int64, error)
+	// An open alert for the same subject and type already covers this one; the
+	// partial unique index turns the duplicate into a no-op and no row returns.
+	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
-	CreatePOD(ctx context.Context, arg CreatePODParams) (ProofOfDelivery, error)
+	CreatePOD(ctx context.Context, arg CreatePODParams) (pgtype.UUID, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error)
+	CreateShipmentEvent(ctx context.Context, arg CreateShipmentEventParams) (ShipmentEvent, error)
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	// client_id carries the offline client's own row identifier. Paired with
 	// device_id it is what a retried batch conflicts on, so replaying a batch whose
-	// response was lost cannot duplicate telemetry. Clients that send no client_id
-	// are excluded from the unique index and behave as before.
-	CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (TrackingEvent, error)
+	// response was lost cannot duplicate telemetry.
+	CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (pgtype.UUID, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)
-	DeleteDeviceToken(ctx context.Context, arg DeleteDeviceTokenParams) error
+	CreateVerificationCode(ctx context.Context, arg CreateVerificationCodeParams) (VerificationCode, error)
 	DeleteExpiredSessions(ctx context.Context) error
-	DeleteUser(ctx context.Context, arg DeleteUserParams) error
-	DeleteVehicle(ctx context.Context, arg DeleteVehicleParams) error
-	GetActiveSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
-	GetDashboardActivity(ctx context.Context, arg GetDashboardActivityParams) ([]Shipment, error)
-	GetDashboardAlerts(ctx context.Context, arg GetDashboardAlertsParams) ([]Shipment, error)
-	GetDeviceTokenByDeviceID(ctx context.Context, arg GetDeviceTokenByDeviceIDParams) (DeviceToken, error)
-	GetDeviceTokensByUser(ctx context.Context, userID pgtype.UUID) ([]DeviceToken, error)
-	GetDriverActiveShipmentCount(ctx context.Context, arg GetDriverActiveShipmentCountParams) (int64, error)
-	GetDriverDeliveriesThisMonth(ctx context.Context, arg GetDriverDeliveriesThisMonthParams) (int64, error)
-	GetDriverDeliveriesThisWeek(ctx context.Context, arg GetDriverDeliveriesThisWeekParams) (int64, error)
-	GetDriverDeliveriesToday(ctx context.Context, arg GetDriverDeliveriesTodayParams) (int64, error)
-	GetDriverTotalDeliveries(ctx context.Context, arg GetDriverTotalDeliveriesParams) (int64, error)
-	GetDriverVehicleAssignment(ctx context.Context, arg GetDriverVehicleAssignmentParams) (Vehicle, error)
+	DeleteExpiredVerificationCodes(ctx context.Context) error
+	DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestamptz) error
+	DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz) error
+	DeleteOldTrackingEvents(ctx context.Context, recordedAt pgtype.Timestamptz) error
+	EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMessage, error)
+	GetActiveSessionByTokenHash(ctx context.Context, arg GetActiveSessionByTokenHashParams) (Session, error)
+	GetActiveVerificationCode(ctx context.Context, arg GetActiveVerificationCodeParams) (VerificationCode, error)
+	GetDriverDeliveryCounts(ctx context.Context, arg GetDriverDeliveryCountsParams) (GetDriverDeliveryCountsRow, error)
+	// One driver's record over a period, for the driver page.
+	GetDriverPerformance(ctx context.Context, arg GetDriverPerformanceParams) (GetDriverPerformanceRow, error)
+	GetLatestDriverLocation(ctx context.Context, arg GetLatestDriverLocationParams) (GetLatestDriverLocationRow, error)
 	GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error)
+	// Where the shipment was last seen, for the public tracking page.
+	GetLatestShipmentPosition(ctx context.Context, arg GetLatestShipmentPositionParams) (GetLatestShipmentPositionRow, error)
 	GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error)
 	GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error)
-	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (Session, error)
+	// Everything a request needs to know about who is calling, in one lookup.
+	GetSessionPrincipal(ctx context.Context, arg GetSessionPrincipalParams) (GetSessionPrincipalRow, error)
+	GetShipmentByConfirmToken(ctx context.Context, confirmToken *string) (Shipment, error)
 	GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams) (Shipment, error)
+	// Row lock for the read-modify-write of a status transition, so two
+	// concurrent updates (a driver's sync and a dispatcher's click) serialise
+	// instead of both validating against the same stale status.
+	GetShipmentByIDForUpdate(ctx context.Context, arg GetShipmentByIDForUpdateParams) (Shipment, error)
 	GetShipmentByTrackingNumber(ctx context.Context, trackingNumber string) (Shipment, error)
-	// A NULL cursor means the client has never synced, so there is no lower bound
-	// and everything assigned to the driver is returned. Without the explicit NULL
-	// check, "updated_at > NULL" evaluates to NULL rather than true, and a first
-	// sync silently pulled only shipments already in an active status.
-	GetShipmentsForSync(ctx context.Context, arg GetShipmentsForSyncParams) ([]Shipment, error)
+	GetSyncMetadata(ctx context.Context, driverID pgtype.UUID) (SyncMetadatum, error)
 	GetTenantByID(ctx context.Context, id pgtype.UUID) (Tenant, error)
 	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
-	GetTrackingEventsForSync(ctx context.Context, arg GetTrackingEventsForSyncParams) ([]GetTrackingEventsForSyncRow, error)
-	GetUnsyncedPODs(ctx context.Context, arg GetUnsyncedPODsParams) ([]GetUnsyncedPODsRow, error)
-	GetUserByEmail(ctx context.Context, email *string) (User, error)
-	GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmailAndTenantParams) (User, error)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	GetUserByPhone(ctx context.Context, phone *string) (User, error)
-	GetUserByPhoneAndTenant(ctx context.Context, arg GetUserByPhoneAndTenantParams) (User, error)
 	GetVehicleByID(ctx context.Context, arg GetVehicleByIDParams) (Vehicle, error)
-	HardDeleteVehicle(ctx context.Context, arg HardDeleteVehicleParams) error
 	IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error)
+	IncrementVerificationAttempts(ctx context.Context, id pgtype.UUID) error
+	IsPhoneOptedOut(ctx context.Context, phone string) (bool, error)
 	ListActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error)
 	ListActiveShipmentsByDriver(ctx context.Context, arg ListActiveShipmentsByDriverParams) ([]Shipment, error)
+	ListActiveShipmentsForMap(ctx context.Context, tenantID pgtype.UUID) ([]ListActiveShipmentsForMapRow, error)
 	ListActiveVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) ([]Vehicle, error)
+	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error)
+	ListAllUsersForPlatform(ctx context.Context, tenantID pgtype.UUID) ([]ListAllUsersForPlatformRow, error)
 	ListAuditLogsByAction(ctx context.Context, arg ListAuditLogsByActionParams) ([]AuditLog, error)
 	ListAuditLogsByDateRange(ctx context.Context, arg ListAuditLogsByDateRangeParams) ([]AuditLog, error)
 	ListAuditLogsByEntity(ctx context.Context, arg ListAuditLogsByEntityParams) ([]AuditLog, error)
 	ListAuditLogsByTenant(ctx context.Context, arg ListAuditLogsByTenantParams) ([]AuditLog, error)
 	ListAuditLogsByUser(ctx context.Context, arg ListAuditLogsByUserParams) ([]AuditLog, error)
-	ListDriversByTenant(ctx context.Context, arg ListDriversByTenantParams) ([]User, error)
-	ListSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error)
-	ListShipmentsByDriver(ctx context.Context, arg ListShipmentsByDriverParams) ([]Shipment, error)
-	ListShipmentsByStatus(ctx context.Context, arg ListShipmentsByStatusParams) ([]Shipment, error)
-	ListShipmentsByTenant(ctx context.Context, arg ListShipmentsByTenantParams) ([]Shipment, error)
-	ListTrackingEventsByDriver(ctx context.Context, arg ListTrackingEventsByDriverParams) ([]ListTrackingEventsByDriverRow, error)
-	ListTrackingEventsByShipment(ctx context.Context, arg ListTrackingEventsByShipmentParams) ([]ListTrackingEventsByShipmentRow, error)
+	// Notes and messages a dispatcher addressed to this driver.
+	ListDriverMessagesSince(ctx context.Context, arg ListDriverMessagesSinceParams) ([]ListDriverMessagesSinceRow, error)
+	// The drivers page and the assignment picker: who is on duty, how loaded they
+	// are, and when their device last talked to the server.
+	ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error)
+	// Across tenants: the job that raises ETA alerts runs once for the platform.
+	ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error)
+	ListPublicShipmentEvents(ctx context.Context, shipmentID pgtype.UUID) ([]ListPublicShipmentEventsRow, error)
+	ListRecentShipmentsByDriver(ctx context.Context, arg ListRecentShipmentsByDriverParams) ([]Shipment, error)
+	ListRecentShipmentsByVehicle(ctx context.Context, arg ListRecentShipmentsByVehicleParams) ([]ListRecentShipmentsByVehicleRow, error)
+	ListSMSByTenant(ctx context.Context, arg ListSMSByTenantParams) ([]ListSMSByTenantRow, error)
+	ListShipmentEvents(ctx context.Context, arg ListShipmentEventsParams) ([]ShipmentEvent, error)
+	// A truck carries several shipments at once and its pings are attributed to
+	// only one of them, so a shipment's route is the driver's track over the time
+	// the shipment was on board, plus anything explicitly tagged to it.
+	ListShipmentRoute(ctx context.Context, arg ListShipmentRouteParams) ([]ListShipmentRouteRow, error)
+	// Every filter is optional: an empty status list or a NULL argument means "no
+	// constraint". Sorting goes through a whitelist of keys rather than
+	// interpolated SQL.
+	ListShipments(ctx context.Context, arg ListShipmentsParams) ([]ListShipmentsRow, error)
+	ListShipmentsByCustomerPhone(ctx context.Context, customerPhone string) ([]ListShipmentsByCustomerPhoneRow, error)
+	// Everything the driver's device should hold: active work, plus recently
+	// finished work so the completed list survives a reinstall. On an incremental
+	// sync anything changed since the cursor is included as well, so a
+	// cancellation or a dispatcher edit reaches the device.
+	ListShipmentsForDriverSync(ctx context.Context, arg ListShipmentsForDriverSyncParams) ([]Shipment, error)
+	// Shipments taken away from a driver since their last sync and not handed
+	// back. Their device should stop showing them.
+	ListShipmentsUnassignedFromDriverSince(ctx context.Context, arg ListShipmentsUnassignedFromDriverSinceParams) ([]pgtype.UUID, error)
+	// Drivers carrying a shipment who have not been heard from since the cutoff.
+	// Last contact is the later of the last app sync and the shipment's last
+	// status change, so a driver reporting by SMS counts as in touch and one who
+	// never installed the app is still caught.
+	ListStaleActiveDrivers(ctx context.Context, lastSyncAt pgtype.Timestamptz) ([]ListStaleActiveDriversRow, error)
+	ListTenantActivity(ctx context.Context, arg ListTenantActivityParams) ([]ListTenantActivityRow, error)
+	ListTenantsWithStats(ctx context.Context) ([]ListTenantsWithStatsRow, error)
 	ListUsersByTenant(ctx context.Context, arg ListUsersByTenantParams) ([]User, error)
-	ListVehiclesByTenant(ctx context.Context, arg ListVehiclesByTenantParams) ([]Vehicle, error)
+	ListVehiclesWithDrivers(ctx context.Context, tenantID pgtype.UUID) ([]ListVehiclesWithDriversRow, error)
 	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
-	MarkTrackingEventsSynced(ctx context.Context, dollar_1 []pgtype.UUID) error
-	ResetFailedLoginAttempts(ctx context.Context, id pgtype.UUID) error
+	MarkAlertRead(ctx context.Context, arg MarkAlertReadParams) error
+	MarkAllAlertsRead(ctx context.Context, tenantID pgtype.UUID) error
+	MarkSMSFailed(ctx context.Context, arg MarkSMSFailedParams) error
+	MarkSMSRetry(ctx context.Context, arg MarkSMSRetryParams) error
+	MarkSMSSent(ctx context.Context, arg MarkSMSSentParams) error
+	MarkSMSSkipped(ctx context.Context, arg MarkSMSSkippedParams) error
+	// For messages that are logged rather than sent through the queue: inbound
+	// messages and outbound ones skipped for opt-out.
+	RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessage, error)
+	RecordSuccessfulLogin(ctx context.Context, id pgtype.UUID) error
+	RemoveSMSOptOut(ctx context.Context, phone string) error
+	ReportCustomers(ctx context.Context, arg ReportCustomersParams) ([]ReportCustomersRow, error)
+	// Reports cover the half-open interval [from, to). Days are bucketed in the
+	// caller's time zone so "deliveries on Tuesday" means Tuesday in Addis Ababa,
+	// not in UTC.
+	ReportDeliveriesPerDay(ctx context.Context, arg ReportDeliveriesPerDayParams) ([]ReportDeliveriesPerDayRow, error)
+	ReportDriverPerformance(ctx context.Context, arg ReportDriverPerformanceParams) ([]ReportDriverPerformanceRow, error)
+	ReportRoutes(ctx context.Context, arg ReportRoutesParams) ([]ReportRoutesRow, error)
+	ReportSummary(ctx context.Context, arg ReportSummaryParams) (ReportSummaryRow, error)
+	// A process that died mid-send leaves rows in 'sending' past their lease.
+	RequeueStuckSMS(ctx context.Context) error
 	RevokeAllUserSessions(ctx context.Context, userID pgtype.UUID) error
 	RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) error
 	RevokeSession(ctx context.Context, id pgtype.UUID) error
 	RevokeSessionByUser(ctx context.Context, arg RevokeSessionByUserParams) error
-	SearchShipments(ctx context.Context, arg SearchShipmentsParams) ([]Shipment, error)
-	UnlockUserAccount(ctx context.Context, id pgtype.UUID) error
-	UpdatePIN(ctx context.Context, arg UpdatePINParams) (User, error)
-	UpdatePODSyncedAt(ctx context.Context, id pgtype.UUID) error
-	UpdatePassword(ctx context.Context, arg UpdatePasswordParams) (User, error)
-	UpdateShipment(ctx context.Context, arg UpdateShipmentParams) (Shipment, error)
-	// actual_delivery is stamped the first time a shipment reaches 'delivered' and
-	// preserved thereafter, so a re-sent status update cannot move the timestamp.
-	// The driver stats and delivery-count queries read this column.
-	UpdateShipmentStatus(ctx context.Context, arg UpdateShipmentStatusParams) (Shipment, error)
-	UpdateTenant(ctx context.Context, arg UpdateTenantParams) (Tenant, error)
-	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
+	// Hours from departure to delivery for recent deliveries between two cities.
+	// ETA estimation takes the median once enough history exists.
+	RouteTransitHours(ctx context.Context, arg RouteTransitHoursParams) ([]float64, error)
+	SetCustomerConfirmation(ctx context.Context, arg SetCustomerConfirmationParams) (Shipment, error)
+	// A problem report: the customer has answered but not confirmed receipt.
+	SetCustomerFeedback(ctx context.Context, arg SetCustomerFeedbackParams) (Shipment, error)
+	SetDriverVehicle(ctx context.Context, arg SetDriverVehicleParams) error
+	SetShipmentAssignment(ctx context.Context, arg SetShipmentAssignmentParams) (Shipment, error)
+	SetShipmentConfirmToken(ctx context.Context, arg SetShipmentConfirmTokenParams) error
+	// Recalculated estimates never overwrite one a dispatcher entered by hand.
+	SetShipmentETA(ctx context.Context, arg SetShipmentETAParams) error
+	// actual_delivery is stamped the first time a shipment is delivered and kept
+	// thereafter; picked_up_at likewise records the first departure. Both use the
+	// time the change happened, which for an offline driver is earlier than now.
+	SetShipmentStatus(ctx context.Context, arg SetShipmentStatusParams) (Shipment, error)
+	SetTenantActive(ctx context.Context, arg SetTenantActiveParams) error
+	SetUserActive(ctx context.Context, arg SetUserActiveParams) error
+	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
+	// Sliding expiry: a session in use is pushed out, never pulled in.
+	TouchSession(ctx context.Context, arg TouchSessionParams) error
+	UpdatePIN(ctx context.Context, arg UpdatePINParams) error
+	UpdatePassword(ctx context.Context, arg UpdatePasswordParams) error
+	// Edits replace every editable field; the form always submits all of them.
+	UpdateShipmentDetails(ctx context.Context, arg UpdateShipmentDetailsParams) (Shipment, error)
+	UpdateTenantPlan(ctx context.Context, arg UpdateTenantPlanParams) error
+	UpdateTenantSettings(ctx context.Context, arg UpdateTenantSettingsParams) (Tenant, error)
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error)
-	UpsertDeviceToken(ctx context.Context, arg UpsertDeviceTokenParams) (DeviceToken, error)
+	UpsertSyncMetadata(ctx context.Context, arg UpsertSyncMetadataParams) error
 }
 
 var _ Querier = (*Queries)(nil)
