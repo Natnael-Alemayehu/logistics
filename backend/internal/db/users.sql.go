@@ -11,39 +11,37 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countDriversByTenant = `-- name: CountDriversByTenant :one
-SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND role = 'driver' AND is_active = true
+const clearVehicleFromDrivers = `-- name: ClearVehicleFromDrivers :exec
+UPDATE users SET vehicle_id = NULL WHERE vehicle_id = $1 AND tenant_id = $2
 `
 
-func (q *Queries) CountDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countDriversByTenant, tenantID)
+type ClearVehicleFromDriversParams struct {
+	VehicleID pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
+	TenantID  pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) ClearVehicleFromDrivers(ctx context.Context, arg ClearVehicleFromDriversParams) error {
+	_, err := q.db.Exec(ctx, clearVehicleFromDrivers, arg.VehicleID, arg.TenantID)
+	return err
+}
+
+const countActiveDriversByTenant = `-- name: CountActiveDriversByTenant :one
+SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND role = 'driver' AND is_active
+`
+
+func (q *Queries) CountActiveDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveDriversByTenant, tenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
-const countDriversWithActiveShipments = `-- name: CountDriversWithActiveShipments :one
-SELECT COUNT(DISTINCT s.driver_id) 
-FROM shipments s
-INNER JOIN users u ON s.driver_id = u.id
-WHERE s.tenant_id = $1 
-  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived')
-  AND u.is_active = true
+const countStaffByTenant = `-- name: CountStaffByTenant :one
+SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND role <> 'driver'
 `
 
-func (q *Queries) CountDriversWithActiveShipments(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countDriversWithActiveShipments, tenantID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countUsersByTenant = `-- name: CountUsersByTenant :one
-SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND is_active = true
-`
-
-func (q *Queries) CountUsersByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countUsersByTenant, tenantID)
+func (q *Queries) CountStaffByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countStaffByTenant, tenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -51,20 +49,22 @@ func (q *Queries) CountUsersByTenant(ctx context.Context, tenantID pgtype.UUID) 
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
-    tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
+    tenant_id, role, full_name, phone, email, password_hash, pin_hash,
+    is_active, password_reset_required, vehicle_id
+) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at
 `
 
 type CreateUserParams struct {
-	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Role         string      `db:"role" json:"role"`
-	FullName     string      `db:"full_name" json:"full_name"`
-	Phone        *string     `db:"phone" json:"phone"`
-	Email        *string     `db:"email" json:"email"`
-	PasswordHash *string     `db:"password_hash" json:"password_hash"`
-	PinHash      *string     `db:"pin_hash" json:"pin_hash"`
-	IsActive     *bool       `db:"is_active" json:"is_active"`
+	TenantID              pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Role                  string      `db:"role" json:"role"`
+	FullName              string      `db:"full_name" json:"full_name"`
+	Phone                 *string     `db:"phone" json:"phone"`
+	Email                 *string     `db:"email" json:"email"`
+	PasswordHash          *string     `db:"password_hash" json:"password_hash"`
+	PinHash               *string     `db:"pin_hash" json:"pin_hash"`
+	PasswordResetRequired bool        `db:"password_reset_required" json:"password_reset_required"`
+	VehicleID             pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -76,7 +76,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.Email,
 		arg.PasswordHash,
 		arg.PinHash,
-		arg.IsActive,
+		arg.PasswordResetRequired,
+		arg.VehicleID,
 	)
 	var i User
 	err := row.Scan(
@@ -94,32 +95,18 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.FailedLoginAttempts,
 		&i.LockedUntil,
 		&i.PasswordResetRequired,
+		&i.VehicleID,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
-const deleteUser = `-- name: DeleteUser :exec
-UPDATE users
-SET is_active = false
-WHERE id = $1 AND tenant_id = $2
-`
-
-type DeleteUserParams struct {
-	ID       pgtype.UUID `db:"id" json:"id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
-	_, err := q.db.Exec(ctx, deleteUser, arg.ID, arg.TenantID)
-	return err
-}
-
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
-WHERE email = $1
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
+WHERE lower(email) = lower($1)
 `
 
-func (q *Queries) GetUserByEmail(ctx context.Context, email *string) (User, error) {
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
 	var i User
 	err := row.Scan(
@@ -137,44 +124,14 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email *string) (User, erro
 		&i.FailedLoginAttempts,
 		&i.LockedUntil,
 		&i.PasswordResetRequired,
-	)
-	return i, err
-}
-
-const getUserByEmailAndTenant = `-- name: GetUserByEmailAndTenant :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
-WHERE email = $1 AND tenant_id = $2
-`
-
-type GetUserByEmailAndTenantParams struct {
-	Email    *string     `db:"email" json:"email"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) GetUserByEmailAndTenant(ctx context.Context, arg GetUserByEmailAndTenantParams) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByEmailAndTenant, arg.Email, arg.TenantID)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.Role,
-		&i.FullName,
-		&i.Phone,
-		&i.Email,
-		&i.PasswordHash,
-		&i.PinHash,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.FailedLoginAttempts,
-		&i.LockedUntil,
-		&i.PasswordResetRequired,
+		&i.VehicleID,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -201,12 +158,14 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.FailedLoginAttempts,
 		&i.LockedUntil,
 		&i.PasswordResetRequired,
+		&i.VehicleID,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
 WHERE phone = $1
 `
 
@@ -228,47 +187,17 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone *string) (User, erro
 		&i.FailedLoginAttempts,
 		&i.LockedUntil,
 		&i.PasswordResetRequired,
-	)
-	return i, err
-}
-
-const getUserByPhoneAndTenant = `-- name: GetUserByPhoneAndTenant :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
-WHERE phone = $1 AND tenant_id = $2
-`
-
-type GetUserByPhoneAndTenantParams struct {
-	Phone    *string     `db:"phone" json:"phone"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) GetUserByPhoneAndTenant(ctx context.Context, arg GetUserByPhoneAndTenantParams) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByPhoneAndTenant, arg.Phone, arg.TenantID)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.Role,
-		&i.FullName,
-		&i.Phone,
-		&i.Email,
-		&i.PasswordHash,
-		&i.PinHash,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.FailedLoginAttempts,
-		&i.LockedUntil,
-		&i.PasswordResetRequired,
+		&i.VehicleID,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
 const incrementFailedLoginAttempts = `-- name: IncrementFailedLoginAttempts :one
 UPDATE users
-SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1
+SET failed_login_attempts = failed_login_attempts + 1
 WHERE id = $1
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at
 `
 
 func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -289,47 +218,126 @@ func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UU
 		&i.FailedLoginAttempts,
 		&i.LockedUntil,
 		&i.PasswordResetRequired,
+		&i.VehicleID,
+		&i.LastLoginAt,
 	)
 	return i, err
 }
 
-const listDriversByTenant = `-- name: ListDriversByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
-WHERE tenant_id = $1 AND role = 'driver'
-ORDER BY full_name
-LIMIT $2 OFFSET $3
+const listAllUsersForPlatform = `-- name: ListAllUsersForPlatform :many
+SELECT u.id, u.tenant_id, u.role, u.full_name, u.email, u.phone, u.is_active
+FROM users u
+WHERE u.tenant_id = $1
+ORDER BY u.role, u.full_name
 `
 
-type ListDriversByTenantParams struct {
+type ListAllUsersForPlatformRow struct {
+	ID       pgtype.UUID `db:"id" json:"id"`
 	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Limit    int32       `db:"limit" json:"limit"`
-	Offset   int32       `db:"offset" json:"offset"`
+	Role     string      `db:"role" json:"role"`
+	FullName string      `db:"full_name" json:"full_name"`
+	Email    *string     `db:"email" json:"email"`
+	Phone    *string     `db:"phone" json:"phone"`
+	IsActive bool        `db:"is_active" json:"is_active"`
 }
 
-func (q *Queries) ListDriversByTenant(ctx context.Context, arg ListDriversByTenantParams) ([]User, error) {
-	rows, err := q.db.Query(ctx, listDriversByTenant, arg.TenantID, arg.Limit, arg.Offset)
+func (q *Queries) ListAllUsersForPlatform(ctx context.Context, tenantID pgtype.UUID) ([]ListAllUsersForPlatformRow, error) {
+	rows, err := q.db.Query(ctx, listAllUsersForPlatform, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []User{}
+	items := []ListAllUsersForPlatformRow{}
 	for rows.Next() {
-		var i User
+		var i ListAllUsersForPlatformRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TenantID,
 			&i.Role,
 			&i.FullName,
-			&i.Phone,
 			&i.Email,
-			&i.PasswordHash,
-			&i.PinHash,
+			&i.Phone,
 			&i.IsActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDriversWithStatus = `-- name: ListDriversWithStatus :many
+SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at,
+       v.plate_number AS vehicle_plate,
+       sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version,
+       (SELECT COUNT(*) FROM shipments s
+        WHERE s.driver_id = u.id
+          AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active_shipments,
+       (SELECT COUNT(*) FROM shipments s
+        WHERE s.driver_id = u.id AND s.status = 'delivered'
+          AND s.actual_delivery >= date_trunc('month', NOW()))::bigint AS delivered_this_month
+FROM users u
+LEFT JOIN vehicles v ON v.id = u.vehicle_id
+LEFT JOIN sync_metadata sm ON sm.driver_id = u.id
+WHERE u.tenant_id = $1
+  AND u.role = 'driver'
+  AND (NOT $2::bool OR u.is_active)
+  AND ($3::text IS NULL
+       OR u.full_name ILIKE '%' || $3::text || '%'
+       OR u.phone ILIKE '%' || $3::text || '%')
+ORDER BY u.is_active DESC, u.full_name
+`
+
+type ListDriversWithStatusParams struct {
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	ActiveOnly bool        `db:"active_only" json:"active_only"`
+	Query      *string     `db:"query" json:"query"`
+}
+
+type ListDriversWithStatusRow struct {
+	ID                 pgtype.UUID        `db:"id" json:"id"`
+	FullName           string             `db:"full_name" json:"full_name"`
+	Phone              *string            `db:"phone" json:"phone"`
+	IsActive           bool               `db:"is_active" json:"is_active"`
+	VehicleID          pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	VehiclePlate       *string            `db:"vehicle_plate" json:"vehicle_plate"`
+	LastSyncAt         pgtype.Timestamptz `db:"last_sync_at" json:"last_sync_at"`
+	BatteryLevel       *int32             `db:"battery_level" json:"battery_level"`
+	TrackingPaused     *bool              `db:"tracking_paused" json:"tracking_paused"`
+	AppVersion         *string            `db:"app_version" json:"app_version"`
+	ActiveShipments    int64              `db:"active_shipments" json:"active_shipments"`
+	DeliveredThisMonth int64              `db:"delivered_this_month" json:"delivered_this_month"`
+}
+
+// The drivers page and the assignment picker: who is on duty, how loaded they
+// are, and when their device last talked to the server.
+func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error) {
+	rows, err := q.db.Query(ctx, listDriversWithStatus, arg.TenantID, arg.ActiveOnly, arg.Query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDriversWithStatusRow{}
+	for rows.Next() {
+		var i ListDriversWithStatusRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FullName,
+			&i.Phone,
+			&i.IsActive,
+			&i.VehicleID,
 			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.FailedLoginAttempts,
-			&i.LockedUntil,
-			&i.PasswordResetRequired,
+			&i.VehiclePlate,
+			&i.LastSyncAt,
+			&i.BatteryLevel,
+			&i.TrackingPaused,
+			&i.AppVersion,
+			&i.ActiveShipments,
+			&i.DeliveredThisMonth,
 		); err != nil {
 			return nil, err
 		}
@@ -342,9 +350,9 @@ func (q *Queries) ListDriversByTenant(ctx context.Context, arg ListDriversByTena
 }
 
 const listUsersByTenant = `-- name: ListUsersByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required FROM users
-WHERE tenant_id = $1
-ORDER BY created_at DESC
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
+WHERE tenant_id = $1 AND role <> 'driver'
+ORDER BY is_active DESC, full_name
 LIMIT $2 OFFSET $3
 `
 
@@ -378,6 +386,8 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 			&i.FailedLoginAttempts,
 			&i.LockedUntil,
 			&i.PasswordResetRequired,
+			&i.VehicleID,
+			&i.LastLoginAt,
 		); err != nil {
 			return nil, err
 		}
@@ -405,130 +415,121 @@ func (q *Queries) LockUserAccount(ctx context.Context, arg LockUserAccountParams
 	return err
 }
 
-const resetFailedLoginAttempts = `-- name: ResetFailedLoginAttempts :exec
+const recordSuccessfulLogin = `-- name: RecordSuccessfulLogin :exec
 UPDATE users
-SET failed_login_attempts = 0, locked_until = NULL
+SET failed_login_attempts = 0, locked_until = NULL, last_login_at = NOW()
 WHERE id = $1
 `
 
-func (q *Queries) ResetFailedLoginAttempts(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, resetFailedLoginAttempts, id)
+func (q *Queries) RecordSuccessfulLogin(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, recordSuccessfulLogin, id)
 	return err
 }
 
-const unlockUserAccount = `-- name: UnlockUserAccount :exec
-UPDATE users
-SET failed_login_attempts = 0, locked_until = NULL
-WHERE id = $1
+const setDriverVehicle = `-- name: SetDriverVehicle :exec
+UPDATE users SET vehicle_id = $3 WHERE id = $1 AND tenant_id = $2 AND role = 'driver'
 `
 
-func (q *Queries) UnlockUserAccount(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, unlockUserAccount, id)
+type SetDriverVehicleParams struct {
+	ID        pgtype.UUID `db:"id" json:"id"`
+	TenantID  pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	VehicleID pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
+}
+
+func (q *Queries) SetDriverVehicle(ctx context.Context, arg SetDriverVehicleParams) error {
+	_, err := q.db.Exec(ctx, setDriverVehicle, arg.ID, arg.TenantID, arg.VehicleID)
 	return err
 }
 
-const updatePIN = `-- name: UpdatePIN :one
+const setUserActive = `-- name: SetUserActive :exec
+UPDATE users SET is_active = $3 WHERE id = $1 AND tenant_id = $2
+`
+
+type SetUserActiveParams struct {
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	IsActive bool        `db:"is_active" json:"is_active"`
+}
+
+func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) error {
+	_, err := q.db.Exec(ctx, setUserActive, arg.ID, arg.TenantID, arg.IsActive)
+	return err
+}
+
+const setUserRole = `-- name: SetUserRole :exec
+UPDATE users SET role = $3 WHERE id = $1 AND tenant_id = $2 AND role <> 'driver'
+`
+
+type SetUserRoleParams struct {
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Role     string      `db:"role" json:"role"`
+}
+
+func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) error {
+	_, err := q.db.Exec(ctx, setUserRole, arg.ID, arg.TenantID, arg.Role)
+	return err
+}
+
+const updatePIN = `-- name: UpdatePIN :exec
 UPDATE users
-SET pin_hash = $2, failed_login_attempts = 0, locked_until = NULL
+SET pin_hash = $2, password_reset_required = $3, failed_login_attempts = 0, locked_until = NULL
 WHERE id = $1
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
 `
 
 type UpdatePINParams struct {
-	ID      pgtype.UUID `db:"id" json:"id"`
-	PinHash *string     `db:"pin_hash" json:"pin_hash"`
+	ID                    pgtype.UUID `db:"id" json:"id"`
+	PinHash               *string     `db:"pin_hash" json:"pin_hash"`
+	PasswordResetRequired bool        `db:"password_reset_required" json:"password_reset_required"`
 }
 
-func (q *Queries) UpdatePIN(ctx context.Context, arg UpdatePINParams) (User, error) {
-	row := q.db.QueryRow(ctx, updatePIN, arg.ID, arg.PinHash)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.Role,
-		&i.FullName,
-		&i.Phone,
-		&i.Email,
-		&i.PasswordHash,
-		&i.PinHash,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.FailedLoginAttempts,
-		&i.LockedUntil,
-		&i.PasswordResetRequired,
-	)
-	return i, err
+func (q *Queries) UpdatePIN(ctx context.Context, arg UpdatePINParams) error {
+	_, err := q.db.Exec(ctx, updatePIN, arg.ID, arg.PinHash, arg.PasswordResetRequired)
+	return err
 }
 
-const updatePassword = `-- name: UpdatePassword :one
+const updatePassword = `-- name: UpdatePassword :exec
 UPDATE users
-SET password_hash = $2, password_reset_required = false, failed_login_attempts = 0, locked_until = NULL
+SET password_hash = $2, password_reset_required = $3, failed_login_attempts = 0, locked_until = NULL
 WHERE id = $1
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
 `
 
 type UpdatePasswordParams struct {
-	ID           pgtype.UUID `db:"id" json:"id"`
-	PasswordHash *string     `db:"password_hash" json:"password_hash"`
+	ID                    pgtype.UUID `db:"id" json:"id"`
+	PasswordHash          *string     `db:"password_hash" json:"password_hash"`
+	PasswordResetRequired bool        `db:"password_reset_required" json:"password_reset_required"`
 }
 
-func (q *Queries) UpdatePassword(ctx context.Context, arg UpdatePasswordParams) (User, error) {
-	row := q.db.QueryRow(ctx, updatePassword, arg.ID, arg.PasswordHash)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.Role,
-		&i.FullName,
-		&i.Phone,
-		&i.Email,
-		&i.PasswordHash,
-		&i.PinHash,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.FailedLoginAttempts,
-		&i.LockedUntil,
-		&i.PasswordResetRequired,
-	)
-	return i, err
+func (q *Queries) UpdatePassword(ctx context.Context, arg UpdatePasswordParams) error {
+	_, err := q.db.Exec(ctx, updatePassword, arg.ID, arg.PasswordHash, arg.PasswordResetRequired)
+	return err
 }
 
-const updateUser = `-- name: UpdateUser :one
+const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users
-SET 
-    full_name = COALESCE($3, full_name),
-    phone = COALESCE($4, phone),
-    email = COALESCE($5, email),
-    password_hash = COALESCE($6, password_hash),
-    pin_hash = COALESCE($7, pin_hash),
-    is_active = COALESCE($8, is_active)
+SET full_name = $3,
+    phone = $4,
+    email = $5,
+    updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at
 `
 
-type UpdateUserParams struct {
-	ID           pgtype.UUID `db:"id" json:"id"`
-	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	FullName     *string     `db:"full_name" json:"full_name"`
-	Phone        *string     `db:"phone" json:"phone"`
-	Email        *string     `db:"email" json:"email"`
-	PasswordHash *string     `db:"password_hash" json:"password_hash"`
-	PinHash      *string     `db:"pin_hash" json:"pin_hash"`
-	IsActive     *bool       `db:"is_active" json:"is_active"`
+type UpdateUserProfileParams struct {
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	FullName string      `db:"full_name" json:"full_name"`
+	Phone    *string     `db:"phone" json:"phone"`
+	Email    *string     `db:"email" json:"email"`
 }
 
-func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUser,
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile,
 		arg.ID,
 		arg.TenantID,
 		arg.FullName,
 		arg.Phone,
 		arg.Email,
-		arg.PasswordHash,
-		arg.PinHash,
-		arg.IsActive,
 	)
 	var i User
 	err := row.Scan(
@@ -546,6 +547,8 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.FailedLoginAttempts,
 		&i.LockedUntil,
 		&i.PasswordResetRequired,
+		&i.VehicleID,
+		&i.LastLoginAt,
 	)
 	return i, err
 }

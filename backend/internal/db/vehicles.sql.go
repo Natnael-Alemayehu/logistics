@@ -12,7 +12,7 @@ import (
 )
 
 const countVehiclesByTenant = `-- name: CountVehiclesByTenant :one
-SELECT COUNT(*) FROM vehicles WHERE tenant_id = $1 AND is_active = true
+SELECT COUNT(*) FROM vehicles WHERE tenant_id = $1 AND is_active
 `
 
 func (q *Queries) CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
@@ -23,17 +23,16 @@ func (q *Queries) CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUI
 }
 
 const createVehicle = `-- name: CreateVehicle :one
-INSERT INTO vehicles (
-    tenant_id, plate_number, vehicle_type, is_active
-) VALUES ($1, $2, $3, $4)
-RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at
+INSERT INTO vehicles (tenant_id, plate_number, vehicle_type, capacity_kg, is_active)
+VALUES ($1, $2, $3, $4, true)
+RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg
 `
 
 type CreateVehicleParams struct {
-	TenantID    pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	PlateNumber string      `db:"plate_number" json:"plate_number"`
-	VehicleType *string     `db:"vehicle_type" json:"vehicle_type"`
-	IsActive    *bool       `db:"is_active" json:"is_active"`
+	TenantID    pgtype.UUID    `db:"tenant_id" json:"tenant_id"`
+	PlateNumber string         `db:"plate_number" json:"plate_number"`
+	VehicleType *string        `db:"vehicle_type" json:"vehicle_type"`
+	CapacityKg  pgtype.Numeric `db:"capacity_kg" json:"capacity_kg"`
 }
 
 func (q *Queries) CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error) {
@@ -41,7 +40,7 @@ func (q *Queries) CreateVehicle(ctx context.Context, arg CreateVehicleParams) (V
 		arg.TenantID,
 		arg.PlateNumber,
 		arg.VehicleType,
-		arg.IsActive,
+		arg.CapacityKg,
 	)
 	var i Vehicle
 	err := row.Scan(
@@ -52,28 +51,13 @@ func (q *Queries) CreateVehicle(ctx context.Context, arg CreateVehicleParams) (V
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CapacityKg,
 	)
 	return i, err
 }
 
-const deleteVehicle = `-- name: DeleteVehicle :exec
-UPDATE vehicles
-SET is_active = false
-WHERE id = $1 AND tenant_id = $2
-`
-
-type DeleteVehicleParams struct {
-	ID       pgtype.UUID `db:"id" json:"id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) DeleteVehicle(ctx context.Context, arg DeleteVehicleParams) error {
-	_, err := q.db.Exec(ctx, deleteVehicle, arg.ID, arg.TenantID)
-	return err
-}
-
 const getVehicleByID = `-- name: GetVehicleByID :one
-SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at FROM vehicles
+SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg FROM vehicles
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -93,28 +77,14 @@ func (q *Queries) GetVehicleByID(ctx context.Context, arg GetVehicleByIDParams) 
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CapacityKg,
 	)
 	return i, err
 }
 
-const hardDeleteVehicle = `-- name: HardDeleteVehicle :exec
-DELETE FROM vehicles
-WHERE id = $1 AND tenant_id = $2
-`
-
-type HardDeleteVehicleParams struct {
-	ID       pgtype.UUID `db:"id" json:"id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) HardDeleteVehicle(ctx context.Context, arg HardDeleteVehicleParams) error {
-	_, err := q.db.Exec(ctx, hardDeleteVehicle, arg.ID, arg.TenantID)
-	return err
-}
-
 const listActiveVehiclesByTenant = `-- name: ListActiveVehiclesByTenant :many
-SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at FROM vehicles
-WHERE tenant_id = $1 AND is_active = true
+SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg FROM vehicles
+WHERE tenant_id = $1 AND is_active
 ORDER BY plate_number
 `
 
@@ -135,6 +105,7 @@ func (q *Queries) ListActiveVehiclesByTenant(ctx context.Context, tenantID pgtyp
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CapacityKg,
 		); err != nil {
 			return nil, err
 		}
@@ -146,28 +117,40 @@ func (q *Queries) ListActiveVehiclesByTenant(ctx context.Context, tenantID pgtyp
 	return items, nil
 }
 
-const listVehiclesByTenant = `-- name: ListVehiclesByTenant :many
-SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at FROM vehicles
-WHERE tenant_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+const listVehiclesWithDrivers = `-- name: ListVehiclesWithDrivers :many
+SELECT v.id, v.tenant_id, v.plate_number, v.vehicle_type, v.is_active, v.created_at, v.updated_at, v.capacity_kg,
+       COALESCE((SELECT string_agg(u.full_name, ', ' ORDER BY u.full_name)
+        FROM users u WHERE u.vehicle_id = v.id AND u.is_active), '')::text AS driver_names,
+       (SELECT COUNT(*) FROM shipments s
+        WHERE s.vehicle_id = v.id
+          AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active_shipments
+FROM vehicles v
+WHERE v.tenant_id = $1
+ORDER BY v.is_active DESC, v.plate_number
 `
 
-type ListVehiclesByTenantParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Limit    int32       `db:"limit" json:"limit"`
-	Offset   int32       `db:"offset" json:"offset"`
+type ListVehiclesWithDriversRow struct {
+	ID              pgtype.UUID        `db:"id" json:"id"`
+	TenantID        pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	PlateNumber     string             `db:"plate_number" json:"plate_number"`
+	VehicleType     *string            `db:"vehicle_type" json:"vehicle_type"`
+	IsActive        bool               `db:"is_active" json:"is_active"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CapacityKg      pgtype.Numeric     `db:"capacity_kg" json:"capacity_kg"`
+	DriverNames     string             `db:"driver_names" json:"driver_names"`
+	ActiveShipments int64              `db:"active_shipments" json:"active_shipments"`
 }
 
-func (q *Queries) ListVehiclesByTenant(ctx context.Context, arg ListVehiclesByTenantParams) ([]Vehicle, error) {
-	rows, err := q.db.Query(ctx, listVehiclesByTenant, arg.TenantID, arg.Limit, arg.Offset)
+func (q *Queries) ListVehiclesWithDrivers(ctx context.Context, tenantID pgtype.UUID) ([]ListVehiclesWithDriversRow, error) {
+	rows, err := q.db.Query(ctx, listVehiclesWithDrivers, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Vehicle{}
+	items := []ListVehiclesWithDriversRow{}
 	for rows.Next() {
-		var i Vehicle
+		var i ListVehiclesWithDriversRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TenantID,
@@ -176,6 +159,9 @@ func (q *Queries) ListVehiclesByTenant(ctx context.Context, arg ListVehiclesByTe
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CapacityKg,
+			&i.DriverNames,
+			&i.ActiveShipments,
 		); err != nil {
 			return nil, err
 		}
@@ -189,20 +175,21 @@ func (q *Queries) ListVehiclesByTenant(ctx context.Context, arg ListVehiclesByTe
 
 const updateVehicle = `-- name: UpdateVehicle :one
 UPDATE vehicles
-SET
-    plate_number = COALESCE($3, plate_number),
-    vehicle_type = COALESCE($4, vehicle_type),
-    is_active = COALESCE($5, is_active)
+SET plate_number = $3,
+    vehicle_type = $4,
+    capacity_kg = $5,
+    is_active = $6
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at
+RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg
 `
 
 type UpdateVehicleParams struct {
-	ID          pgtype.UUID `db:"id" json:"id"`
-	TenantID    pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	PlateNumber *string     `db:"plate_number" json:"plate_number"`
-	VehicleType *string     `db:"vehicle_type" json:"vehicle_type"`
-	IsActive    *bool       `db:"is_active" json:"is_active"`
+	ID          pgtype.UUID    `db:"id" json:"id"`
+	TenantID    pgtype.UUID    `db:"tenant_id" json:"tenant_id"`
+	PlateNumber string         `db:"plate_number" json:"plate_number"`
+	VehicleType *string        `db:"vehicle_type" json:"vehicle_type"`
+	CapacityKg  pgtype.Numeric `db:"capacity_kg" json:"capacity_kg"`
+	IsActive    bool           `db:"is_active" json:"is_active"`
 }
 
 func (q *Queries) UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error) {
@@ -211,6 +198,7 @@ func (q *Queries) UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (V
 		arg.TenantID,
 		arg.PlateNumber,
 		arg.VehicleType,
+		arg.CapacityKg,
 		arg.IsActive,
 	)
 	var i Vehicle
@@ -222,6 +210,7 @@ func (q *Queries) UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (V
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CapacityKg,
 	)
 	return i, err
 }

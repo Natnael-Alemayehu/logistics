@@ -1,0 +1,34 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}{{$p := $d.Person}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/team">Team</a></p>
+    <h1>{{if $p}}Edit {{$p.FullName}}{{else}}Invite a team member{{end}}</h1>
+  </div>
+</div>
+{{template "form-error" .}}
+<form method="post" action="{{if $p}}/app/team/{{uuid $p.ID}}/edit{{else}}/app/team{{end}}" class="card form-narrow stack" novalidate>
+  <label>Full name
+    <input name="full_name" value="{{field $f "full_name" ""}}" required autocomplete="off" {{if index $e "full_name"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "full_name")}}
+  </label>
+  <label>Email
+    <input name="email" type="email" value="{{field $f "email" ""}}" autocomplete="off" {{if index $e "email"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "email")}}
+  </label>
+  <label>Mobile number
+    <input name="phone" type="tel" inputmode="tel" value="{{field $f "phone" ""}}" placeholder="09… or +251…" {{if index $e "phone"}}aria-invalid="true"{{end}}>
+    <span class="hint">They can sign in with either. {{if not $p}}With a phone number we text them a temporary password.{{end}}</span>
+    {{template "field-error" (index $e "phone")}}
+  </label>
+  <fieldset>
+    <legend>Role</legend>
+    {{$role := field $f "role" "dispatcher"}}
+    {{range $d.Roles}}<label class="radio"><input type="radio" name="role" value="{{.}}" {{if eq $role .}}checked{{end}}> {{roleLabel .}}</label>{{end}}
+    {{template "field-error" (index $e "role")}}
+  </fieldset>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{{if $p}}Save changes{{else}}Create account{{end}}</button>
+    <a class="btn btn-ghost" href="/app/team">Cancel</a>
+  </div>
+</form>
+{{end}}

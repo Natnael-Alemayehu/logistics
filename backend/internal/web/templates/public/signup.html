@@ -1,0 +1,38 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$f := .Form}}{{$e := .Errors}}
+<section class="card auth">
+  <h1>Start your free trial</h1>
+  <p class="muted">14 days, up to 5 drivers, no card needed.</p>
+  {{template "form-error" .}}
+  <form method="post" action="/signup" class="stack" novalidate>
+    <label>Company name
+      <input name="company" value="{{field $f "company" ""}}" required autofocus {{if index $e "company"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "company")}}
+    </label>
+    <label>Main town
+      <input name="city" value="{{field $f "city" "Addis Ababa"}}" list="towns" required {{if index $e "city"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "city")}}
+    </label>
+    <label>Your name
+      <input name="name" value="{{field $f "name" ""}}" autocomplete="name" required {{if index $e "full_name"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "full_name")}}
+    </label>
+    <label>Email
+      <input name="email" type="email" value="{{field $f "email" ""}}" autocomplete="email" required {{if index $e "email"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "email")}}
+    </label>
+    <label>Mobile number
+      <input name="phone" type="tel" value="{{field $f "phone" ""}}" autocomplete="tel" placeholder="09… or +251…" required {{if index $e "phone"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "phone")}}
+    </label>
+    <label>Password
+      <input name="password" type="password" autocomplete="new-password" minlength="8" required {{if index $e "password"}}aria-invalid="true"{{end}}>
+      <span class="hint">At least 8 characters.</span>
+      {{template "field-error" (index $e "password")}}
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+  </form>
+  <p class="small">Already have an account? <a href="/login">Sign in</a></p>
+  <datalist id="towns">{{range .Data.Towns}}<option value="{{.Name}}">{{end}}</datalist>
+</section>
+{{end}}

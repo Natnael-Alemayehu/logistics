@@ -1,0 +1,22 @@
+{{define "content"}}
+<section class="track">
+  <h1>Your shipments</h1>
+  <p class="muted">Sent to {{maskPhone .Data.Phone}} in the last 90 days.</p>
+  {{if .Data.Shipments}}
+  <ul class="ship-cards">
+    {{range .Data.Shipments}}
+    <li class="card">
+      <a href="/track/{{.TrackingNumber}}" class="ship-card">
+        <span class="mono">{{.TrackingNumber}}</span>
+        <span>{{str .OriginCity}} → {{str .DestinationCity}}</span>
+        <span class="muted small">{{.CompanyName}} · booked {{date .CreatedAt}}</span>
+        <span>{{template "status" .Status}}</span>
+      </a>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <div class="card empty"><p>No shipments found for this number.</p></div>
+  {{end}}
+</section>
+{{end}}

@@ -1,0 +1,83 @@
+{{define "app"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{if .Title}}{{.Title}} · {{end}}{{.App.Name}}</title>
+<link rel="icon" href="{{asset "icon.svg"}}" type="image/svg+xml">
+<link rel="stylesheet" href="{{asset "app.css"}}">
+{{block "head" .}}{{end}}
+<script src="{{asset "app.js"}}" defer></script>
+</head>
+<body class="shell" data-live="{{if and .Me (not .Me.IsPlatformAdmin)}}/app/live{{end}}">
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <button type="button" class="icon-btn nav-open" data-toggle="nav" aria-label="Menu" aria-controls="sidenav" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <a class="brand" href="/app">{{template "logo"}}<span>{{.App.Name}}</span></a>
+  {{if .Me}}<span class="company">{{.Me.TenantName}}</span>{{end}}
+  <span class="spacer"></span>
+  {{if and .Me (not .Me.IsPlatformAdmin)}}
+  <form class="quick-search" action="/app/shipments" method="get" role="search">
+    <input type="search" name="q" placeholder="Search shipments" aria-label="Search shipments" value="{{if eq .Nav "shipments"}}{{.Query.Get "q"}}{{end}}">
+  </form>
+  <a class="icon-btn bell" href="/app/alerts" aria-label="Alerts{{if .Unread}}, {{.Unread}} unread{{end}}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    <span class="count" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span>
+  </a>
+  {{end}}
+  {{if .Me}}
+  <details class="menu user-menu">
+    <summary aria-label="Account menu"><span class="avatar">{{initials .Me.Name}}</span></summary>
+    <div class="menu-panel">
+      <p class="menu-head"><strong>{{.Me.Name}}</strong><br><span class="muted">{{roleLabel .Me.Role}}</span></p>
+      <a href="/app/account">Your account</a>
+      <a href="/app/account/password">Change password</a>
+      <a href="/track" target="_blank" rel="noopener">Public tracking page</a>
+      <form action="/logout" method="post"><button type="submit" class="link">Sign out</button></form>
+    </div>
+  </details>
+  {{end}}
+</header>
+
+<div class="frame">
+<nav class="sidenav" id="sidenav" aria-label="Main">
+  {{if .Me}}{{if .Me.IsPlatformAdmin}}
+  <a href="/app/platform" {{if eq .Nav "platform"}}aria-current="page"{{end}}>{{template "icon" "building"}}Companies</a>
+  {{else if not .Me.MustChangeCredential}}
+  <a href="/app" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>{{template "icon" "home"}}Overview</a>
+  <a href="/app/shipments" {{if eq .Nav "shipments"}}aria-current="page"{{end}}>{{template "icon" "box"}}Shipments</a>
+  <a href="/app/drivers" {{if eq .Nav "drivers"}}aria-current="page"{{end}}>{{template "icon" "user"}}Drivers</a>
+  <a href="/app/vehicles" {{if eq .Nav "vehicles"}}aria-current="page"{{end}}>{{template "icon" "truck"}}Vehicles</a>
+  <a href="/app/alerts" {{if eq .Nav "alerts"}}aria-current="page"{{end}}>{{template "icon" "bell"}}Alerts<span class="pill" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span></a>
+  <a href="/app/reports" {{if eq .Nav "reports"}}aria-current="page"{{end}}>{{template "icon" "chart"}}Reports</a>
+  {{if .Me.CanManageCompany}}
+  <p class="nav-section">Company</p>
+  <a href="/app/team" {{if eq .Nav "team"}}aria-current="page"{{end}}>{{template "icon" "users"}}Team</a>
+  <a href="/app/settings" {{if eq .Nav "settings"}}aria-current="page"{{end}}>{{template "icon" "gear"}}Settings</a>
+  {{end}}
+  <div class="nav-foot">
+    <a class="btn btn-primary btn-block" href="/app/shipments/new">+ New shipment</a>
+    <p class="muted small">Drivers use <a href="/driver/" target="_blank" rel="noopener">{{bareURL .App.PublicURL}}/driver</a></p>
+  </div>
+  {{end}}{{end}}
+</nav>
+<div class="scrim" data-toggle="nav" hidden></div>
+
+<main id="main" class="main">
+  {{if and .Me .App.TrialDaysLeft}}{{if le .App.TrialDaysLeft 5}}
+  <div class="banner warn">Your free trial ends {{if le .App.TrialDaysLeft 1}}today{{else}}in {{.App.TrialDaysLeft}} days{{end}}. {{if .Me.CanManageCompany}}<a href="/app/settings#plan">Choose a plan</a> to keep booking shipments.{{else}}Ask your administrator to choose a plan.{{end}}</div>
+  {{end}}{{end}}
+  {{if .App.MockSMS}}{{if and .Me .Me.CanManageCompany}}{{if eq .Nav "dashboard"}}
+  <div class="banner info">Text messages are simulated — nothing is sent to real phones. See them in <a href="/app/settings/sms">Settings → Text messages</a>.</div>
+  {{end}}{{end}}{{end}}
+  {{template "flash" .}}
+  {{template "content" .}}
+</main>
+</div>
+<div class="toasts" aria-live="polite" data-toasts></div>
+{{block "scripts" .}}{{end}}
+</body>
+</html>{{end}}

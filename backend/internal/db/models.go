@@ -8,6 +8,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Alert struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	AlertType      string             `db:"alert_type" json:"alert_type"`
+	Severity       string             `db:"severity" json:"severity"`
+	Message        string             `db:"message" json:"message"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ReadAt         pgtype.Timestamptz `db:"read_at" json:"read_at"`
+	AcknowledgedAt pgtype.Timestamptz `db:"acknowledged_at" json:"acknowledged_at"`
+	AcknowledgedBy pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
+}
+
 type AuditLog struct {
 	ID         pgtype.UUID        `db:"id" json:"id"`
 	TenantID   pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
@@ -20,17 +34,6 @@ type AuditLog struct {
 	IpAddress  *string            `db:"ip_address" json:"ip_address"`
 	UserAgent  *string            `db:"user_agent" json:"user_agent"`
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
-}
-
-type DeviceToken struct {
-	ID         pgtype.UUID        `db:"id" json:"id"`
-	UserID     pgtype.UUID        `db:"user_id" json:"user_id"`
-	DeviceID   string             `db:"device_id" json:"device_id"`
-	PushToken  string             `db:"push_token" json:"push_token"`
-	Platform   string             `db:"platform" json:"platform"`
-	AppVersion *string            `db:"app_version" json:"app_version"`
-	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type ProofOfDelivery struct {
@@ -63,54 +66,132 @@ type Session struct {
 	ExpiresAt        pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	RevokedAt        pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	Kind             string             `db:"kind" json:"kind"`
+	Remember         bool               `db:"remember" json:"remember"`
+	LastSeenAt       pgtype.Timestamptz `db:"last_seen_at" json:"last_seen_at"`
 }
 
 type Shipment struct {
-	ID                     pgtype.UUID        `db:"id" json:"id"`
-	TenantID               pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	TrackingNumber         string             `db:"tracking_number" json:"tracking_number"`
-	OriginAddress          string             `db:"origin_address" json:"origin_address"`
-	OriginCoordinates      interface{}        `db:"origin_coordinates" json:"origin_coordinates"`
-	DestinationAddress     string             `db:"destination_address" json:"destination_address"`
-	DestinationCoordinates interface{}        `db:"destination_coordinates" json:"destination_coordinates"`
-	CustomerName           string             `db:"customer_name" json:"customer_name"`
-	CustomerPhone          string             `db:"customer_phone" json:"customer_phone"`
-	CargoDescription       *string            `db:"cargo_description" json:"cargo_description"`
-	CargoWeight            pgtype.Numeric     `db:"cargo_weight" json:"cargo_weight"`
-	CargoValue             pgtype.Numeric     `db:"cargo_value" json:"cargo_value"`
-	SpecialInstructions    *string            `db:"special_instructions" json:"special_instructions"`
-	DriverID               pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	VehicleID              pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
-	Status                 string             `db:"status" json:"status"`
-	StatusNote             *string            `db:"status_note" json:"status_note"`
-	StatusReason           *string            `db:"status_reason" json:"status_reason"`
-	EstimatedDelivery      pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
-	ActualDelivery         pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
-	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CreatedBy              pgtype.UUID        `db:"created_by" json:"created_by"`
-	StatusChangedAt        pgtype.Timestamptz `db:"status_changed_at" json:"status_changed_at"`
+	ID                  pgtype.UUID        `db:"id" json:"id"`
+	TenantID            pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	TrackingNumber      string             `db:"tracking_number" json:"tracking_number"`
+	OriginAddress       string             `db:"origin_address" json:"origin_address"`
+	DestinationAddress  string             `db:"destination_address" json:"destination_address"`
+	CustomerName        string             `db:"customer_name" json:"customer_name"`
+	CustomerPhone       string             `db:"customer_phone" json:"customer_phone"`
+	CargoDescription    *string            `db:"cargo_description" json:"cargo_description"`
+	CargoWeight         pgtype.Numeric     `db:"cargo_weight" json:"cargo_weight"`
+	CargoValue          pgtype.Numeric     `db:"cargo_value" json:"cargo_value"`
+	SpecialInstructions *string            `db:"special_instructions" json:"special_instructions"`
+	DriverID            pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	VehicleID           pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
+	Status              string             `db:"status" json:"status"`
+	StatusNote          *string            `db:"status_note" json:"status_note"`
+	StatusReason        *string            `db:"status_reason" json:"status_reason"`
+	EstimatedDelivery   pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+	ActualDelivery      pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CreatedBy           pgtype.UUID        `db:"created_by" json:"created_by"`
+	StatusChangedAt     pgtype.Timestamptz `db:"status_changed_at" json:"status_changed_at"`
+	Priority            string             `db:"priority" json:"priority"`
+	OriginCity          *string            `db:"origin_city" json:"origin_city"`
+	DestinationCity     *string            `db:"destination_city" json:"destination_city"`
+	OriginLat           *float64           `db:"origin_lat" json:"origin_lat"`
+	OriginLng           *float64           `db:"origin_lng" json:"origin_lng"`
+	DestinationLat      *float64           `db:"destination_lat" json:"destination_lat"`
+	DestinationLng      *float64           `db:"destination_lng" json:"destination_lng"`
+	DestinationPrecise  bool               `db:"destination_precise" json:"destination_precise"`
+	PickedUpAt          pgtype.Timestamptz `db:"picked_up_at" json:"picked_up_at"`
+	ConfirmToken        *string            `db:"confirm_token" json:"confirm_token"`
+	CustomerConfirmedAt pgtype.Timestamptz `db:"customer_confirmed_at" json:"customer_confirmed_at"`
+	CustomerFeedback    *string            `db:"customer_feedback" json:"customer_feedback"`
+	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
+}
+
+type ShipmentEvent struct {
+	ID               pgtype.UUID        `db:"id" json:"id"`
+	TenantID         pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID       pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	EventType        string             `db:"event_type" json:"event_type"`
+	FromStatus       *string            `db:"from_status" json:"from_status"`
+	ToStatus         *string            `db:"to_status" json:"to_status"`
+	DriverID         pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	PreviousDriverID pgtype.UUID        `db:"previous_driver_id" json:"previous_driver_id"`
+	ActorID          pgtype.UUID        `db:"actor_id" json:"actor_id"`
+	ActorName        string             `db:"actor_name" json:"actor_name"`
+	Source           string             `db:"source" json:"source"`
+	Note             *string            `db:"note" json:"note"`
+	Reason           *string            `db:"reason" json:"reason"`
+	Latitude         *float64           `db:"latitude" json:"latitude"`
+	Longitude        *float64           `db:"longitude" json:"longitude"`
+	VisibleToDriver  bool               `db:"visible_to_driver" json:"visible_to_driver"`
+	Public           bool               `db:"public" json:"public"`
+	Details          []byte             `db:"details" json:"details"`
+	ClientID         *string            `db:"client_id" json:"client_id"`
+	OccurredAt       pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type SmsMessage struct {
+	ID            pgtype.UUID        `db:"id" json:"id"`
+	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID    pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	Direction     string             `db:"direction" json:"direction"`
+	Phone         string             `db:"phone" json:"phone"`
+	Body          string             `db:"body" json:"body"`
+	Purpose       string             `db:"purpose" json:"purpose"`
+	Sensitive     bool               `db:"sensitive" json:"sensitive"`
+	Status        string             `db:"status" json:"status"`
+	Attempts      int32              `db:"attempts" json:"attempts"`
+	LastError     *string            `db:"last_error" json:"last_error"`
+	Provider      *string            `db:"provider" json:"provider"`
+	NextAttemptAt pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	SentAt        pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type SmsOptOut struct {
+	Phone     string             `db:"phone" json:"phone"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type SyncMetadatum struct {
-	ID               pgtype.UUID        `db:"id" json:"id"`
-	DriverID         pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	LastSyncAt       pgtype.Timestamptz `db:"last_sync_at" json:"last_sync_at"`
-	LastEventID      pgtype.UUID        `db:"last_event_id" json:"last_event_id"`
-	PendingSyncCount *int32             `db:"pending_sync_count" json:"pending_sync_count"`
-	StorageUsedKb    *int32             `db:"storage_used_kb" json:"storage_used_kb"`
-	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                 pgtype.UUID        `db:"id" json:"id"`
+	DriverID           pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	LastSyncAt         pgtype.Timestamptz `db:"last_sync_at" json:"last_sync_at"`
+	LastEventID        pgtype.UUID        `db:"last_event_id" json:"last_event_id"`
+	PendingSyncCount   *int32             `db:"pending_sync_count" json:"pending_sync_count"`
+	StorageUsedKb      *int32             `db:"storage_used_kb" json:"storage_used_kb"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeviceID           *string            `db:"device_id" json:"device_id"`
+	AppVersion         *string            `db:"app_version" json:"app_version"`
+	BatteryLevel       *int32             `db:"battery_level" json:"battery_level"`
+	ClockOffsetSeconds *int32             `db:"clock_offset_seconds" json:"clock_offset_seconds"`
+	TrackingPaused     bool               `db:"tracking_paused" json:"tracking_paused"`
 }
 
 type Tenant struct {
-	ID         pgtype.UUID        `db:"id" json:"id"`
-	Name       string             `db:"name" json:"name"`
-	Slug       string             `db:"slug" json:"slug"`
-	Plan       string             `db:"plan" json:"plan"`
-	MaxDrivers *int32             `db:"max_drivers" json:"max_drivers"`
-	IsActive   *bool              `db:"is_active" json:"is_active"`
-	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                 pgtype.UUID        `db:"id" json:"id"`
+	Name               string             `db:"name" json:"name"`
+	Slug               string             `db:"slug" json:"slug"`
+	Plan               string             `db:"plan" json:"plan"`
+	MaxDrivers         int32              `db:"max_drivers" json:"max_drivers"`
+	IsActive           bool               `db:"is_active" json:"is_active"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ContactPhone       *string            `db:"contact_phone" json:"contact_phone"`
+	ContactEmail       *string            `db:"contact_email" json:"contact_email"`
+	RegionCity         string             `db:"region_city" json:"region_city"`
+	MaxActivePerDriver int32              `db:"max_active_per_driver" json:"max_active_per_driver"`
+	SmsOnCreated       bool               `db:"sms_on_created" json:"sms_on_created"`
+	SmsOnDispatched    bool               `db:"sms_on_dispatched" json:"sms_on_dispatched"`
+	SmsOnArrived       bool               `db:"sms_on_arrived" json:"sms_on_arrived"`
+	SmsOnDelivered     bool               `db:"sms_on_delivered" json:"sms_on_delivered"`
+	SmsOnCancelled     bool               `db:"sms_on_cancelled" json:"sms_on_cancelled"`
+	SmsOnDelayed       bool               `db:"sms_on_delayed" json:"sms_on_delayed"`
+	SmsDriverOnAssign  bool               `db:"sms_driver_on_assign" json:"sms_driver_on_assign"`
+	TrialEndsAt        pgtype.Timestamptz `db:"trial_ends_at" json:"trial_ends_at"`
 }
 
 type TrackingEvent struct {
@@ -141,12 +222,14 @@ type User struct {
 	Email                 *string            `db:"email" json:"email"`
 	PasswordHash          *string            `db:"password_hash" json:"password_hash"`
 	PinHash               *string            `db:"pin_hash" json:"pin_hash"`
-	IsActive              *bool              `db:"is_active" json:"is_active"`
+	IsActive              bool               `db:"is_active" json:"is_active"`
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	FailedLoginAttempts   *int32             `db:"failed_login_attempts" json:"failed_login_attempts"`
+	FailedLoginAttempts   int32              `db:"failed_login_attempts" json:"failed_login_attempts"`
 	LockedUntil           pgtype.Timestamptz `db:"locked_until" json:"locked_until"`
-	PasswordResetRequired *bool              `db:"password_reset_required" json:"password_reset_required"`
+	PasswordResetRequired bool               `db:"password_reset_required" json:"password_reset_required"`
+	VehicleID             pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
+	LastLoginAt           pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
 }
 
 type Vehicle struct {
@@ -154,7 +237,19 @@ type Vehicle struct {
 	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
 	PlateNumber string             `db:"plate_number" json:"plate_number"`
 	VehicleType *string            `db:"vehicle_type" json:"vehicle_type"`
-	IsActive    *bool              `db:"is_active" json:"is_active"`
+	IsActive    bool               `db:"is_active" json:"is_active"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CapacityKg  pgtype.Numeric     `db:"capacity_kg" json:"capacity_kg"`
+}
+
+type VerificationCode struct {
+	ID         pgtype.UUID        `db:"id" json:"id"`
+	Phone      string             `db:"phone" json:"phone"`
+	Purpose    string             `db:"purpose" json:"purpose"`
+	CodeHash   string             `db:"code_hash" json:"code_hash"`
+	Attempts   int32              `db:"attempts" json:"attempts"`
+	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ConsumedAt pgtype.Timestamptz `db:"consumed_at" json:"consumed_at"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }

@@ -1,0 +1,60 @@
+{{/* The waybill is a printable page, so it replaces the dashboard layout. */}}
+{{define "app"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<script src="{{asset "app.js"}}" defer></script>
+</head>
+<body class="print-page">
+{{$d := .Data}}{{$s := $d.S}}{{$t := $d.Tenant}}
+<div class="print-bar no-print">
+  <a class="btn btn-ghost" href="/app/shipments/{{uuid $s.ID}}">← Back</a>
+  <button class="btn btn-primary" type="button" data-print>{{template "icon" "print"}} Print</button>
+</div>
+<article class="waybill">
+  <header class="wb-head">
+    <div>
+      <h1>{{$t.Name}}</h1>
+      <p>{{with $t.ContactPhone}}{{.}}{{end}}{{with $t.ContactEmail}} · {{.}}{{end}}</p>
+    </div>
+    <div class="wb-number">
+      <p class="wb-label">Waybill / የጭነት ሰነድ</p>
+      <p class="mono wb-tn">{{$s.TrackingNumber}}</p>
+      <p>Booked {{date $s.CreatedAt}}</p>
+    </div>
+  </header>
+
+  <section class="wb-grid">
+    <div class="wb-box"><h2>From / ከ</h2><p><strong>{{str $s.OriginCity}}</strong></p><p>{{$s.OriginAddress}}</p></div>
+    <div class="wb-box"><h2>To / ወደ</h2><p><strong>{{str $s.DestinationCity}}</strong></p><p>{{$s.DestinationAddress}}</p></div>
+    <div class="wb-box"><h2>Consignee / ተቀባይ</h2><p><strong>{{$s.CustomerName}}</strong></p><p>{{$s.CustomerPhone}}</p></div>
+    <div class="wb-box"><h2>Carrier / አጓጓዥ</h2>
+      <p><strong>{{with $d.D.Driver}}{{.FullName}}{{else}}—{{end}}</strong></p>
+      <p>{{with $d.D.Driver}}{{str .Phone}}{{end}}{{with $d.D.Vehicle}} · Plate {{.PlateNumber}}{{end}}</p>
+    </div>
+  </section>
+
+  <table class="wb-table">
+    <thead><tr><th>Description / መግለጫ</th><th class="num">Weight / ክብደት</th><th class="num">Declared value / ዋጋ</th></tr></thead>
+    <tbody><tr>
+      <td>{{with $s.CargoDescription}}{{.}}{{else}}—{{end}}</td>
+      <td class="num">{{if hasNum $s.CargoWeight}}{{kg $s.CargoWeight}}{{else}}—{{end}}</td>
+      <td class="num">{{if hasNum $s.CargoValue}}{{money $s.CargoValue}}{{else}}—{{end}}</td>
+    </tr></tbody>
+  </table>
+  {{with $s.SpecialInstructions}}<p class="wb-note"><strong>Instructions:</strong> {{.}}</p>{{end}}
+  <p class="wb-note">Due: {{when $s.EstimatedDelivery}} · Track: {{$d.TrackURL}}</p>
+
+  <section class="wb-sign">
+    <div><p class="wb-line"></p><p>Shipper signature & date / የላኪ ፊርማ</p></div>
+    <div><p class="wb-line"></p><p>Driver signature & date / የሹፌር ፊርማ</p></div>
+    <div><p class="wb-line"></p><p>Received in good order — name, signature & date / ተቀባይ</p></div>
+  </section>
+  <footer class="wb-foot">Printed {{when .Now}} · {{.App.Name}}</footer>
+</article>
+</body>
+</html>{{end}}
+{{define "content"}}{{end}}

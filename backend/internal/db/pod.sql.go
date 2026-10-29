@@ -18,12 +18,18 @@ INSERT INTO proof_of_deliveries (
     signature_data, signature_url, photo_urls,
     delivery_address, delivery_coordinates,
     delivery_notes, location_verified, location_mismatch_meters,
-    recorded_at
+    recorded_at, synced_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, 
-    ST_MakePoint($10, $11)::geometry(Point, 4326),
-    $12, $13, $14, $15
-) RETURNING id, tenant_id, shipment_id, driver_id, recipient_name, recipient_phone, signature_data, signature_url, photo_urls, delivery_address, delivery_coordinates, delivery_notes, location_verified, location_mismatch_meters, recorded_at, synced_at
+    $1, $2, $3,
+    $4, $5,
+    $6, $7, $8::text[],
+    $9,
+    CASE WHEN $10::float8 IS NULL OR $11::float8 IS NULL THEN NULL
+         ELSE ST_SetSRID(ST_MakePoint($11::float8, $10::float8), 4326)
+    END,
+    $12, $13, $14,
+    $15, NOW()
+) RETURNING id
 `
 
 type CreatePODParams struct {
@@ -36,15 +42,15 @@ type CreatePODParams struct {
 	SignatureUrl           *string            `db:"signature_url" json:"signature_url"`
 	PhotoUrls              []string           `db:"photo_urls" json:"photo_urls"`
 	DeliveryAddress        *string            `db:"delivery_address" json:"delivery_address"`
-	StMakepoint            interface{}        `db:"st_makepoint" json:"st_makepoint"`
-	StMakepoint_2          interface{}        `db:"st_makepoint_2" json:"st_makepoint_2"`
+	Latitude               *float64           `db:"latitude" json:"latitude"`
+	Longitude              *float64           `db:"longitude" json:"longitude"`
 	DeliveryNotes          *string            `db:"delivery_notes" json:"delivery_notes"`
 	LocationVerified       *bool              `db:"location_verified" json:"location_verified"`
 	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
 	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
 }
 
-func (q *Queries) CreatePOD(ctx context.Context, arg CreatePODParams) (ProofOfDelivery, error) {
+func (q *Queries) CreatePOD(ctx context.Context, arg CreatePODParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, createPOD,
 		arg.TenantID,
 		arg.ShipmentID,
@@ -55,46 +61,32 @@ func (q *Queries) CreatePOD(ctx context.Context, arg CreatePODParams) (ProofOfDe
 		arg.SignatureUrl,
 		arg.PhotoUrls,
 		arg.DeliveryAddress,
-		arg.StMakepoint,
-		arg.StMakepoint_2,
+		arg.Latitude,
+		arg.Longitude,
 		arg.DeliveryNotes,
 		arg.LocationVerified,
 		arg.LocationMismatchMeters,
 		arg.RecordedAt,
 	)
-	var i ProofOfDelivery
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.ShipmentID,
-		&i.DriverID,
-		&i.RecipientName,
-		&i.RecipientPhone,
-		&i.SignatureData,
-		&i.SignatureUrl,
-		&i.PhotoUrls,
-		&i.DeliveryAddress,
-		&i.DeliveryCoordinates,
-		&i.DeliveryNotes,
-		&i.LocationVerified,
-		&i.LocationMismatchMeters,
-		&i.RecordedAt,
-		&i.SyncedAt,
-	)
-	return i, err
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getPODByShipmentID = `-- name: GetPODByShipmentID :one
-SELECT id, tenant_id, shipment_id, driver_id,
-       recipient_name, recipient_phone,
-       signature_data, signature_url, photo_urls,
-       delivery_address,
-       ST_X(delivery_coordinates::geometry) as delivery_longitude,
-       ST_Y(delivery_coordinates::geometry) as delivery_latitude,
-       delivery_notes, location_verified, location_mismatch_meters,
-       recorded_at, synced_at
-FROM proof_of_deliveries
-WHERE shipment_id = $1 AND tenant_id = $2
+SELECT p.id, p.tenant_id, p.shipment_id, p.driver_id,
+       p.recipient_name, p.recipient_phone,
+       p.signature_data, p.signature_url, p.photo_urls,
+       p.delivery_address,
+       -- 0,0 stands for "no fix": it is in the Gulf of Guinea, never a delivery here.
+       COALESCE(ST_Y(p.delivery_coordinates), 0)::float8 AS delivery_latitude,
+       COALESCE(ST_X(p.delivery_coordinates), 0)::float8 AS delivery_longitude,
+       p.delivery_notes, p.location_verified, p.location_mismatch_meters,
+       p.recorded_at, p.synced_at,
+       u.full_name AS driver_name
+FROM proof_of_deliveries p
+LEFT JOIN users u ON u.id = p.driver_id
+WHERE p.shipment_id = $1 AND p.tenant_id = $2
 `
 
 type GetPODByShipmentIDParams struct {
@@ -113,13 +105,14 @@ type GetPODByShipmentIDRow struct {
 	SignatureUrl           *string            `db:"signature_url" json:"signature_url"`
 	PhotoUrls              []string           `db:"photo_urls" json:"photo_urls"`
 	DeliveryAddress        *string            `db:"delivery_address" json:"delivery_address"`
-	DeliveryLongitude      interface{}        `db:"delivery_longitude" json:"delivery_longitude"`
-	DeliveryLatitude       interface{}        `db:"delivery_latitude" json:"delivery_latitude"`
+	DeliveryLatitude       float64            `db:"delivery_latitude" json:"delivery_latitude"`
+	DeliveryLongitude      float64            `db:"delivery_longitude" json:"delivery_longitude"`
 	DeliveryNotes          *string            `db:"delivery_notes" json:"delivery_notes"`
 	LocationVerified       *bool              `db:"location_verified" json:"location_verified"`
 	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
 	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
 	SyncedAt               pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
+	DriverName             *string            `db:"driver_name" json:"driver_name"`
 }
 
 func (q *Queries) GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error) {
@@ -136,101 +129,14 @@ func (q *Queries) GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentID
 		&i.SignatureUrl,
 		&i.PhotoUrls,
 		&i.DeliveryAddress,
-		&i.DeliveryLongitude,
 		&i.DeliveryLatitude,
+		&i.DeliveryLongitude,
 		&i.DeliveryNotes,
 		&i.LocationVerified,
 		&i.LocationMismatchMeters,
 		&i.RecordedAt,
 		&i.SyncedAt,
+		&i.DriverName,
 	)
 	return i, err
-}
-
-const getUnsyncedPODs = `-- name: GetUnsyncedPODs :many
-SELECT id, tenant_id, shipment_id, driver_id,
-       recipient_name, recipient_phone,
-       signature_data, signature_url, photo_urls,
-       delivery_address,
-       ST_X(delivery_coordinates::geometry) as delivery_longitude,
-       ST_Y(delivery_coordinates::geometry) as delivery_latitude,
-       delivery_notes, location_verified, location_mismatch_meters,
-       recorded_at, synced_at
-FROM proof_of_deliveries
-WHERE driver_id = $1 AND tenant_id = $2 AND synced_at IS NULL
-ORDER BY recorded_at ASC
-`
-
-type GetUnsyncedPODsParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-type GetUnsyncedPODsRow struct {
-	ID                     pgtype.UUID        `db:"id" json:"id"`
-	TenantID               pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID             pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	DriverID               pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	RecipientName          string             `db:"recipient_name" json:"recipient_name"`
-	RecipientPhone         *string            `db:"recipient_phone" json:"recipient_phone"`
-	SignatureData          *string            `db:"signature_data" json:"signature_data"`
-	SignatureUrl           *string            `db:"signature_url" json:"signature_url"`
-	PhotoUrls              []string           `db:"photo_urls" json:"photo_urls"`
-	DeliveryAddress        *string            `db:"delivery_address" json:"delivery_address"`
-	DeliveryLongitude      interface{}        `db:"delivery_longitude" json:"delivery_longitude"`
-	DeliveryLatitude       interface{}        `db:"delivery_latitude" json:"delivery_latitude"`
-	DeliveryNotes          *string            `db:"delivery_notes" json:"delivery_notes"`
-	LocationVerified       *bool              `db:"location_verified" json:"location_verified"`
-	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
-	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	SyncedAt               pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
-}
-
-func (q *Queries) GetUnsyncedPODs(ctx context.Context, arg GetUnsyncedPODsParams) ([]GetUnsyncedPODsRow, error) {
-	rows, err := q.db.Query(ctx, getUnsyncedPODs, arg.DriverID, arg.TenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetUnsyncedPODsRow{}
-	for rows.Next() {
-		var i GetUnsyncedPODsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.ShipmentID,
-			&i.DriverID,
-			&i.RecipientName,
-			&i.RecipientPhone,
-			&i.SignatureData,
-			&i.SignatureUrl,
-			&i.PhotoUrls,
-			&i.DeliveryAddress,
-			&i.DeliveryLongitude,
-			&i.DeliveryLatitude,
-			&i.DeliveryNotes,
-			&i.LocationVerified,
-			&i.LocationMismatchMeters,
-			&i.RecordedAt,
-			&i.SyncedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const updatePODSyncedAt = `-- name: UpdatePODSyncedAt :exec
-UPDATE proof_of_deliveries
-SET synced_at = NOW()
-WHERE id = $1
-`
-
-func (q *Queries) UpdatePODSyncedAt(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, updatePODSyncedAt, id)
-	return err
 }

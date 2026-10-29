@@ -1,0 +1,45 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div><h1>Companies</h1><p class="muted">{{len $d.Tenants}} companies · {{$d.Drivers}} active drivers · {{grouped $d.Shipments}} shipments in the last 30 days</p></div>
+</div>
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Company</th><th>Plan</th><th class="num">Drivers</th><th class="num">Staff</th><th class="num">Shipments (30 days)</th><th>Last shipment</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Tenants}}{{$t := .}}{{$id := uuid .ID}}
+  <tr {{if not .IsActive}}class="is-muted"{{end}}>
+    <td><strong>{{.Name}}</strong>{{if not .IsActive}} <span class="badge s-issue">Suspended</span>{{end}}
+      <div class="muted small">{{.RegionCity}} · since {{date .CreatedAt}}{{with .ContactPhone}} · {{.}}{{end}}</div></td>
+    <td>{{planName .Plan}}{{if eq .Plan "trial"}}{{if .TrialEndsAt.Valid}}<div class="small {{if .TrialEndsAt.Time.Before $.Now}}text-bad{{else}}muted{{end}}">ends {{date .TrialEndsAt}}</div>{{end}}{{end}}</td>
+    <td class="num">{{.Drivers}} / {{.MaxDrivers}}</td>
+    <td class="num">{{.Staff}}</td>
+    <td class="num">{{.Shipments30d}}</td>
+    <td>{{if .LastShipmentAt.Valid}}{{ago .LastShipmentAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
+    <td class="num">
+      {{if ne .ID $.Me.TenantID}}
+      <details class="pop pop-right">
+        <summary class="btn btn-sm">Manage</summary>
+        <div class="pop-panel stack">
+          <form method="post" action="/app/platform/tenants/{{$id}}/plan" class="stack">
+            <label>Plan
+              <select name="plan">{{range $d.Plans}}<option value="{{.Code}}" {{if eq .Code $t.Plan}}selected{{end}}>{{.Name}} ({{.MaxDrivers}} drivers)</option>{{end}}</select>
+            </label>
+            <label>Custom driver limit <span class="muted">(optional)</span><input name="max_drivers" type="number" min="1" max="10000"></label>
+            <button class="btn btn-sm btn-primary" type="submit">Save plan</button>
+          </form>
+          <form method="post" action="/app/platform/tenants/{{$id}}/active">
+            <input type="hidden" name="active" value="{{if .IsActive}}false{{else}}true{{end}}">
+            <button class="btn btn-sm btn-block {{if .IsActive}}btn-danger-ghost{{end}}" type="submit">{{if .IsActive}}Suspend company{{else}}Restore company{{end}}</button>
+          </form>
+        </div>
+      </details>
+      {{else}}<span class="muted small">Platform</span>{{end}}
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{end}}

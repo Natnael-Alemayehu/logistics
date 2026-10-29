@@ -1,112 +1,61 @@
-.PHONY: help run dev build test clean migrate-up migrate-down seed sqlc docker-up docker-down swagger deps
+.PHONY: help db db-stop run dev build migrate seed test test-integration vet sqlc docker-build clean
+
+DB_PORT ?= 5434
+DATABASE_URL ?= postgres://logistics:logistics@localhost:$(DB_PORT)/logistics?sslmode=disable
+# Integration tests create (and drop) a scratch database on this server.
+TEST_DATABASE_URL ?= postgres://logistics:logistics@localhost:$(DB_PORT)/postgres?sslmode=disable
+export DATABASE_URL
 
 help:
-	@echo "Backend - Logistics API Server"
-	@echo "==============================="
-	@echo "  make deps        - Download Go dependencies"
-	@echo "  make dev         - Start development server with hot reload"
-	@echo "  make build       - Build API and worker binaries"
-	@echo "  make run         - Run API server"
-	@echo "  make run-worker  - Run worker"
-	@echo "  make test        - Run unit tests"
-	@echo "  make test-integration - Run integration tests"
-	@echo "  make migrate-up  - Run database migrations"
-	@echo "  make migrate-down - Rollback database migrations"
-	@echo "  make seed        - Seed database with test data"
-	@echo "  make sqlc        - Generate SQLC code"
-	@echo "  make swagger     - Generate Swagger docs"
-	@echo "  make docker-up   - Start Docker containers"
-	@echo "  make docker-down - Stop Docker containers"
-	@echo "  make setup       - Full development setup"
+	@echo "Menged"
+	@echo "  make db                 start the development database (port $(DB_PORT))"
+	@echo "  make seed               migrate and load the demo company"
+	@echo "  make run                run the app on :8080, templates reloaded from disk"
+	@echo "  make dev                run with rebuild on Go changes (air)"
+	@echo "  make test               unit tests"
+	@echo "  make test-integration   end-to-end tests against the database"
+	@echo "  make build              build bin/menged"
+	@echo "  make migrate            apply migrations"
+	@echo "  make sqlc               regenerate internal/db from sqlc/queries"
+	@echo "  make docker-build       build the production image"
 
-deps:
-	go mod download
+db:
+	DB_PORT=$(DB_PORT) docker compose up -d --wait postgres
 
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GOMOD=$(GOCMD) mod
-
-BINARY_NAME=logistics-api
-WORKER_BINARY=logistics-worker
-BINARY_UNIX=$(BINARY_NAME)_unix
-
-# Database
-DB_URL=postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable
-
-# Main build targets
-build:
-	$(GOBUILD) -o bin/$(BINARY_NAME) ./cmd/api
-	$(GOBUILD) -o bin/$(WORKER_BINARY) ./cmd/worker
-
-run:
-	$(GOCMD) run ./cmd/api
-
-run-worker:
-	$(GOCMD) run ./cmd/worker
-
-dev:
-	@which air > /dev/null || (echo "Installing air..." && go install github.com/air-verse/air@latest)
-	air -c .air.toml
-
-test:
-	$(GOTEST) -v -short ./...
-
-# Integration tests with configurable timeout (default: 30m)
-# Usage: make test-integration TIMEOUT=1h
-TIMEOUT ?= 30m
-test-integration:
-	$(GOTEST) -v -tags=integration -timeout $(TIMEOUT) ./tests/integration/...
-
-test-all:
-	$(GOTEST) -v -short ./...
-	$(GOTEST) -v -tags=integration -timeout $(TIMEOUT) ./tests/integration/...
-
-ci: test-all
-
-clean:
-	$(GOCLEAN)
-	rm -rf bin/
-
-migrate-up:
-	goose -dir migrations postgres "$(DB_URL)" up
-
-migrate-down:
-	goose -dir migrations postgres "$(DB_URL)" down
-
-seed:
-	@echo "Seeding development database..."
-	$(GOCMD) run scripts/seed.go "$(DB_URL)"
-
-migrate-create:
-	@read -p "Enter migration name: " name; \
-	goose -dir migrations create "$$name" sql
-
-sqlc:
-	cd sqlc && sqlc generate
-
-swagger:
-	swag init -g cmd/api/main.go -o docs
-
-docker-up:
-	docker compose up -d
-
-docker-down:
+db-stop:
 	docker compose down
 
-docker-logs:
-	docker compose logs -f api
+run:
+	DEV_RELOAD=true go run ./cmd/server serve
 
-setup: docker-up sleep migrate-up
-	@echo "Development environment ready!"
+dev:
+	@command -v air >/dev/null || go install github.com/air-verse/air@v1.62.0
+	DEV_RELOAD=true air -c .air.toml
 
-sleep:
-	sleep 5
+build:
+	CGO_ENABLED=0 go build -trimpath -o bin/menged ./cmd/server
 
-pgcli:
-	pgcli "postgres://logistics:logistics@localhost:5432/logistics?sslmode=disable"
+migrate:
+	go run ./cmd/server migrate
 
-build-linux:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o bin/$(BINARY_UNIX) ./cmd/api
+seed:
+	go run ./cmd/server seed
+
+test:
+	go test ./...
+
+test-integration:
+	TEST_DATABASE_URL=$(TEST_DATABASE_URL) go test -tags integration -count=1 ./tests/integration/
+
+vet:
+	go vet ./...
+	go vet -tags integration ./tests/...
+
+sqlc:
+	sqlc generate -f sqlc/sqlc.yaml
+
+docker-build:
+	docker build -t menged:latest .
+
+clean:
+	rm -rf bin tmp

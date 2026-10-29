@@ -1,0 +1,8 @@
+{{define "content"}}{{$d := .Data}}
+<section class="card empty error-page">
+  <p class="error-code">{{$d.Status}}</p>
+  <h1>{{$d.Title}}</h1>
+  <p class="muted">{{$d.Detail}}</p>
+  <p><a class="btn" href="/app" data-back>Go back</a> <a class="btn btn-primary" href="/app">Overview</a></p>
+</section>
+{{end}}

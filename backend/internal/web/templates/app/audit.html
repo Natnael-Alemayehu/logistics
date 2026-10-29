@@ -1,0 +1,33 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/settings">Settings</a></p>
+    <h1>Audit log</h1>
+    <p class="muted">Sign-ins and changes to people, vehicles and settings. Shipment changes are in each shipment's history.</p>
+  </div>
+</div>
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th><th>From</th></tr></thead>
+  <tbody>
+  {{range $d.Rows}}
+  <tr>
+    <td class="nowrap">{{when .At}}</td>
+    <td>{{.Who}}</td>
+    <td>{{.Action}}{{if .Entity}} · {{if .Link}}<a href="{{.Link}}">{{.Entity}}</a>{{else}}{{.Entity}}{{end}}{{end}}</td>
+    <td class="small">{{range .Changes}}<div><span class="muted">{{.Field}}:</span> {{with .From}}<s>{{truncate 40 .}}</s> → {{end}}{{truncate 60 .To}}</div>{{end}}</td>
+    <td class="small muted mono">{{.IP}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="muted">Nothing recorded yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+<nav class="pager">
+  {{if gt $d.Page 1}}<a class="btn btn-sm" href="?page={{sub $d.Page 1}}">← Newer</a>{{end}}
+  {{if $d.More}}<a class="btn btn-sm" href="?page={{add $d.Page 1}}">Older →</a>{{end}}
+</nav>
+{{end}}

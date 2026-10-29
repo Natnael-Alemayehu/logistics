@@ -1,0 +1,45 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}
+<div class="page-head">
+  <div><h1>Your account</h1><p class="muted">{{roleLabel .Me.Role}} at {{.Me.TenantName}}</p></div>
+  <div class="actions"><a class="btn" href="/app/account/password">Change password</a></div>
+</div>
+{{template "form-error" .}}
+<div class="grid-detail">
+<form method="post" action="/app/account" class="card col-main stack" novalidate>
+  <h2>Your details</h2>
+  <label>Full name
+    <input name="full_name" value="{{field $f "full_name" ""}}" required {{if index $e "full_name"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "full_name")}}
+  </label>
+  <label>Email
+    <input name="email" type="email" value="{{field $f "email" ""}}" {{if index $e "email"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "email")}}
+  </label>
+  <label>Mobile number
+    <input name="phone" type="tel" value="{{field $f "phone" ""}}" {{if index $e "phone"}}aria-invalid="true"{{end}}>
+    <span class="hint">You can sign in with your email or this number.</span>
+    {{template "field-error" (index $e "phone")}}
+  </label>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+</form>
+
+<section class="card col-side">
+  <div class="card-head"><h2>Where you're signed in</h2></div>
+  <ul class="session-list">
+    {{range $d.Sessions}}
+    <li>
+      <div>
+        <strong>{{if eq .ID $d.Current}}This browser{{else if eq .Kind "api"}}Driver app{{else}}Browser{{end}}</strong>
+        <p class="small muted">{{with .UserAgent}}{{truncate 60 .}}{{end}}</p>
+        <p class="small muted">{{with .IpAddress}}{{.}} · {{end}}active {{ago .LastSeenAt}}</p>
+      </div>
+      {{if ne .ID $d.Current}}<form method="post" action="/app/account/sessions/{{uuid .ID}}/revoke"><button class="btn btn-sm btn-ghost" type="submit">Sign out</button></form>{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{if gt (len $d.Sessions) 1}}
+  <form method="post" action="/app/account/sessions/revoke-others"><button class="btn btn-sm" type="submit">Sign out everywhere else</button></form>
+  {{end}}
+</section>
+</div>
+{{end}}

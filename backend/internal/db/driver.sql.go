@@ -11,130 +11,202 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getDriverActiveShipmentCount = `-- name: GetDriverActiveShipmentCount :one
-SELECT COUNT(*) FROM shipments 
-WHERE driver_id = $1 
-  AND tenant_id = $2 
-  AND status IN ('assigned', 'in_transit', 'delayed', 'arrived')
+const getDriverDeliveryCounts = `-- name: GetDriverDeliveryCounts :one
+SELECT
+    COUNT(*) FILTER (WHERE status = 'delivered' AND actual_delivery >= date_trunc('day', NOW()))::bigint AS today,
+    COUNT(*) FILTER (WHERE status = 'delivered' AND actual_delivery >= date_trunc('week', NOW()))::bigint AS week,
+    COUNT(*) FILTER (WHERE status = 'delivered' AND actual_delivery >= date_trunc('month', NOW()))::bigint AS month,
+    COUNT(*) FILTER (WHERE status = 'delivered')::bigint AS total,
+    COUNT(*) FILTER (WHERE status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active
+FROM shipments
+WHERE driver_id = $1 AND tenant_id = $2
 `
 
-type GetDriverActiveShipmentCountParams struct {
+type GetDriverDeliveryCountsParams struct {
 	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
 	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 }
 
-func (q *Queries) GetDriverActiveShipmentCount(ctx context.Context, arg GetDriverActiveShipmentCountParams) (int64, error) {
-	row := q.db.QueryRow(ctx, getDriverActiveShipmentCount, arg.DriverID, arg.TenantID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type GetDriverDeliveryCountsRow struct {
+	Today  int64 `db:"today" json:"today"`
+	Week   int64 `db:"week" json:"week"`
+	Month  int64 `db:"month" json:"month"`
+	Total  int64 `db:"total" json:"total"`
+	Active int64 `db:"active" json:"active"`
 }
 
-const getDriverDeliveriesThisMonth = `-- name: GetDriverDeliveriesThisMonth :one
-SELECT COUNT(*) FROM shipments 
-WHERE driver_id = $1 
-  AND tenant_id = $2 
-  AND status = 'delivered' 
-  AND actual_delivery >= DATE_TRUNC('month', NOW())
-`
-
-type GetDriverDeliveriesThisMonthParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) GetDriverDeliveriesThisMonth(ctx context.Context, arg GetDriverDeliveriesThisMonthParams) (int64, error) {
-	row := q.db.QueryRow(ctx, getDriverDeliveriesThisMonth, arg.DriverID, arg.TenantID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const getDriverDeliveriesThisWeek = `-- name: GetDriverDeliveriesThisWeek :one
-SELECT COUNT(*) FROM shipments 
-WHERE driver_id = $1 
-  AND tenant_id = $2 
-  AND status = 'delivered' 
-  AND actual_delivery >= DATE_TRUNC('week', NOW())
-`
-
-type GetDriverDeliveriesThisWeekParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) GetDriverDeliveriesThisWeek(ctx context.Context, arg GetDriverDeliveriesThisWeekParams) (int64, error) {
-	row := q.db.QueryRow(ctx, getDriverDeliveriesThisWeek, arg.DriverID, arg.TenantID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const getDriverDeliveriesToday = `-- name: GetDriverDeliveriesToday :one
-SELECT COUNT(*) FROM shipments 
-WHERE driver_id = $1 
-  AND tenant_id = $2 
-  AND status = 'delivered' 
-  AND actual_delivery >= DATE_TRUNC('day', NOW())
-`
-
-type GetDriverDeliveriesTodayParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) GetDriverDeliveriesToday(ctx context.Context, arg GetDriverDeliveriesTodayParams) (int64, error) {
-	row := q.db.QueryRow(ctx, getDriverDeliveriesToday, arg.DriverID, arg.TenantID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const getDriverTotalDeliveries = `-- name: GetDriverTotalDeliveries :one
-SELECT COUNT(*) FROM shipments 
-WHERE driver_id = $1 
-  AND tenant_id = $2 
-  AND status = 'delivered'
-`
-
-type GetDriverTotalDeliveriesParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) GetDriverTotalDeliveries(ctx context.Context, arg GetDriverTotalDeliveriesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, getDriverTotalDeliveries, arg.DriverID, arg.TenantID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const getDriverVehicleAssignment = `-- name: GetDriverVehicleAssignment :one
-SELECT v.id, v.tenant_id, v.plate_number, v.vehicle_type, v.is_active, v.created_at, v.updated_at
-FROM vehicles v
-INNER JOIN shipments s ON s.vehicle_id = v.id
-WHERE s.driver_id = $1 
-  AND s.tenant_id = $2 
-  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived')
-LIMIT 1
-`
-
-type GetDriverVehicleAssignmentParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) GetDriverVehicleAssignment(ctx context.Context, arg GetDriverVehicleAssignmentParams) (Vehicle, error) {
-	row := q.db.QueryRow(ctx, getDriverVehicleAssignment, arg.DriverID, arg.TenantID)
-	var i Vehicle
+func (q *Queries) GetDriverDeliveryCounts(ctx context.Context, arg GetDriverDeliveryCountsParams) (GetDriverDeliveryCountsRow, error) {
+	row := q.db.QueryRow(ctx, getDriverDeliveryCounts, arg.DriverID, arg.TenantID)
+	var i GetDriverDeliveryCountsRow
 	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.PlateNumber,
-		&i.VehicleType,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+		&i.Today,
+		&i.Week,
+		&i.Month,
+		&i.Total,
+		&i.Active,
 	)
 	return i, err
+}
+
+const getDriverPerformance = `-- name: GetDriverPerformance :one
+SELECT
+    COUNT(*) FILTER (WHERE shipments.status = 'delivered')::bigint AS delivered,
+    COUNT(*) FILTER (WHERE shipments.status = 'delivered' AND shipments.estimated_delivery IS NOT NULL
+                       AND shipments.actual_delivery <= shipments.estimated_delivery)::bigint AS on_time,
+    COUNT(*) FILTER (WHERE shipments.status = 'delivered' AND shipments.estimated_delivery IS NOT NULL)::bigint AS with_eta,
+    COALESCE(AVG(EXTRACT(EPOCH FROM (shipments.actual_delivery - COALESCE(shipments.picked_up_at, shipments.created_at))) / 3600.0)
+        FILTER (WHERE shipments.status = 'delivered'), 0)::float8 AS avg_hours,
+    COUNT(*) FILTER (WHERE EXISTS (
+        SELECT 1 FROM shipment_events e
+        WHERE e.shipment_id = shipments.id AND e.event_type = 'status_changed' AND e.to_status = 'issue'
+    ))::bigint AS with_issues
+FROM shipments
+WHERE shipments.driver_id = $1 AND shipments.tenant_id = $2
+  AND shipments.created_at >= $3
+`
+
+type GetDriverPerformanceParams struct {
+	DriverID pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Since    pgtype.Timestamptz `db:"since" json:"since"`
+}
+
+type GetDriverPerformanceRow struct {
+	Delivered  int64   `db:"delivered" json:"delivered"`
+	OnTime     int64   `db:"on_time" json:"on_time"`
+	WithEta    int64   `db:"with_eta" json:"with_eta"`
+	AvgHours   float64 `db:"avg_hours" json:"avg_hours"`
+	WithIssues int64   `db:"with_issues" json:"with_issues"`
+}
+
+// One driver's record over a period, for the driver page.
+func (q *Queries) GetDriverPerformance(ctx context.Context, arg GetDriverPerformanceParams) (GetDriverPerformanceRow, error) {
+	row := q.db.QueryRow(ctx, getDriverPerformance, arg.DriverID, arg.TenantID, arg.Since)
+	var i GetDriverPerformanceRow
+	err := row.Scan(
+		&i.Delivered,
+		&i.OnTime,
+		&i.WithEta,
+		&i.AvgHours,
+		&i.WithIssues,
+	)
+	return i, err
+}
+
+const getSyncMetadata = `-- name: GetSyncMetadata :one
+SELECT id, driver_id, last_sync_at, last_event_id, pending_sync_count, storage_used_kb, updated_at, device_id, app_version, battery_level, clock_offset_seconds, tracking_paused FROM sync_metadata WHERE driver_id = $1
+`
+
+func (q *Queries) GetSyncMetadata(ctx context.Context, driverID pgtype.UUID) (SyncMetadatum, error) {
+	row := q.db.QueryRow(ctx, getSyncMetadata, driverID)
+	var i SyncMetadatum
+	err := row.Scan(
+		&i.ID,
+		&i.DriverID,
+		&i.LastSyncAt,
+		&i.LastEventID,
+		&i.PendingSyncCount,
+		&i.StorageUsedKb,
+		&i.UpdatedAt,
+		&i.DeviceID,
+		&i.AppVersion,
+		&i.BatteryLevel,
+		&i.ClockOffsetSeconds,
+		&i.TrackingPaused,
+	)
+	return i, err
+}
+
+const listStaleActiveDrivers = `-- name: ListStaleActiveDrivers :many
+SELECT DISTINCT ON (s.driver_id)
+       s.tenant_id, s.driver_id, s.id AS shipment_id, s.tracking_number,
+       u.full_name AS driver_name,
+       GREATEST(sm.last_sync_at, s.status_changed_at, s.created_at)::timestamptz AS last_contact
+FROM shipments s
+JOIN users u ON u.id = s.driver_id
+LEFT JOIN sync_metadata sm ON sm.driver_id = s.driver_id
+WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
+  AND GREATEST(sm.last_sync_at, s.status_changed_at, s.created_at) < $1
+ORDER BY s.driver_id, s.status_changed_at DESC
+`
+
+type ListStaleActiveDriversRow struct {
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	TrackingNumber string             `db:"tracking_number" json:"tracking_number"`
+	DriverName     string             `db:"driver_name" json:"driver_name"`
+	LastContact    pgtype.Timestamptz `db:"last_contact" json:"last_contact"`
+}
+
+// Drivers carrying a shipment who have not been heard from since the cutoff.
+// Last contact is the later of the last app sync and the shipment's last
+// status change, so a driver reporting by SMS counts as in touch and one who
+// never installed the app is still caught.
+func (q *Queries) ListStaleActiveDrivers(ctx context.Context, lastSyncAt pgtype.Timestamptz) ([]ListStaleActiveDriversRow, error) {
+	rows, err := q.db.Query(ctx, listStaleActiveDrivers, lastSyncAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStaleActiveDriversRow{}
+	for rows.Next() {
+		var i ListStaleActiveDriversRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.DriverID,
+			&i.ShipmentID,
+			&i.TrackingNumber,
+			&i.DriverName,
+			&i.LastContact,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upsertSyncMetadata = `-- name: UpsertSyncMetadata :exec
+INSERT INTO sync_metadata (
+    driver_id, last_sync_at, device_id, app_version, battery_level,
+    pending_sync_count, storage_used_kb, clock_offset_seconds, tracking_paused
+) VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (driver_id) DO UPDATE SET
+    last_sync_at = NOW(),
+    device_id = EXCLUDED.device_id,
+    app_version = EXCLUDED.app_version,
+    battery_level = EXCLUDED.battery_level,
+    pending_sync_count = EXCLUDED.pending_sync_count,
+    storage_used_kb = EXCLUDED.storage_used_kb,
+    clock_offset_seconds = EXCLUDED.clock_offset_seconds,
+    tracking_paused = EXCLUDED.tracking_paused
+`
+
+type UpsertSyncMetadataParams struct {
+	DriverID           pgtype.UUID `db:"driver_id" json:"driver_id"`
+	DeviceID           *string     `db:"device_id" json:"device_id"`
+	AppVersion         *string     `db:"app_version" json:"app_version"`
+	BatteryLevel       *int32      `db:"battery_level" json:"battery_level"`
+	PendingSyncCount   *int32      `db:"pending_sync_count" json:"pending_sync_count"`
+	StorageUsedKb      *int32      `db:"storage_used_kb" json:"storage_used_kb"`
+	ClockOffsetSeconds *int32      `db:"clock_offset_seconds" json:"clock_offset_seconds"`
+	TrackingPaused     bool        `db:"tracking_paused" json:"tracking_paused"`
+}
+
+func (q *Queries) UpsertSyncMetadata(ctx context.Context, arg UpsertSyncMetadataParams) error {
+	_, err := q.db.Exec(ctx, upsertSyncMetadata,
+		arg.DriverID,
+		arg.DeviceID,
+		arg.AppVersion,
+		arg.BatteryLevel,
+		arg.PendingSyncCount,
+		arg.StorageUsedKb,
+		arg.ClockOffsetSeconds,
+		arg.TrackingPaused,
+	)
+	return err
 }
