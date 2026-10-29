@@ -45,6 +45,9 @@ type ShipmentInput struct {
 	CargoValueETB       float64
 	SpecialInstructions string
 
+	// PlannedPickup is when the load is to be collected, if agreed. The
+	// computed estimate counts from it.
+	PlannedPickup *time.Time
 	// EstimatedDelivery overrides the computed estimate when set.
 	EstimatedDelivery *time.Time
 
@@ -109,7 +112,17 @@ type validShipment struct {
 	cargo         *string
 	weight, value pgtype.Numeric
 	instructions  *string
+	pickup        *time.Time
 	etaManual     *time.Time
+}
+
+// start is when the trip is expected to begin: the planned pickup, unless
+// that has passed.
+func (v validShipment) start(now time.Time) time.Time {
+	if v.pickup != nil && v.pickup.After(now) {
+		return *v.pickup
+	}
+	return now
 }
 
 func validateShipment(in ShipmentInput, now time.Time) (validShipment, error) {
@@ -156,14 +169,31 @@ func validateShipment(in ShipmentInput, now time.Time) (validShipment, error) {
 	v.cargo = toText(strings.TrimSpace(truncate(in.CargoDescription, 500)))
 	v.instructions = toText(strings.TrimSpace(truncate(in.SpecialInstructions, 1000)))
 
+	if in.PlannedPickup != nil && !in.PlannedPickup.IsZero() {
+		if in.PlannedPickup.After(now.AddDate(1, 0, 0)) {
+			return v, invalid("planned_pickup", "The pickup is more than a year away.")
+		}
+		t := *in.PlannedPickup
+		v.pickup = &t
+	}
 	if in.EstimatedDelivery != nil && !in.EstimatedDelivery.IsZero() {
 		if in.EstimatedDelivery.Before(now.Add(-24 * time.Hour)) {
 			return v, invalid("estimated_delivery", "The estimated delivery is in the past.")
+		}
+		if v.pickup != nil && in.EstimatedDelivery.Before(*v.pickup) {
+			return v, invalid("estimated_delivery", "The estimated delivery is before the pickup.")
 		}
 		t := *in.EstimatedDelivery
 		v.etaManual = &t
 	}
 	return v, nil
+}
+
+func timestampPtr(t *time.Time) pgtype.Timestamptz {
+	if t == nil {
+		return pgtype.Timestamptz{}
+	}
+	return toTimestamp(*t)
 }
 
 // estimateArrival predicts delivery for a shipment leaving at start, from the
@@ -215,7 +245,7 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 
 		eta := v.etaManual
 		if eta == nil {
-			e := s.estimateArrival(ctx, q, a.TenantID, v.origin.City, v.dest.City, v.origin.Lat, v.origin.Lng, v.dest.Lat, v.dest.Lng, now)
+			e := s.estimateArrival(ctx, q, a.TenantID, v.origin.City, v.dest.City, v.origin.Lat, v.origin.Lng, v.dest.Lat, v.dest.Lng, v.start(now))
 			eta = &e
 		}
 
@@ -242,6 +272,7 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 			EstimatedDelivery:   toTimestamp(*eta),
 			EtaManual:           v.etaManual != nil,
 			CreatedBy:           a.UserID,
+			PlannedPickupAt:     timestampPtr(v.pickup),
 		}
 		if driver != nil {
 			params.DriverID = driver.ID
@@ -299,13 +330,14 @@ func (s *ShipmentService) Update(ctx context.Context, a Actor, id pgtype.UUID, i
 		eta := v.etaManual
 		manual := eta != nil
 		if !manual {
-			start := now
+			start := v.start(now)
 			if cur.PickedUpAt.Valid {
 				start = cur.PickedUpAt.Time
 			}
 			routeChanged := deref(cur.OriginCity) != deref(v.origin.City) || deref(cur.DestinationCity) != deref(v.dest.City) ||
 				deref(cur.DestinationLat) != v.dest.Lat || deref(cur.DestinationLng) != v.dest.Lng
-			if cur.EtaManual || routeChanged || !cur.EstimatedDelivery.Valid {
+			pickupChanged := !cur.PickedUpAt.Valid && !sameTime(cur.PlannedPickupAt, timestampPtr(v.pickup))
+			if cur.EtaManual || routeChanged || pickupChanged || !cur.EstimatedDelivery.Valid {
 				e := s.estimateArrival(ctx, q, a.TenantID, v.origin.City, v.dest.City, v.origin.Lat, v.origin.Lng, v.dest.Lat, v.dest.Lng, start)
 				eta = &e
 			} else {
@@ -335,6 +367,7 @@ func (s *ShipmentService) Update(ctx context.Context, a Actor, id pgtype.UUID, i
 			SpecialInstructions: v.instructions,
 			EstimatedDelivery:   toTimestamp(*eta),
 			EtaManual:           manual,
+			PlannedPickupAt:     timestampPtr(v.pickup),
 		})
 		if err != nil {
 			return err
@@ -376,14 +409,20 @@ func changedFields(a, b db.Shipment) []string {
 	add(deref(a.CargoDescription) != deref(b.CargoDescription) || numericOr(a.CargoWeight) != numericOr(b.CargoWeight), "cargo")
 	add(numericOr(a.CargoValue) != numericOr(b.CargoValue), "cargo value")
 	add(deref(a.SpecialInstructions) != deref(b.SpecialInstructions), "instructions")
-	add(a.EstimatedDelivery.Time.Unix() != b.EstimatedDelivery.Time.Unix() || a.EstimatedDelivery.Valid != b.EstimatedDelivery.Valid, "ETA")
+	add(!sameTime(a.PlannedPickupAt, b.PlannedPickupAt), "pickup time")
+	add(!sameTime(a.EstimatedDelivery, b.EstimatedDelivery), "ETA")
 	return out
+}
+
+// sameTime compares two optional instants to the second.
+func sameTime(a, b pgtype.Timestamptz) bool {
+	return a.Valid == b.Valid && (!a.Valid || a.Time.Unix() == b.Time.Unix())
 }
 
 func driverRelevant(fields []string) bool {
 	for _, f := range fields {
 		switch f {
-		case "origin", "destination", "customer name", "customer phone", "cargo", "instructions", "priority":
+		case "origin", "destination", "customer name", "customer phone", "cargo", "instructions", "priority", "pickup time":
 			return true
 		}
 	}

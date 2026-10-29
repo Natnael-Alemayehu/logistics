@@ -215,6 +215,9 @@ func shipmentFormValues(sh db.Shipment, loc *time.Location) url.Values {
 			v.Set("origin_lng", f(sh.OriginLng))
 		}
 	}
+	if sh.PlannedPickupAt.Valid {
+		v.Set("planned_pickup", sh.PlannedPickupAt.Time.In(loc).Format("2006-01-02T15:04"))
+	}
 	if sh.EtaManual && sh.EstimatedDelivery.Valid {
 		v.Set("estimated_delivery", sh.EstimatedDelivery.Time.In(loc).Format("2006-01-02T15:04"))
 	}
@@ -235,6 +238,7 @@ func (s *Server) shipmentNew(w http.ResponseWriter, r *http.Request) {
 			if sh, err := s.svc.Shipments.Get(r.Context(), principal(r).TenantID, sid); err == nil {
 				v.Form = shipmentFormValues(sh, s.cfg.Timezone)
 				v.Form.Del("estimated_delivery")
+				v.Form.Del("planned_pickup")
 			}
 		}
 	}
@@ -276,11 +280,15 @@ func (s *Server) shipmentInput(r *http.Request) service.ShipmentInput {
 		DriverID:            r.PostFormValue("driver_id"),
 		VehicleID:           r.PostFormValue("vehicle_id"),
 	}
-	if eta := r.PostFormValue("estimated_delivery"); eta != "" {
-		if t, err := time.ParseInLocation("2006-01-02T15:04", eta, s.cfg.Timezone); err == nil {
-			in.EstimatedDelivery = &t
+	when := func(name string) *time.Time {
+		t, err := time.ParseInLocation("2006-01-02T15:04", r.PostFormValue(name), s.cfg.Timezone)
+		if err != nil {
+			return nil
 		}
+		return &t
 	}
+	in.PlannedPickup = when("planned_pickup")
+	in.EstimatedDelivery = when("estimated_delivery")
 	return in
 }
 
@@ -419,17 +427,22 @@ func (s *Server) shipmentDetail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	review, err := s.svc.Shipments.ReviewPODs(r.Context(), p.TenantID, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	tenant, err := s.svc.Tenants.Get(r.Context(), p.TenantID)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	v := s.view(w, r, sh.TrackingNumber, "shipments", map[string]any{
-		"D": d, "S": sh, "Timeline": timeline, "Map": m, "Drivers": drivers, "Vehicles": vehicles,
+		"D": d, "S": sh, "Timeline": timeline, "Map": m, "Drivers": drivers, "Vehicles": vehicles, "Review": review,
 		"CanAssign": model.CanAssign(sh.Status), "CanUnassign": sh.DriverID.Valid && model.CanUnassign(sh.Status),
 		"CanCancel": model.CanCancel(sh.Status), "CanReopen": model.CanReopen(sh.Status),
 		"CanEdit": !model.IsFinalStatus(sh.Status), "Next": d.Next,
-		"CancelReasons": model.CancelReasons, "DelayReasons": model.DelayReasons, "IssueReasons": model.IssueReasons,
+		"CancelReasons": model.CancelReasonsFor(sh.Status), "DelayReasons": model.DelayReasons, "IssueReasons": model.IssueReasons,
 		"TrackURL": s.cfg.PublicURL + "/track/" + sh.TrackingNumber, "MaxActive": tenant.MaxActivePerDriver,
 	})
 	s.render(w, r, http.StatusOK, "app/shipment", v)
@@ -514,10 +527,14 @@ func (s *Server) shipmentNote(w http.ResponseWriter, r *http.Request) {
 	s.shipmentAction(w, r, func(id pgtype.UUID) (string, error) {
 		toDriver := r.PostFormValue("to") == "driver"
 		bySMS := r.PostFormValue("sms") != ""
-		err := s.svc.Shipments.Note(r.Context(), actor(r), id, r.PostFormValue("note"), toDriver, bySMS, "", time.Time{})
+		sent, err := s.svc.Shipments.Note(r.Context(), actor(r), id, r.PostFormValue("note"), toDriver, bySMS, "", time.Time{})
 		switch {
-		case toDriver && bySMS:
+		case toDriver && sent && !bySMS:
+			return "Message sent. The driver's app hasn't synced in the last 15 minutes, so it went by SMS as well.", err
+		case toDriver && sent:
 			return "Message sent to the driver's app and by SMS.", err
+		case toDriver && bySMS:
+			return "Message sent to the driver's app. The driver has no phone number for SMS.", err
 		case toDriver:
 			return "Message sent. The driver sees it on their next sync.", err
 		}
@@ -537,4 +554,49 @@ func (s *Server) shipmentMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.serveMedia(w, r, podMediaKey(d.POD.SignatureUrl, d.POD.PhotoUrls, chi.URLParam(r, "n")))
+}
+
+// shipmentAcceptPOD completes a shipment with a proof of delivery held for
+// review.
+func (s *Server) shipmentAcceptPOD(w http.ResponseWriter, r *http.Request) {
+	pod, err := pathID(r, "pod")
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	s.shipmentAction(w, r, func(id pgtype.UUID) (string, error) {
+		_, err := s.svc.Shipments.AcceptHeldPOD(r.Context(), actor(r), id, pod)
+		return "Delivery accepted. The shipment is delivered.", err
+	})
+}
+
+func (s *Server) shipmentDismissPOD(w http.ResponseWriter, r *http.Request) {
+	pod, err := pathID(r, "pod")
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	s.shipmentAction(w, r, func(id pgtype.UUID) (string, error) {
+		return "Delivery record dismissed. It stays on file.", s.svc.Shipments.DismissHeldPOD(r.Context(), actor(r), id, pod)
+	})
+}
+
+// shipmentReviewMedia serves the images of a proof under review.
+func (s *Server) shipmentReviewMedia(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	pod, err := pathID(r, "pod")
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	sig, photos, err := s.svc.Shipments.HeldPODMedia(r.Context(), principal(r).TenantID, id, pod)
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	s.serveMedia(w, r, podMediaKey(sig, photos, chi.URLParam(r, "n")))
 }

@@ -51,7 +51,8 @@ SELECT * FROM sync_metadata WHERE driver_id = $1;
 SELECT DISTINCT ON (s.driver_id)
        s.tenant_id, s.driver_id, s.id AS shipment_id, s.tracking_number,
        u.full_name AS driver_name,
-       GREATEST(sm.last_sync_at, s.status_changed_at, s.created_at)::timestamptz AS last_contact
+       GREATEST(sm.last_sync_at, s.status_changed_at, s.created_at)::timestamptz AS last_contact,
+       floor(extract(epoch FROM GREATEST(sm.last_sync_at, s.status_changed_at, s.created_at)))::bigint::text AS episode
 FROM shipments s
 JOIN users u ON u.id = s.driver_id
 LEFT JOIN sync_metadata sm ON sm.driver_id = s.driver_id

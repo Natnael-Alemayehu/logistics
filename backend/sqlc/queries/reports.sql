@@ -30,9 +30,9 @@ SELECT
        AND e.occurred_at >= sqlc.arg(date_from) AND e.occurred_at < sqlc.arg(date_to))::bigint AS issues,
     (SELECT COUNT(*) FROM shipments c
      WHERE c.tenant_id = sqlc.arg(tenant_id) AND c.status = 'cancelled'
-       AND c.updated_at >= sqlc.arg(date_from) AND c.updated_at < sqlc.arg(date_to))::bigint AS cancelled,
+       AND c.status_changed_at >= sqlc.arg(date_from) AND c.status_changed_at < sqlc.arg(date_to))::bigint AS cancelled,
     (SELECT COUNT(*) FROM proof_of_deliveries p
-     WHERE p.tenant_id = sqlc.arg(tenant_id)
+     WHERE p.tenant_id = sqlc.arg(tenant_id) AND p.status = 'accepted'
        AND p.recorded_at >= sqlc.arg(date_from) AND p.recorded_at < sqlc.arg(date_to))::bigint AS with_pod
 FROM shipments
 WHERE tenant_id = sqlc.arg(tenant_id)
@@ -86,3 +86,17 @@ WHERE tenant_id = sqlc.arg(tenant_id)
 GROUP BY customer_name, customer_phone
 ORDER BY shipments DESC
 LIMIT 20;
+
+-- name: ReportCancellations :many
+-- Why shipments were cancelled, and how many of them after the cargo had
+-- left: a refused or returned load cost a trip.
+SELECT COALESCE(status_reason, 'other')::text AS reason,
+       COUNT(*)::bigint AS total,
+       COUNT(*) FILTER (WHERE picked_up_at IS NOT NULL)::bigint AS on_road
+FROM shipments
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND status = 'cancelled'
+  AND status_changed_at >= sqlc.arg(date_from)
+  AND status_changed_at < sqlc.arg(date_to)
+GROUP BY 1
+ORDER BY total DESC, reason;

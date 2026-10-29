@@ -76,7 +76,7 @@
         <span class="route-label">From</span>
         <strong>{{with $s.OriginCity}}{{.}}{{else}}—{{end}}</strong>
         <span class="muted">{{$s.OriginAddress}}</span>
-        {{if $s.PickedUpAt.Valid}}<span class="small muted">Departed {{when $s.PickedUpAt}}</span>{{end}}
+        {{if $s.PickedUpAt.Valid}}<span class="small muted">Departed {{when $s.PickedUpAt}}</span>{{else if $s.PlannedPickupAt.Valid}}<span class="small {{if late $s.PlannedPickupAt $s.Status}}text-warn{{else}}muted{{end}}">Pickup {{when $s.PlannedPickupAt}}</span>{{end}}
       </div>
       <div class="route-arrow" aria-hidden="true">→</div>
       <div class="route-end">
@@ -99,6 +99,34 @@
     <div class="map map-mid" data-map="shipment" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-source="shipment-map" data-shipment-id="{{$id}}" data-driver-id="{{uuid $s.DriverID}}"></div>
     <script type="application/json" id="shipment-map">{{$d.Map}}</script>
   </section>
+
+  {{range $d.Review}}{{$pod := uuid .ID}}
+  <section class="card pod" id="pod-{{$pod}}">
+    <div class="card-head"><h2>{{if eq .Status "held"}}Delivery to review{{else}}Dismissed delivery record{{end}}</h2>
+      {{if .LocationVerified}}{{if bool .LocationVerified}}<span class="badge s-delivered">Location verified</span>{{else}}<span class="badge s-delayed">{{if hasNum .LocationMismatchMeters}}{{distance (num .LocationMismatchMeters)}} from destination{{else}}No GPS fix{{end}}</span>{{end}}{{end}}
+    </div>
+    {{if eq .Status "held"}}
+    <p class="callout callout-warn"><strong>{{str .DriverName}} recorded this delivery after the shipment changed.</strong> {{heldReason (str .HeldReason)}}
+      {{if $d.D.POD}}The shipment already has a proof of delivery, so this one can only be dismissed.{{else}}Accept it to mark the shipment delivered{{if ne .DriverID $s.DriverID}} and credit {{str .DriverName}}{{end}}, or dismiss it to leave the shipment as it is.{{end}}</p>
+    {{end}}
+    <dl class="facts">
+      <div><dt>Received by</dt><dd>{{.RecipientName}}{{with .RecipientPhone}} · <a href="{{telURL .}}">{{.}}</a>{{end}}</dd></div>
+      <div><dt>Recorded</dt><dd>{{when .RecordedAt}}{{with .DriverName}} by {{.}}{{end}}</dd></div>
+      {{with .DeliveryNotes}}<div><dt>Driver's note</dt><dd>{{.}}</dd></div>{{end}}
+      {{if eq .Status "dismissed"}}<div><dt>Dismissed</dt><dd>{{when .ReviewedAt}}{{with .ReviewerName}} by {{.}}{{end}}</dd></div>{{end}}
+    </dl>
+    <div class="pod-media">
+      {{if .SignatureUrl}}<figure><a href="/app/shipments/{{$id}}/pods/{{$pod}}/media/0" target="_blank" rel="noopener"><img src="/app/shipments/{{$id}}/pods/{{$pod}}/media/0" alt="Recipient's signature" class="signature" loading="lazy"></a><figcaption>Signature</figcaption></figure>{{end}}
+      {{range $i, $p := .PhotoUrls}}<figure><a href="/app/shipments/{{$id}}/pods/{{$pod}}/media/{{add $i 1}}" target="_blank" rel="noopener"><img src="/app/shipments/{{$id}}/pods/{{$pod}}/media/{{add $i 1}}" alt="Delivery photo {{add $i 1}}" loading="lazy"></a><figcaption>Photo {{add $i 1}}</figcaption></figure>{{end}}
+    </div>
+    {{if eq .Status "held"}}
+    <div class="actions mt-s">
+      {{if not $d.D.POD}}<form method="post" action="/app/shipments/{{$id}}/pods/{{$pod}}/accept"><button class="btn btn-primary" type="submit">Accept delivery</button></form>{{end}}
+      <form method="post" action="/app/shipments/{{$id}}/pods/{{$pod}}/dismiss"><button class="btn btn-ghost" type="submit">Dismiss</button></form>
+    </div>
+    {{end}}
+  </section>
+  {{end}}
 
   {{with $d.D.POD}}
   <section class="card pod">

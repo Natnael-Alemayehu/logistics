@@ -261,6 +261,22 @@ func (s *Server) requirePlatformAdmin(next http.Handler) http.Handler {
 	return s.requireRole((*service.Principal).IsPlatformAdmin)(next)
 }
 
+// requireCompanyStaff keeps the platform admin out of a company's pages:
+// they would show the platform's own empty company, not a customer's.
+func (s *Server) requireCompanyStaff(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if principal(r).IsPlatformAdmin() {
+			if r.Method == http.MethodGet && !strings.HasPrefix(r.URL.Path, "/app/api/") && r.URL.Path != "/app/live" {
+				http.Redirect(w, r, "/app/platform", http.StatusSeeOther)
+				return
+			}
+			s.renderError(w, r, http.StatusForbidden, "This is a company page", "The platform admin manages companies from the Companies page.")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // requireDriver authenticates the driver app's bearer token.
 func (s *Server) requireDriver(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

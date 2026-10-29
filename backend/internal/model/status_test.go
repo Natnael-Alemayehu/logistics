@@ -106,3 +106,39 @@ func TestCancelRules(t *testing.T) {
 		t.Error("only a shipment that has not left can be unassigned")
 	}
 }
+
+func TestReviewOnlyCompletes(t *testing.T) {
+	for _, from := range AllStatuses {
+		err := CheckTransition(from, StatusDelivered, ActorReview)
+		if from == StatusDelivered {
+			if !errors.Is(err, ErrSameStatus) {
+				t.Errorf("delivered -> delivered on review: %v, want ErrSameStatus", err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("accepting a held proof from %s: %v", from, err)
+		}
+	}
+	if err := CheckTransition(StatusCancelled, StatusInTransit, ActorReview); err == nil {
+		t.Error("a review can only complete a shipment")
+	}
+}
+
+func TestCancelReasonsFollowTheRoad(t *testing.T) {
+	for _, r := range []string{"returned_to_origin", "recipient_refused", "cargo_lost_damaged"} {
+		if !slices.Contains(CancelReasonsFor(StatusInTransit), r) || slices.Contains(CancelReasonsFor(StatusAssigned), r) {
+			t.Errorf("%s is a reason for a trip that ended without a delivery, not a withdrawn booking", r)
+		}
+	}
+	if slices.Contains(CancelReasonsFor(StatusArrived), "duplicate") {
+		t.Error("a load on the road is not a duplicate booking")
+	}
+	for _, st := range AllStatuses {
+		for _, r := range CancelReasonsFor(st) {
+			if !slices.Contains(CancelReasons, r) || ReasonLabel(r) == r {
+				t.Errorf("%s: reason %q must be in CancelReasons and have a label", st, r)
+			}
+		}
+	}
+}

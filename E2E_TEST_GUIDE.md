@@ -49,12 +49,17 @@ Check: the trial allows 5 drivers, and adding a sixth explains the limit.
 1. **New shipment**: pick origin and destination towns from the list. **Pin the exact
    drop-off on a map** narrows the delivery location check from the town to 500 m. Customer name and phone are required.
 2. Assign the driver now or later. The driver's default vehicle fills in.
-3. The shipment page shows the tracking number, the route on a map, the due
-   time (estimated from distance) and the history.
+3. Optionally set a **Pickup** time under Timing. The due time then counts
+   from the pickup rather than from now.
+4. The shipment page shows the tracking number, the route on a map, the
+   pickup and due times and the history.
 
 Check:
-- The customer got a "booked" SMS with a tracking link, and the driver got a
-  "new shipment" SMS.
+- The customer got a "booked" SMS with a tracking link. The driver got a "new
+  shipment" SMS with the pickup time and the exact text to send when they
+  leave ("text ET 7K3M 1 to 6060").
+- A load whose pickup is still ahead is never shown as late. Two hours after
+  a missed pickup, a **Not collected** alert appears.
 - **Book again** on any shipment pre-fills a copy.
 - **Waybill** prints a one-page document.
 
@@ -79,9 +84,14 @@ Check, on the dashboard:
 
 Also try:
 - **Report a delay** or **Report a problem** with a reason. An alert appears
-  on the dashboard at once, as a toast and on the bell.
+  on the dashboard at once, as a toast and on the bell. Report it again with
+  another reason (**Update the delay**): the history shows **Delay updated**
+  and the alert describes the new cause. The customer is not texted twice.
 - Send a message from the shipment page with **To the driver**. It appears in
-  the app after the next sync.
+  the app after the next sync. If the app hasn't synced for 15 minutes, the
+  message goes by SMS as well, and the history says so.
+- Dismiss a **Past due time** alert. It stays dismissed. A new due time that
+  passes raises a new alert.
 - **Forgot your PIN?**: request a code, read it in the server terminal, and
   set a new PIN.
 
@@ -99,8 +109,22 @@ Check:
   was made.
 
 A delay or problem reported this way also raises an alert, so the office sees
-what the driver ran into. A proof of delivery is never discarded: it is kept
-on a cancelled shipment, and the office is alerted.
+what the driver ran into.
+
+A proof of delivery is never discarded. Record one offline, then cancel the
+shipment, or give it to another driver, before the phone reconnects:
+- The phone says the delivery record was kept for the office to review.
+- The shipment page shows **Delivery to review** with the signature, photos
+  and the reason it was held, and a critical **Delivery needs review** alert.
+- **Accept delivery** marks the shipment delivered at the time of the proof
+  and credits the driver who made it. The other driver's phone drops the
+  shipment, and the customer gets the "delivered" SMS.
+- **Dismiss** leaves the shipment as it is. The proof stays on the page,
+  marked dismissed.
+
+Cancelling a load that is already on the road offers reasons for a trip that
+ended without delivery: **Recipient refused delivery**, **Returned to
+origin**, **Cargo lost or damaged**. Reports count cancellations by reason.
 
 ## 6. Drivers without a smartphone
 
@@ -117,7 +141,10 @@ number, or from a second terminal (from `backend/`):
 | `help` or anything unparseable | a reply explaining the format |
 
 `7K3M` stands for the last four characters of the tracking number. A text
-from an unknown number changes nothing and gets no reply.
+from an unknown number changes nothing and gets no reply. The simulator and
+`sms-in` say what happened to each message: recorded, refused and why,
+answered with help, or ignored because the number isn't an active driver's
+or isn't a phone number at all.
 
 ## 7. The customer
 
@@ -151,7 +178,8 @@ from an unknown number changes nothing and gets no reply.
 ## 9. The operator
 
 Sign in as `admin@menged.et`. **Platform** lists every company with plan,
-drivers and activity. Change a plan or driver limit, or suspend a company:
+drivers and activity. Company pages such as `/app/shipments` send the
+operator back to this list. Change a plan or driver limit, or suspend a company:
 its users are signed out at once and can't sign back in until it is restored.
 
 ## 10. Security checks
@@ -159,7 +187,9 @@ its users are signed out at once and can't sign back in until it is restored.
 - Five wrong passwords lock the account for 15 minutes. Further attempts from
   the same address are rate-limited.
 - Deactivating a driver or staff member ends their sessions at once. The
-  driver app returns to the sign-in screen on its next sync.
+  driver app returns to the sign-in screen on its next sync, and the
+  shipments and messages on the phone (customers' names and numbers) are
+  erased. Updates it hadn't sent yet are kept for that driver's next sign-in.
 - One company's IDs in another company's URLs return 404.
 - Forms posted from another site are refused (cross-origin protection).
 - `/metrics` returns 404 unless `METRICS_TOKEN` is set and sent as a bearer

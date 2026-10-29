@@ -25,14 +25,16 @@ INSERT INTO shipments (
     destination_city, destination_address, destination_lat, destination_lng, destination_precise,
     customer_name, customer_phone,
     cargo_description, cargo_weight, cargo_value, special_instructions,
-    driver_id, vehicle_id, status, estimated_delivery, eta_manual, created_by, status_changed_at
+    driver_id, vehicle_id, status, estimated_delivery, eta_manual, created_by, status_changed_at,
+    planned_pickup_at
 ) VALUES (
     $1, $2, $3,
     $4, $5, $6, $7,
     $8, $9, $10, $11, $12,
     $13, $14,
     $15, $16, $17, $18,
-    $19, $20, $21, $22, $23, $24, NOW()
+    $19, $20, $21, $22, $23, $24, NOW(),
+    sqlc.narg(planned_pickup_at)
 ) RETURNING *;
 
 -- name: UpdateShipmentDetails :one
@@ -56,6 +58,7 @@ SET priority = $3,
     special_instructions = $18,
     estimated_delivery = $19,
     eta_manual = $20,
+    planned_pickup_at = sqlc.narg(planned_pickup_at),
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
 RETURNING *;
@@ -75,17 +78,35 @@ SET driver_id = $3,
 WHERE id = $1 AND tenant_id = $2
 RETURNING *;
 
+-- name: SetShipmentDriver :one
+-- Credits a delivery to the driver who made it, when the office accepts a
+-- proof recorded after the shipment was handed to someone else.
+UPDATE shipments
+SET driver_id = sqlc.arg(driver_id), updated_at = NOW()
+WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id)
+RETURNING *;
+
+-- name: SetShipmentStatusDetail :one
+-- A new cause for the status a shipment is already in, such as a second
+-- delay. When the status was entered is unchanged.
+UPDATE shipments
+SET status_reason = sqlc.narg(status_reason), status_note = sqlc.narg(status_note), updated_at = NOW()
+WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id)
+RETURNING *;
+
 -- name: SetShipmentStatus :one
 -- actual_delivery is stamped the first time a shipment is delivered and kept
 -- thereafter; picked_up_at likewise records the first departure. Both use the
 -- time the change happened, which for an offline driver is earlier than now.
+-- A delivery accepted on review is stamped with when the proof was recorded
+-- (delivered_at), not when the office accepted it.
 UPDATE shipments
 SET status = sqlc.arg(status),
     status_note = sqlc.narg(status_note),
     status_reason = sqlc.narg(status_reason),
     status_changed_at = sqlc.arg(changed_at),
     actual_delivery = CASE
-        WHEN sqlc.arg(status) = 'delivered' THEN COALESCE(actual_delivery, sqlc.arg(changed_at))
+        WHEN sqlc.arg(status) = 'delivered' THEN COALESCE(actual_delivery, sqlc.narg(delivered_at), sqlc.arg(changed_at))
         ELSE actual_delivery
     END,
     picked_up_at = CASE
@@ -231,11 +252,24 @@ LIMIT 500;
 
 -- name: ListOverdueShipments :many
 -- Across tenants: the job that raises ETA alerts runs once for the platform.
-SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.estimated_delivery
+-- Only loads on the road can be late; one not yet collected is caught by
+-- ListPickupOverdue. The episode identifies the ETA the alert is about.
+SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.estimated_delivery,
+       floor(extract(epoch FROM s.estimated_delivery))::bigint::text AS episode
 FROM shipments s
-WHERE s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
   AND s.estimated_delivery IS NOT NULL
   AND s.estimated_delivery < NOW()
+LIMIT 1000;
+
+-- name: ListPickupOverdue :many
+-- Loads still waiting to be collected well after their planned pickup.
+SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.status, s.planned_pickup_at,
+       floor(extract(epoch FROM s.planned_pickup_at))::bigint::text AS episode
+FROM shipments s
+WHERE s.status IN ('pending', 'assigned')
+  AND s.planned_pickup_at IS NOT NULL
+  AND s.planned_pickup_at < sqlc.arg(due_before)
 LIMIT 1000;
 
 -- name: ListShipmentsByCustomerPhone :many

@@ -18,10 +18,6 @@ import (
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
-	if p.IsPlatformAdmin() {
-		http.Redirect(w, r, "/app/platform", http.StatusSeeOther)
-		return
-	}
 	ctx := r.Context()
 	counts, err := s.svc.Shipments.StatusCounts(ctx, p.TenantID)
 	if err != nil {
@@ -208,6 +204,16 @@ func timelineFrom(e db.ShipmentEvent, names map[pgtype.UUID]string) timelineItem
 		if e.Reason != nil {
 			it.Detail = model.ReasonLabel(*e.Reason)
 		}
+	case "status_updated":
+		to := deref(e.ToStatus)
+		it.Status = to
+		it.Title = "Delay updated"
+		if to == model.StatusIssue {
+			it.Title = "Problem updated"
+		}
+		if e.Reason != nil {
+			it.Detail = model.ReasonLabel(*e.Reason)
+		}
 	case "note":
 		it.Title = "Internal note"
 	case "message":
@@ -215,6 +221,12 @@ func timelineFrom(e db.ShipmentEvent, names map[pgtype.UUID]string) timelineItem
 			it.Title = "Message from driver"
 		} else {
 			it.Title = "Message to driver"
+		}
+		if sms, _ := details["sms"].(bool); sms {
+			it.Detail = "Also sent by SMS"
+			if auto, _ := details["auto"].(bool); auto {
+				it.Detail += ": the driver's app hadn't synced for 15 minutes"
+			}
 		}
 	case "pod_recorded":
 		it.Title = "Proof of delivery recorded"
@@ -228,6 +240,21 @@ func timelineFrom(e db.ShipmentEvent, names map[pgtype.UUID]string) timelineItem
 			} else {
 				it.Detail = "No GPS fix"
 			}
+		}
+	case "pod_held":
+		it.Title = "Proof of delivery held for review"
+		if why, ok := details["reason"].(string); ok {
+			it.Detail = service.HeldReasonLabel(why)
+		}
+	case "pod_accepted":
+		it.Title = "Held proof of delivery accepted"
+		if who, ok := details["driver"].(string); ok {
+			it.Detail = "Recorded by " + who
+		}
+	case "pod_dismissed":
+		it.Title = "Held proof of delivery dismissed"
+		if who, ok := details["driver"].(string); ok {
+			it.Detail = "Recorded by " + who
 		}
 	case "customer_confirmed":
 		it.Title = "Customer confirmed receipt"

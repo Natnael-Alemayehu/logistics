@@ -213,27 +213,27 @@ func TestPODStorage_UploadMultiplePhotos(t *testing.T) {
 	})
 }
 
-func TestPODStorage_GetPODURLs(t *testing.T) {
+func TestPODStorage_UniquePaths(t *testing.T) {
 	mock := newMockStorage()
 	pod := NewPODStorage(mock)
 	ctx := context.Background()
 
-	t.Run("returns POD URLs", func(t *testing.T) {
-		urls, err := pod.GetPODURLs(ctx, "shipment-123")
-		require.NoError(t, err)
-		require.NotNil(t, urls)
-	})
+	a, err := pod.UploadPhoto(ctx, "shipment-123", createTestImage(), 0)
+	require.NoError(t, err)
+	b, err := pod.UploadPhoto(ctx, "shipment-123", createTestImage(), 0)
+	require.NoError(t, err)
+	assert.NotEqual(t, a, b, "two proofs in the same second must not overwrite each other")
+	assert.Len(t, mock.uploads, 2)
 }
 
-func TestPODStorage_DeletePODFiles(t *testing.T) {
+func TestPODStorage_FailedPhotosLeaveNothing(t *testing.T) {
 	mock := newMockStorage()
 	pod := NewPODStorage(mock)
 	ctx := context.Background()
 
-	t.Run("deletes POD files", func(t *testing.T) {
-		err := pod.DeletePODFiles(ctx, "shipment-123")
-		require.NoError(t, err)
-	})
+	_, err := pod.UploadMultiplePhotos(ctx, "shipment-123", []string{createTestImage(), "data:image/jpeg;base64,!!!"})
+	require.Error(t, err)
+	assert.Empty(t, mock.uploads)
 }
 
 func TestPODStorage_DecodeBase64Image(t *testing.T) {
@@ -360,16 +360,6 @@ func TestPODErrors(t *testing.T) {
 	assert.Equal(t, "exceeded maximum photos per delivery", ErrTooManyPhotos.Error())
 	assert.Equal(t, "invalid image data", ErrInvalidImageData.Error())
 	assert.Equal(t, "invalid signature data", ErrInvalidSignature.Error())
-}
-
-func TestPODURLs(t *testing.T) {
-	urls := &PODURLs{
-		SignatureURL: "http://localhost/signature.png",
-		PhotoURLs:    []string{"http://localhost/photo1.jpg", "http://localhost/photo2.jpg"},
-	}
-
-	assert.Equal(t, "http://localhost/signature.png", urls.SignatureURL)
-	assert.Len(t, urls.PhotoURLs, 2)
 }
 
 func BenchmarkPODStorage_UploadPhoto(b *testing.B) {

@@ -64,9 +64,17 @@ func (m *MediaService) SavePOD(ctx context.Context, shipmentID, signature string
 	}
 	keys, err := m.pod.UploadMultiplePhotos(ctx, shipmentID, photos)
 	if err != nil {
+		m.Delete(context.WithoutCancel(ctx), sig)
 		return "", nil, classifyUpload(err)
 	}
 	return sig, keys, nil
+}
+
+// Delete removes stored files whose proof of delivery was refused.
+func (m *MediaService) Delete(ctx context.Context, keys ...string) {
+	if m.pod != nil {
+		m.pod.Delete(ctx, keys...)
+	}
 }
 
 func classifyUpload(err error) error {

@@ -47,9 +47,15 @@ func smsIn(ctx context.Context, cfg *config.Config, args []string) error {
 	}
 	var out struct {
 		Outcome string `json:"outcome"`
+		Detail  string `json:"detail"`
+		Reply   string `json:"reply"`
 	}
 	if json.Unmarshal(body, &out) == nil && out.Outcome != "" {
-		fmt.Println(out.Outcome)
+		fmt.Printf("%s: %s\n", out.Outcome, out.Detail)
+		if out.Reply != "" {
+			fmt.Printf("Reply: %s\n", out.Reply)
+		}
+		return nil
 	}
 	fmt.Println("Delivered. Any reply is printed in the server's terminal.")
 	return nil

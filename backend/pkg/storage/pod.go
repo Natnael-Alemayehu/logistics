@@ -3,7 +3,9 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"image"
@@ -61,8 +63,7 @@ func (p *PODStorage) UploadSignature(ctx context.Context, shipmentID, signatureD
 		return "", fmt.Errorf("failed to encode signature as PNG: %w", err)
 	}
 
-	timestamp := time.Now().UTC().Format("20060102_150405")
-	path := fmt.Sprintf("pod/%s/signature_%s.png", shipmentID, timestamp)
+	path := podPath(shipmentID, "signature", ".png")
 
 	reader := bytes.NewReader(buf.Bytes())
 	if _, err := p.storage.Upload(ctx, path, reader, "image/png"); err != nil {
@@ -85,8 +86,7 @@ func (p *PODStorage) uploadSVGSignature(ctx context.Context, shipmentID, signatu
 		decoded = []byte(data)
 	}
 
-	timestamp := time.Now().UTC().Format("20060102_150405")
-	path := fmt.Sprintf("pod/%s/signature_%s.svg", shipmentID, timestamp)
+	path := podPath(shipmentID, "signature", ".svg")
 
 	reader := bytes.NewReader(decoded)
 	if _, err := p.storage.Upload(ctx, path, reader, "image/svg+xml"); err != nil {
@@ -117,8 +117,7 @@ func (p *PODStorage) UploadPhoto(ctx context.Context, shipmentID, imageData stri
 		return "", fmt.Errorf("failed to compress photo: %w", err)
 	}
 
-	timestamp := time.Now().UTC().Format("20060102_150405")
-	path := fmt.Sprintf("pod/%s/photo_%d_%s.jpg", shipmentID, photoIndex+1, timestamp)
+	path := podPath(shipmentID, fmt.Sprintf("photo_%d", photoIndex+1), ".jpg")
 
 	reader := bytes.NewReader(compressed)
 	if _, err := p.storage.Upload(ctx, path, reader, "image/jpeg"); err != nil {
@@ -140,6 +139,7 @@ func (p *PODStorage) UploadMultiplePhotos(ctx context.Context, shipmentID string
 		}
 		url, err := p.UploadPhoto(ctx, shipmentID, photo, i)
 		if err != nil {
+			p.Delete(context.WithoutCancel(ctx), urls...)
 			return nil, fmt.Errorf("failed to upload photo %d: %w", i+1, err)
 		}
 		urls = append(urls, url)
@@ -148,49 +148,23 @@ func (p *PODStorage) UploadMultiplePhotos(ctx context.Context, shipmentID string
 	return urls, nil
 }
 
-func (p *PODStorage) GetPODURLs(ctx context.Context, shipmentID string) (*PODURLs, error) {
-	urls := &PODURLs{}
-
-	signaturePattern := fmt.Sprintf("pod/%s/signature_", shipmentID)
-
-	sigURL, err := p.storage.GetURL(ctx, signaturePattern+"latest.png")
-	if err == nil {
-		urls.SignatureURL = sigURL
-	}
-
-	for i := 0; i < MaxPhotosPerPOD; i++ {
-		photoPath := fmt.Sprintf("pod/%s/photo_%d_latest.jpg", shipmentID, i+1)
-		photoURL, err := p.storage.GetURL(ctx, photoPath)
-		if err == nil {
-			urls.PhotoURLs = append(urls.PhotoURLs, photoURL)
+// Delete removes stored files, ignoring any already gone.
+func (p *PODStorage) Delete(ctx context.Context, paths ...string) {
+	for _, path := range paths {
+		if path != "" {
+			_ = p.storage.Delete(ctx, path)
 		}
 	}
-
-	return urls, nil
 }
 
-type PODURLs struct {
-	SignatureURL string   `json:"signature_url"`
-	PhotoURLs    []string `json:"photo_urls"`
-}
-
-func (p *PODStorage) DeletePODFiles(ctx context.Context, shipmentID string) error {
-	paths := []string{}
-
-	sigPattern := fmt.Sprintf("pod/%s/signature_", shipmentID)
-	for _, ext := range []string{".png", ".svg"} {
-		paths = append(paths, sigPattern+ext)
-	}
-
-	for i := 0; i < MaxPhotosPerPOD; i++ {
-		paths = append(paths, fmt.Sprintf("pod/%s/photo_%d.jpg", shipmentID, i+1))
-	}
-
-	for _, path := range paths {
-		_ = p.storage.Delete(ctx, path)
-	}
-
-	return nil
+// podPath names a new file for a shipment's proof of delivery. A shipment
+// can have more than one proof (one held for review beside the accepted
+// one), so names must never collide, even within a second.
+func podPath(shipmentID, name, ext string) string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("pod/%s/%s_%s_%s%s", shipmentID, name,
+		time.Now().UTC().Format("20060102_150405"), hex.EncodeToString(b), ext)
 }
 
 func (p *PODStorage) decodeBase64Image(data string) (image.Image, error) {

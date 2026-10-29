@@ -158,15 +158,17 @@ INSERT INTO shipments (
     destination_city, destination_address, destination_lat, destination_lng, destination_precise,
     customer_name, customer_phone,
     cargo_description, cargo_weight, cargo_value, special_instructions,
-    driver_id, vehicle_id, status, estimated_delivery, eta_manual, created_by, status_changed_at
+    driver_id, vehicle_id, status, estimated_delivery, eta_manual, created_by, status_changed_at,
+    planned_pickup_at
 ) VALUES (
     $1, $2, $3,
     $4, $5, $6, $7,
     $8, $9, $10, $11, $12,
     $13, $14,
     $15, $16, $17, $18,
-    $19, $20, $21, $22, $23, $24, NOW()
-) RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual
+    $19, $20, $21, $22, $23, $24, NOW(),
+    $25
+) RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
 `
 
 type CreateShipmentParams struct {
@@ -194,6 +196,7 @@ type CreateShipmentParams struct {
 	EstimatedDelivery   pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
 	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
 	CreatedBy           pgtype.UUID        `db:"created_by" json:"created_by"`
+	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
 }
 
 func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error) {
@@ -222,6 +225,7 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		arg.EstimatedDelivery,
 		arg.EtaManual,
 		arg.CreatedBy,
+		arg.PlannedPickupAt,
 	)
 	var i Shipment
 	err := row.Scan(
@@ -260,12 +264,13 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
 
 const getShipmentByConfirmToken = `-- name: GetShipmentByConfirmToken :one
-SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at FROM shipments
 WHERE confirm_token = $1
 `
 
@@ -308,12 +313,13 @@ func (q *Queries) GetShipmentByConfirmToken(ctx context.Context, confirmToken *s
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
 
 const getShipmentByID = `-- name: GetShipmentByID :one
-SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at FROM shipments
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -361,12 +367,13 @@ func (q *Queries) GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
 
 const getShipmentByIDForUpdate = `-- name: GetShipmentByIDForUpdate :one
-SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at FROM shipments
 WHERE id = $1 AND tenant_id = $2
 FOR UPDATE
 `
@@ -418,12 +425,13 @@ func (q *Queries) GetShipmentByIDForUpdate(ctx context.Context, arg GetShipmentB
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
 
 const getShipmentByTrackingNumber = `-- name: GetShipmentByTrackingNumber :one
-SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at FROM shipments
 WHERE tracking_number = $1
 `
 
@@ -466,12 +474,13 @@ func (q *Queries) GetShipmentByTrackingNumber(ctx context.Context, trackingNumbe
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
 
 const listActiveShipmentsByDriver = `-- name: ListActiveShipmentsByDriver :many
-SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at FROM shipments
 WHERE driver_id = $1
   AND tenant_id = $2
   AND status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
@@ -530,6 +539,7 @@ func (q *Queries) ListActiveShipmentsByDriver(ctx context.Context, arg ListActiv
 			&i.CustomerConfirmedAt,
 			&i.CustomerFeedback,
 			&i.EtaManual,
+			&i.PlannedPickupAt,
 		); err != nil {
 			return nil, err
 		}
@@ -601,9 +611,10 @@ func (q *Queries) ListActiveShipmentsForMap(ctx context.Context, tenantID pgtype
 }
 
 const listOverdueShipments = `-- name: ListOverdueShipments :many
-SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.estimated_delivery
+SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.estimated_delivery,
+       floor(extract(epoch FROM s.estimated_delivery))::bigint::text AS episode
 FROM shipments s
-WHERE s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
   AND s.estimated_delivery IS NOT NULL
   AND s.estimated_delivery < NOW()
 LIMIT 1000
@@ -615,9 +626,12 @@ type ListOverdueShipmentsRow struct {
 	TrackingNumber    string             `db:"tracking_number" json:"tracking_number"`
 	DriverID          pgtype.UUID        `db:"driver_id" json:"driver_id"`
 	EstimatedDelivery pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+	Episode           string             `db:"episode" json:"episode"`
 }
 
 // Across tenants: the job that raises ETA alerts runs once for the platform.
+// Only loads on the road can be late; one not yet collected is caught by
+// ListPickupOverdue. The episode identifies the ETA the alert is about.
 func (q *Queries) ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error) {
 	rows, err := q.db.Query(ctx, listOverdueShipments)
 	if err != nil {
@@ -633,6 +647,56 @@ func (q *Queries) ListOverdueShipments(ctx context.Context) ([]ListOverdueShipme
 			&i.TrackingNumber,
 			&i.DriverID,
 			&i.EstimatedDelivery,
+			&i.Episode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPickupOverdue = `-- name: ListPickupOverdue :many
+SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.status, s.planned_pickup_at,
+       floor(extract(epoch FROM s.planned_pickup_at))::bigint::text AS episode
+FROM shipments s
+WHERE s.status IN ('pending', 'assigned')
+  AND s.planned_pickup_at IS NOT NULL
+  AND s.planned_pickup_at < $1
+LIMIT 1000
+`
+
+type ListPickupOverdueRow struct {
+	ID              pgtype.UUID        `db:"id" json:"id"`
+	TenantID        pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	TrackingNumber  string             `db:"tracking_number" json:"tracking_number"`
+	DriverID        pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Status          string             `db:"status" json:"status"`
+	PlannedPickupAt pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
+	Episode         string             `db:"episode" json:"episode"`
+}
+
+// Loads still waiting to be collected well after their planned pickup.
+func (q *Queries) ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error) {
+	rows, err := q.db.Query(ctx, listPickupOverdue, dueBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPickupOverdueRow{}
+	for rows.Next() {
+		var i ListPickupOverdueRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.DriverID,
+			&i.Status,
+			&i.PlannedPickupAt,
+			&i.Episode,
 		); err != nil {
 			return nil, err
 		}
@@ -645,7 +709,7 @@ func (q *Queries) ListOverdueShipments(ctx context.Context) ([]ListOverdueShipme
 }
 
 const listRecentShipmentsByDriver = `-- name: ListRecentShipmentsByDriver :many
-SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at FROM shipments
 WHERE driver_id = $1 AND tenant_id = $2
 ORDER BY created_at DESC
 LIMIT $3
@@ -702,6 +766,7 @@ func (q *Queries) ListRecentShipmentsByDriver(ctx context.Context, arg ListRecen
 			&i.CustomerConfirmedAt,
 			&i.CustomerFeedback,
 			&i.EtaManual,
+			&i.PlannedPickupAt,
 		); err != nil {
 			return nil, err
 		}
@@ -714,7 +779,7 @@ func (q *Queries) ListRecentShipmentsByDriver(ctx context.Context, arg ListRecen
 }
 
 const listRecentShipmentsByVehicle = `-- name: ListRecentShipmentsByVehicle :many
-SELECT s.id, s.tenant_id, s.tracking_number, s.origin_address, s.destination_address, s.customer_name, s.customer_phone, s.cargo_description, s.cargo_weight, s.cargo_value, s.special_instructions, s.driver_id, s.vehicle_id, s.status, s.status_note, s.status_reason, s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at, s.created_by, s.status_changed_at, s.priority, s.origin_city, s.destination_city, s.origin_lat, s.origin_lng, s.destination_lat, s.destination_lng, s.destination_precise, s.picked_up_at, s.confirm_token, s.customer_confirmed_at, s.customer_feedback, s.eta_manual, d.full_name AS driver_name
+SELECT s.id, s.tenant_id, s.tracking_number, s.origin_address, s.destination_address, s.customer_name, s.customer_phone, s.cargo_description, s.cargo_weight, s.cargo_value, s.special_instructions, s.driver_id, s.vehicle_id, s.status, s.status_note, s.status_reason, s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at, s.created_by, s.status_changed_at, s.priority, s.origin_city, s.destination_city, s.origin_lat, s.origin_lng, s.destination_lat, s.destination_lng, s.destination_precise, s.picked_up_at, s.confirm_token, s.customer_confirmed_at, s.customer_feedback, s.eta_manual, s.planned_pickup_at, d.full_name AS driver_name
 FROM shipments s
 LEFT JOIN users d ON d.id = s.driver_id
 WHERE s.vehicle_id = $1 AND s.tenant_id = $2
@@ -764,6 +829,7 @@ type ListRecentShipmentsByVehicleRow struct {
 	CustomerConfirmedAt pgtype.Timestamptz `db:"customer_confirmed_at" json:"customer_confirmed_at"`
 	CustomerFeedback    *string            `db:"customer_feedback" json:"customer_feedback"`
 	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
+	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
 	DriverName          *string            `db:"driver_name" json:"driver_name"`
 }
 
@@ -812,6 +878,7 @@ func (q *Queries) ListRecentShipmentsByVehicle(ctx context.Context, arg ListRece
 			&i.CustomerConfirmedAt,
 			&i.CustomerFeedback,
 			&i.EtaManual,
+			&i.PlannedPickupAt,
 			&i.DriverName,
 		); err != nil {
 			return nil, err
@@ -825,7 +892,7 @@ func (q *Queries) ListRecentShipmentsByVehicle(ctx context.Context, arg ListRece
 }
 
 const listShipments = `-- name: ListShipments :many
-SELECT s.id, s.tenant_id, s.tracking_number, s.origin_address, s.destination_address, s.customer_name, s.customer_phone, s.cargo_description, s.cargo_weight, s.cargo_value, s.special_instructions, s.driver_id, s.vehicle_id, s.status, s.status_note, s.status_reason, s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at, s.created_by, s.status_changed_at, s.priority, s.origin_city, s.destination_city, s.origin_lat, s.origin_lng, s.destination_lat, s.destination_lng, s.destination_precise, s.picked_up_at, s.confirm_token, s.customer_confirmed_at, s.customer_feedback, s.eta_manual,
+SELECT s.id, s.tenant_id, s.tracking_number, s.origin_address, s.destination_address, s.customer_name, s.customer_phone, s.cargo_description, s.cargo_weight, s.cargo_value, s.special_instructions, s.driver_id, s.vehicle_id, s.status, s.status_note, s.status_reason, s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at, s.created_by, s.status_changed_at, s.priority, s.origin_city, s.destination_city, s.origin_lat, s.origin_lng, s.destination_lat, s.destination_lng, s.destination_precise, s.picked_up_at, s.confirm_token, s.customer_confirmed_at, s.customer_feedback, s.eta_manual, s.planned_pickup_at,
        d.full_name AS driver_name,
        v.plate_number AS vehicle_plate
 FROM shipments s
@@ -948,6 +1015,7 @@ func (q *Queries) ListShipments(ctx context.Context, arg ListShipmentsParams) ([
 			&i.Shipment.CustomerConfirmedAt,
 			&i.Shipment.CustomerFeedback,
 			&i.Shipment.EtaManual,
+			&i.Shipment.PlannedPickupAt,
 			&i.DriverName,
 			&i.VehiclePlate,
 		); err != nil {
@@ -1016,7 +1084,7 @@ func (q *Queries) ListShipmentsByCustomerPhone(ctx context.Context, customerPhon
 }
 
 const listShipmentsForDriverSync = `-- name: ListShipmentsForDriverSync :many
-SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at FROM shipments
 WHERE driver_id = $1
   AND tenant_id = $2
   AND (
@@ -1083,6 +1151,7 @@ func (q *Queries) ListShipmentsForDriverSync(ctx context.Context, arg ListShipme
 			&i.CustomerConfirmedAt,
 			&i.CustomerFeedback,
 			&i.EtaManual,
+			&i.PlannedPickupAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1141,7 +1210,7 @@ SET customer_confirmed_at = COALESCE(customer_confirmed_at, NOW()),
     customer_feedback = COALESCE($1, customer_feedback),
     updated_at = NOW()
 WHERE id = $2
-RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
 `
 
 type SetCustomerConfirmationParams struct {
@@ -1188,6 +1257,7 @@ func (q *Queries) SetCustomerConfirmation(ctx context.Context, arg SetCustomerCo
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
@@ -1196,7 +1266,7 @@ const setCustomerFeedback = `-- name: SetCustomerFeedback :one
 UPDATE shipments
 SET customer_feedback = $1, updated_at = NOW()
 WHERE id = $2
-RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
 `
 
 type SetCustomerFeedbackParams struct {
@@ -1244,6 +1314,7 @@ func (q *Queries) SetCustomerFeedback(ctx context.Context, arg SetCustomerFeedba
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
@@ -1256,7 +1327,7 @@ SET driver_id = $3,
     status_changed_at = CASE WHEN status <> $5 THEN NOW() ELSE status_changed_at END,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
 `
 
 type SetShipmentAssignmentParams struct {
@@ -1312,6 +1383,7 @@ func (q *Queries) SetShipmentAssignment(ctx context.Context, arg SetShipmentAssi
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
@@ -1328,6 +1400,65 @@ type SetShipmentConfirmTokenParams struct {
 func (q *Queries) SetShipmentConfirmToken(ctx context.Context, arg SetShipmentConfirmTokenParams) error {
 	_, err := q.db.Exec(ctx, setShipmentConfirmToken, arg.ID, arg.ConfirmToken)
 	return err
+}
+
+const setShipmentDriver = `-- name: SetShipmentDriver :one
+UPDATE shipments
+SET driver_id = $1, updated_at = NOW()
+WHERE id = $2 AND tenant_id = $3
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
+`
+
+type SetShipmentDriverParams struct {
+	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// Credits a delivery to the driver who made it, when the office accepts a
+// proof recorded after the shipment was handed to someone else.
+func (q *Queries) SetShipmentDriver(ctx context.Context, arg SetShipmentDriverParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setShipmentDriver, arg.DriverID, arg.ID, arg.TenantID)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+	)
+	return i, err
 }
 
 const setShipmentETA = `-- name: SetShipmentETA :exec
@@ -1354,7 +1485,7 @@ SET status = $1,
     status_reason = $3,
     status_changed_at = $4,
     actual_delivery = CASE
-        WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, $4)
+        WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, $5, $4)
         ELSE actual_delivery
     END,
     picked_up_at = CASE
@@ -1362,8 +1493,8 @@ SET status = $1,
         ELSE picked_up_at
     END,
     updated_at = NOW()
-WHERE id = $5 AND tenant_id = $6
-RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual
+WHERE id = $6 AND tenant_id = $7
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
 `
 
 type SetShipmentStatusParams struct {
@@ -1371,6 +1502,7 @@ type SetShipmentStatusParams struct {
 	StatusNote   *string            `db:"status_note" json:"status_note"`
 	StatusReason *string            `db:"status_reason" json:"status_reason"`
 	ChangedAt    pgtype.Timestamptz `db:"changed_at" json:"changed_at"`
+	DeliveredAt  pgtype.Timestamptz `db:"delivered_at" json:"delivered_at"`
 	ID           pgtype.UUID        `db:"id" json:"id"`
 	TenantID     pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
 }
@@ -1378,12 +1510,15 @@ type SetShipmentStatusParams struct {
 // actual_delivery is stamped the first time a shipment is delivered and kept
 // thereafter; picked_up_at likewise records the first departure. Both use the
 // time the change happened, which for an offline driver is earlier than now.
+// A delivery accepted on review is stamped with when the proof was recorded
+// (delivered_at), not when the office accepted it.
 func (q *Queries) SetShipmentStatus(ctx context.Context, arg SetShipmentStatusParams) (Shipment, error) {
 	row := q.db.QueryRow(ctx, setShipmentStatus,
 		arg.Status,
 		arg.StatusNote,
 		arg.StatusReason,
 		arg.ChangedAt,
+		arg.DeliveredAt,
 		arg.ID,
 		arg.TenantID,
 	)
@@ -1424,6 +1559,72 @@ func (q *Queries) SetShipmentStatus(ctx context.Context, arg SetShipmentStatusPa
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
+	)
+	return i, err
+}
+
+const setShipmentStatusDetail = `-- name: SetShipmentStatusDetail :one
+UPDATE shipments
+SET status_reason = $1, status_note = $2, updated_at = NOW()
+WHERE id = $3 AND tenant_id = $4
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
+`
+
+type SetShipmentStatusDetailParams struct {
+	StatusReason *string     `db:"status_reason" json:"status_reason"`
+	StatusNote   *string     `db:"status_note" json:"status_note"`
+	ID           pgtype.UUID `db:"id" json:"id"`
+	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// A new cause for the status a shipment is already in, such as a second
+// delay. When the status was entered is unchanged.
+func (q *Queries) SetShipmentStatusDetail(ctx context.Context, arg SetShipmentStatusDetailParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setShipmentStatusDetail,
+		arg.StatusReason,
+		arg.StatusNote,
+		arg.ID,
+		arg.TenantID,
+	)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }
@@ -1448,9 +1649,10 @@ SET priority = $3,
     special_instructions = $18,
     estimated_delivery = $19,
     eta_manual = $20,
+    planned_pickup_at = $21,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at
 `
 
 type UpdateShipmentDetailsParams struct {
@@ -1474,6 +1676,7 @@ type UpdateShipmentDetailsParams struct {
 	SpecialInstructions *string            `db:"special_instructions" json:"special_instructions"`
 	EstimatedDelivery   pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
 	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
+	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
 }
 
 // Edits replace every editable field; the form always submits all of them.
@@ -1499,6 +1702,7 @@ func (q *Queries) UpdateShipmentDetails(ctx context.Context, arg UpdateShipmentD
 		arg.SpecialInstructions,
 		arg.EstimatedDelivery,
 		arg.EtaManual,
+		arg.PlannedPickupAt,
 	)
 	var i Shipment
 	err := row.Scan(
@@ -1537,6 +1741,7 @@ func (q *Queries) UpdateShipmentDetails(ctx context.Context, arg UpdateShipmentD
 		&i.CustomerConfirmedAt,
 		&i.CustomerFeedback,
 		&i.EtaManual,
+		&i.PlannedPickupAt,
 	)
 	return i, err
 }

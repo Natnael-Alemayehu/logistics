@@ -23,10 +23,11 @@
       myShipments: "My shipments", active: "Active", done: "Finished this week", none: "No shipments assigned to you right now.",
       noneHelp: "New work appears here automatically when the office assigns it.",
       offline: "No signal", syncing: "Sending…", waiting: "{n} waiting to send", allSent: "All sent", lastSync: "Updated {t}",
-      neverSynced: "Not synced yet", syncNow: "Sync now", from: "From", to: "To", due: "Due", customer: "Customer",
+      neverSynced: "Not synced yet", syncNow: "Sync now", from: "From", to: "To", due: "Due", pickup: "Pickup", customer: "Customer",
       cargo: "Cargo", instructions: "Instructions from the office", call: "Call", navigate: "Directions", vehicle: "Vehicle",
       startTrip: "Start trip", backOnRoad: "Back on the road", arrivedBtn: "I've arrived", delayBtn: "Report a delay",
       problemBtn: "Report a problem", deliverBtn: "Record delivery", messageBtn: "Message the office",
+      updateDelay: "Update the delay", updateProblem: "Update the problem",
       pendingSend: "Saved on the phone — will send when there's signal", reason: "Reason", note: "Note (optional)",
       recipient: "Received by (name)", recipientPhone: "Their phone (optional)", signature: "Signature",
       signHere: "Ask the recipient to sign here", clear: "Clear", photos: "Photos (up to 3)", addPhoto: "Take photo",
@@ -55,10 +56,11 @@
       myShipments: "ጭነቶቼ", active: "በሂደት ላይ", done: "በዚህ ሳምንት የተጠናቀቁ", none: "አሁን የተመደበልዎት ጭነት የለም።",
       noneHelp: "ቢሮው ሥራ ሲመድብልዎ እዚህ ይታያል።",
       offline: "ኔትወርክ የለም", syncing: "በመላክ ላይ…", waiting: "{n} ለመላክ በመጠባበቅ ላይ", allSent: "ሁሉም ተልኳል", lastSync: "የተዘመነው {t}",
-      neverSynced: "ገና አልተመሳሰለም", syncNow: "አሁን አመሳስል", from: "ከ", to: "ወደ", due: "የሚደርስበት", customer: "ደንበኛ",
+      neverSynced: "ገና አልተመሳሰለም", syncNow: "አሁን አመሳስል", from: "ከ", to: "ወደ", due: "የሚደርስበት", pickup: "የሚጫንበት", customer: "ደንበኛ",
       cargo: "ጭነት", instructions: "ከቢሮ የተሰጠ መመሪያ", call: "ደውል", navigate: "አቅጣጫ", vehicle: "ተሽከርካሪ",
       startTrip: "ጉዞ ጀምር", backOnRoad: "ጉዞ ቀጥል", arrivedBtn: "ደርሻለሁ", delayBtn: "መዘግየት አሳውቅ",
       problemBtn: "ችግር አሳውቅ", deliverBtn: "ርክክብ መዝግብ", messageBtn: "ለቢሮ መልዕክት",
+      updateDelay: "መዘግየቱን አዘምን", updateProblem: "ችግሩን አዘምን",
       pendingSend: "በስልኩ ተቀምጧል — ኔትወርክ ሲገኝ ይላካል", reason: "ምክንያት", note: "ማስታወሻ (አማራጭ)",
       recipient: "የተረከበው ሰው ስም", recipientPhone: "ስልኩ (አማራጭ)", signature: "ፊርማ",
       signHere: "ተረካቢው እዚህ ይፈርሙ", clear: "አጥፋ", photos: "ፎቶዎች (እስከ 3)", addPhoto: "ፎቶ አንሳ",
@@ -440,13 +442,27 @@
     rerender();
   }
 
+  // The session was ended elsewhere: the office signed this phone out, or
+  // the PIN was reset. Customers' names and numbers go with it. What the
+  // driver recorded and hasn't sent stays for their next sign-in; another
+  // driver signing in clears it (signedIn).
   async function signedOut() {
     S.token = null;
     await kvSet("token", null);
+    await forgetShipments();
     stopTracking();
     toast(t("signedOut"));
     go("#/");
     render();
+  }
+
+  async function forgetShipments() {
+    await clear("shipments");
+    S.shipments.clear();
+    S.messages = [];
+    S.cursor = null;
+    await kvSet("messages", []);
+    await kvSet("cursor", null);
   }
 
   // ---------------------------------------------------------------------------
@@ -736,6 +752,9 @@
     if (canDeliver) actions.push(h("a", { class: "btn big " + (sh.status === "arrived" ? "primary" : "good"), href: "#/s/" + sh.id + "/deliver", text: t("deliverBtn") }));
     if (moves.includes("delayed")) actions.push(h("a", { class: "btn", href: "#/s/" + sh.id + "/report/delayed", text: t("delayBtn") }));
     if (moves.includes("issue")) actions.push(h("a", { class: "btn warn", href: "#/s/" + sh.id + "/report/issue", text: t("problemBtn") }));
+    // A new cause for the delay or problem the shipment is already in.
+    if (sh.status === "delayed") actions.push(h("a", { class: "btn", href: "#/s/" + sh.id + "/report/delayed", text: t("updateDelay") }));
+    if (sh.status === "issue") actions.push(h("a", { class: "btn warn", href: "#/s/" + sh.id + "/report/issue", text: t("updateProblem") }));
     const msgs = S.messages.filter((m) => m.shipment_id === sh.id);
     const smsNum = S.driver && S.driver.sms_number;
     return h("div", {},
@@ -751,6 +770,7 @@
           h("div", { class: "leg" }, h("span", { class: "leg-label", text: t("from") }), h("strong", { text: sh.origin_city }), h("span", { text: sh.origin_address })),
           h("div", { class: "leg" }, h("span", { class: "leg-label", text: t("to") }), h("strong", { text: sh.destination_city }), h("span", { text: sh.destination_address }),
             ACTIVE.includes(sh.status) ? h("a", { class: "btn small", href: directions(sh), target: "_blank", rel: "noopener", text: "➜ " + t("navigate") }) : null),
+          sh.planned_pickup && sh.status === "assigned" ? h("p", {}, h("span", { class: "muted", text: t("pickup") + ": " }), fmtTime(sh.planned_pickup)) : null,
           sh.eta && ACTIVE.includes(sh.status) ? h("p", {}, h("span", { class: "muted", text: t("due") + ": " }), fmtTime(sh.eta)) : null),
         h("section", { class: "card" },
           h("p", { class: "muted small", text: t("customer") }),
@@ -783,7 +803,8 @@
     } }, h("p", { class: "muted", text: t("reason") }), opts, field(t("note"), note), err,
       h("button", { class: "btn primary big", type: "submit", text: t("save") }),
       h("a", { class: "btn link", href: "#/s/" + sh.id, text: t("cancel") }));
-    return h("div", {}, header(status === "delayed" ? t("delayBtn") : t("problemBtn"), "#/s/" + sh.id), h("main", { class: "page" }, form));
+    const title = status === "delayed" ? (sh.status === "delayed" ? t("updateDelay") : t("delayBtn")) : (sh.status === "issue" ? t("updateProblem") : t("problemBtn"));
+    return h("div", {}, header(title, "#/s/" + sh.id), h("main", { class: "page" }, form));
   }
 
   function screenMessage(sh) {
@@ -971,8 +992,9 @@
     } catch { /* signing out locally is what matters */ }
     S.token = null;
     await kvSet("token", null);
-    await Promise.all([clear("outbox"), clear("locations")]);
+    await Promise.all([clear("outbox"), clear("locations"), forgetShipments()]);
     S.outbox = [];
+    S.pendingLocations = 0;
     stopTracking();
     go("#/");
     render();

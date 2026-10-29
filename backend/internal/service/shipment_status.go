@@ -10,9 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/geo"
 	"github.com/natnael-alemayehu/logistics/internal/model"
-	"github.com/natnael-alemayehu/logistics/internal/phone"
 )
 
 // StatusChange is a request to move a shipment along its lifecycle.
@@ -32,6 +30,9 @@ type StatusChange struct {
 	ClientID string
 
 	recipient string // set when the change is the result of a POD
+	// deliveredAt is when the proof was recorded, for a delivery the office
+	// accepts later.
+	deliveredAt time.Time
 }
 
 // ChangeStatus applies a status change.
@@ -69,7 +70,7 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 
 	terr := model.CheckTransition(cur.Status, ch.Status, ch.By)
 	if errors.Is(terr, model.ErrSameStatus) {
-		return cur, terr
+		return s.updateStatusDetail(ctx, q, after, a, cur, ch)
 	}
 
 	now := s.now()
@@ -82,8 +83,8 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 	// set — typically because the office changed it in the meantime — must
 	// not roll that state back, whether or not the move would be allowed from
 	// the new state. Proof of delivery is exempt: a signature is stronger
-	// evidence than anything recorded since.
-	if ch.By != model.ActorPOD && cur.StatusChangedAt.Valid && occurred.Before(cur.StatusChangedAt.Time) {
+	// evidence than anything recorded since. So is the office accepting one.
+	if ch.By != model.ActorPOD && ch.By != model.ActorReview && cur.StatusChangedAt.Valid && occurred.Before(cur.StatusChangedAt.Time) {
 		reason := strings.TrimSpace(ch.Reason)
 		if !contains(model.ReasonsFor(ch.Status), reason) {
 			reason = ""
@@ -134,7 +135,7 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 
 	out, err := q.SetShipmentStatus(ctx, db.SetShipmentStatusParams{
 		Status: ch.Status, StatusNote: toText(note), StatusReason: toText(reason),
-		ChangedAt: toTimestamp(occurred), ID: cur.ID, TenantID: cur.TenantID,
+		ChangedAt: toTimestamp(occurred), DeliveredAt: toTimestamp(ch.deliveredAt), ID: cur.ID, TenantID: cur.TenantID,
 	})
 	if err != nil {
 		return cur, err
@@ -202,6 +203,67 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 	return out, nil
 }
 
+// updateStatusDetail handles a report of the status a shipment is already
+// in. A repeated delay or problem with a new cause or note is news for the
+// office, so it is recorded and alerted; anything else is a replay, answered
+// with model.ErrSameStatus.
+func (s *ShipmentService) updateStatusDetail(ctx context.Context, q *db.Queries, after *afterCommit, a Actor, cur db.Shipment, ch StatusChange) (db.Shipment, error) {
+	var alertType, severity, what string
+	switch ch.Status {
+	case model.StatusDelayed:
+		alertType, severity, what = AlertDelayReported, SeverityWarning, "delay"
+	case model.StatusIssue:
+		alertType, severity, what = AlertIssueReported, SeverityCritical, "problem"
+	default:
+		return cur, model.ErrSameStatus
+	}
+	reason := strings.TrimSpace(ch.Reason)
+	if reason == "" && ch.By == model.ActorDriverSMS {
+		reason = "other"
+	}
+	if !contains(model.ReasonsFor(ch.Status), reason) {
+		return cur, invalid("reason", "Choose a reason from the list.")
+	}
+	note := strings.TrimSpace(truncate(ch.Note, 1000))
+	if reason == deref(cur.StatusReason) && (note == "" || note == deref(cur.StatusNote)) {
+		return cur, model.ErrSameStatus
+	}
+	occurred := s.now()
+	if !ch.OccurredAt.IsZero() && ch.OccurredAt.Before(occurred) {
+		occurred = ch.OccurredAt
+	}
+	// A report older than the current state, such as one queued offline
+	// before the office set a cause of its own, is not news.
+	if cur.StatusChangedAt.Valid && occurred.Before(cur.StatusChangedAt.Time) {
+		return cur, model.ErrSameStatus
+	}
+
+	if !s.event(ctx, q, a, cur, shipmentEvent{
+		Type: "status_updated", From: cur.Status, To: ch.Status, Reason: reason, Note: note,
+		Lat: ch.Lat, Lng: ch.Lng, Public: true, ClientID: ch.ClientID, OccurredAt: occurred, DriverID: cur.DriverID,
+	}) {
+		return cur, model.ErrSameStatus // this very report, replayed
+	}
+	out, err := q.SetShipmentStatusDetail(ctx, db.SetShipmentStatusDetailParams{
+		StatusReason: toText(reason), StatusNote: toText(note), ID: cur.ID, TenantID: cur.TenantID,
+	})
+	if err != nil {
+		return cur, err
+	}
+	who := a.Name
+	if who == "" {
+		who = "The driver"
+	}
+	// The new alert replaces the open one, which described the old cause.
+	_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: out.ID, AlertTypes: []string{alertType}})
+	s.raise(ctx, q, after, newAlert{
+		TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: alertType, Severity: severity,
+		Message: fmt.Sprintf("%s updated the %s on %s: %s%s", who, what, out.TrackingNumber, model.ReasonLabel(reason), noteSuffix(note)),
+	})
+	after.do(func() { s.publishShipment(out, "status") })
+	return out, nil
+}
+
 func noteSuffix(note string) string {
 	if note == "" {
 		return ""
@@ -233,6 +295,12 @@ func (s *ShipmentService) Cancel(ctx context.Context, a Actor, id pgtype.UUID, r
 		}
 		if !model.CanCancel(cur.Status) {
 			return conflict(fmt.Sprintf("The shipment is already %s.", strings.ToLower(model.StatusLabel(cur.Status))))
+		}
+		if !contains(model.CancelReasonsFor(cur.Status), reason) {
+			if model.IsOnRoad(cur.Status) {
+				return invalid("reason", "That reason is for a shipment that hasn't left yet.")
+			}
+			return invalid("reason", "That reason is for a shipment already on the road.")
 		}
 		out, err = q.SetShipmentStatus(ctx, db.SetShipmentStatusParams{
 			Status: model.StatusCancelled, StatusNote: toText(note), StatusReason: &reason,
@@ -308,18 +376,25 @@ func (s *ShipmentService) Reopen(ctx context.Context, a Actor, id pgtype.UUID) (
 	return out, err
 }
 
+// messageBySMSAfter is how long since a driver's last sync before an office
+// message to them goes by SMS as well (FR-035 AC-035.1): the app only shows
+// messages once it syncs, and a driver out of data would not see it.
+const messageBySMSAfter = 15 * time.Minute
+
 // Note adds a comment to a shipment's timeline. A dispatcher's note can be
-// addressed to the driver, and optionally sent by SMS as well; a driver's
-// note always goes to the office.
-func (s *ShipmentService) Note(ctx context.Context, a Actor, id pgtype.UUID, text string, toDriver, bySMS bool, clientID string, at time.Time) error {
+// addressed to the driver and sent by SMS as well, which happens anyway when
+// the driver's app has not synced lately; a driver's note always goes to the
+// office. It reports whether the message went by SMS.
+func (s *ShipmentService) Note(ctx context.Context, a Actor, id pgtype.UUID, text string, toDriver, bySMS bool, clientID string, at time.Time) (bool, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return invalid("note", "Write a message.")
+		return false, invalid("note", "Write a message.")
 	}
 	if len([]rune(text)) > 1000 {
-		return invalid("note", "Keep it under 1,000 characters.")
+		return false, invalid("note", "Keep it under 1,000 characters.")
 	}
-	return s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+	sent := false
+	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 		sh, err := s.Get(ctx, a.TenantID, id)
 		if err != nil {
 			return err
@@ -347,8 +422,19 @@ func (s *ShipmentService) Note(ctx context.Context, a Actor, id pgtype.UUID, tex
 		if !sh.DriverID.Valid {
 			return invalid("note", "No driver is assigned to this shipment yet.")
 		}
-		s.event(ctx, q, a, sh, shipmentEvent{Type: "message", Note: text, DriverID: sh.DriverID, VisibleToDriver: true})
-		if bySMS {
+		auto := false
+		if !bySMS {
+			meta, err := q.GetSyncMetadata(ctx, sh.DriverID)
+			switch {
+			case isNoRows(err): // never used the app: SMS is all they have
+				auto = true
+			case err != nil:
+				return err
+			default:
+				auto = !meta.LastSyncAt.Valid || s.now().Sub(meta.LastSyncAt.Time) > messageBySMSAfter
+			}
+		}
+		if bySMS || auto {
 			d, err := q.GetUserByID(ctx, db.GetUserByIDParams{ID: sh.DriverID, TenantID: a.TenantID})
 			if err == nil && d.Phone != nil {
 				tenant, err := q.GetTenantByID(ctx, a.TenantID)
@@ -359,143 +445,18 @@ func (s *ShipmentService) Note(ctx context.Context, a Actor, id pgtype.UUID, tex
 					TenantID: a.TenantID, ShipmentID: sh.ID, Phone: *d.Phone, Purpose: PurposeDriverMessage,
 					Body: fmt.Sprintf("%s (%s) re %s: %s", tenant.Name, a.Name, ShortRef(sh.TrackingNumber), truncate(text, 400)),
 				})
+				sent = true
 			}
 		}
+		var details map[string]any
+		if sent {
+			details = map[string]any{"sms": true, "auto": auto}
+		}
+		s.event(ctx, q, a, sh, shipmentEvent{Type: "message", Note: text, DriverID: sh.DriverID, VisibleToDriver: true, Details: details})
 		after.do(func() { s.publishShipment(sh, "message") })
 		return nil
 	})
-}
-
-// PODInput is a recorded proof of delivery whose media is already stored.
-type PODInput struct {
-	RecipientName  string
-	RecipientPhone string
-	SignatureKey   string
-	PhotoKeys      []string
-	Notes          string
-	Lat, Lng       *float64
-	RecordedAt     time.Time
-	ClientID       string
-}
-
-// RecordPOD stores proof of delivery and completes the shipment (FR-020–023).
-// Replays are harmless: a shipment has one POD and a second is ignored.
-func (s *ShipmentService) RecordPOD(ctx context.Context, a Actor, id pgtype.UUID, in PODInput) (db.Shipment, error) {
-	in.RecipientName = strings.TrimSpace(in.RecipientName)
-	if in.RecipientName == "" {
-		return db.Shipment{}, invalid("recipient_name", "Enter who received the delivery.")
-	}
-	if in.SignatureKey == "" {
-		return db.Shipment{}, invalid("signature", "The recipient's signature is required.")
-	}
-	var recipientPhone *string
-	if strings.TrimSpace(in.RecipientPhone) != "" {
-		p, err := phone.Normalize(in.RecipientPhone)
-		if err != nil {
-			return db.Shipment{}, invalid("recipient_phone", err.Error())
-		}
-		recipientPhone = &p
-	}
-	now := s.now()
-	recorded := in.RecordedAt
-	if recorded.IsZero() || recorded.After(now) {
-		recorded = now
-	}
-
-	var out db.Shipment
-	var result error
-	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
-		cur, err := s.lock(ctx, q, a.TenantID, id)
-		if err != nil {
-			return err
-		}
-		if a.isDriver() && cur.DriverID != a.UserID {
-			return ErrNotAssigned
-		}
-		if _, err := q.GetPODByShipmentID(ctx, db.GetPODByShipmentIDParams{ShipmentID: id, TenantID: a.TenantID}); err == nil {
-			out = cur
-			return nil
-		} else if !isNoRows(err) {
-			return err
-		}
-
-		verified := false
-		var mismatch pgtype.Numeric
-		var distance float64
-		haveFix := in.Lat != nil && in.Lng != nil && (*in.Lat != 0 || *in.Lng != 0)
-		if haveFix && cur.DestinationLat != nil && cur.DestinationLng != nil {
-			distance = geo.DistanceMeters(*in.Lat, *in.Lng, *cur.DestinationLat, *cur.DestinationLng)
-			verified = distance <= geo.DeliveryTolerance(cur.DestinationPrecise)
-			mismatch = toNumeric(float64(int(distance)))
-		}
-
-		if _, err := q.CreatePOD(ctx, db.CreatePODParams{
-			TenantID:               a.TenantID,
-			ShipmentID:             id,
-			DriverID:               cur.DriverID,
-			RecipientName:          truncate(in.RecipientName, 200),
-			RecipientPhone:         recipientPhone,
-			SignatureUrl:           &in.SignatureKey,
-			PhotoUrls:              in.PhotoKeys,
-			DeliveryAddress:        &cur.DestinationAddress,
-			Latitude:               in.Lat,
-			Longitude:              in.Lng,
-			DeliveryNotes:          toText(strings.TrimSpace(truncate(in.Notes, 1000))),
-			LocationVerified:       &verified,
-			LocationMismatchMeters: mismatch,
-			RecordedAt:             toTimestamp(recorded),
-		}); err != nil {
-			return err
-		}
-		s.event(ctx, q, a, cur, shipmentEvent{
-			Type: "pod_recorded", Lat: in.Lat, Lng: in.Lng, OccurredAt: recorded,
-			Note: "Received by " + in.RecipientName,
-			Details: map[string]any{
-				"recipient": in.RecipientName, "photos": len(in.PhotoKeys),
-				"location_verified": verified, "distance_m": int(distance), "has_fix": haveFix,
-			},
-		})
-
-		switch {
-		case haveFix && !verified && cur.DestinationLat != nil:
-			s.raise(ctx, q, after, newAlert{
-				TenantID: cur.TenantID, ShipmentID: cur.ID, DriverID: cur.DriverID, Type: AlertPODLocation, Severity: SeverityWarning,
-				Message: fmt.Sprintf("Delivery of %s was recorded %s from the destination.", cur.TrackingNumber, formatDistance(distance)),
-			})
-		case !haveFix:
-			s.raise(ctx, q, after, newAlert{
-				TenantID: cur.TenantID, ShipmentID: cur.ID, DriverID: cur.DriverID, Type: AlertPODLocation, Severity: SeverityInfo,
-				Message: fmt.Sprintf("Delivery of %s was recorded without a GPS fix, so its location could not be checked.", cur.TrackingNumber),
-			})
-		}
-
-		switch cur.Status {
-		case model.StatusDelivered:
-			out = cur // the office confirmed it first; the POD is still evidence
-			return nil
-		case model.StatusCancelled:
-			s.raise(ctx, q, after, newAlert{
-				TenantID: cur.TenantID, ShipmentID: cur.ID, DriverID: cur.DriverID, Type: AlertDeliveryOnCanceled, Severity: SeverityCritical,
-				Message: fmt.Sprintf("%s recorded delivery of %s to %s, but the shipment is cancelled.", a.Name, cur.TrackingNumber, in.RecipientName),
-			})
-			out = cur
-			result = conflict("This shipment was cancelled. The delivery record was kept and the office has been alerted.")
-			return nil
-		}
-
-		out, err = s.applyStatus(ctx, q, after, a, cur, StatusChange{
-			Status: model.StatusDelivered, By: model.ActorPOD, OccurredAt: recorded,
-			Lat: in.Lat, Lng: in.Lng, recipient: in.RecipientName,
-		})
-		if errors.Is(err, model.ErrSameStatus) {
-			return nil
-		}
-		return err
-	})
-	if err != nil {
-		return out, err
-	}
-	return out, result
+	return sent, err
 }
 
 func formatDistance(m float64) string {

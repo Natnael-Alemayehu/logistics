@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/internal/model"
 )
 
 // Jobs are the periodic checks: drivers gone quiet, shipments past their ETA,
@@ -17,6 +18,9 @@ const (
 	jobsLockKey = 7_311_042 // arbitrary, unique to this application
 
 	driverOfflineAfter = 4 * time.Hour
+	// pickupGrace is how long after its planned pickup a load may still be
+	// waiting before the office is told.
+	pickupGrace = 2 * time.Hour
 
 	retainTracking = 90 * 24 * time.Hour
 	retainAlerts   = 90 * 24 * time.Hour
@@ -65,6 +69,9 @@ func (j *Jobs) once(ctx context.Context, retention bool) error {
 	if err := j.CheckETAs(ctx); err != nil {
 		return fmt.Errorf("eta check: %w", err)
 	}
+	if err := j.CheckPickups(ctx); err != nil {
+		return fmt.Errorf("pickup check: %w", err)
+	}
 	if err := j.q.RequeueStuckSMS(ctx); err != nil {
 		return fmt.Errorf("requeue sms: %w", err)
 	}
@@ -96,14 +103,20 @@ func (j *Jobs) CheckDrivers(ctx context.Context) error {
 				TenantID: d.TenantID, DriverID: d.DriverID, Type: AlertDriverOffline, Severity: SeverityWarning,
 				Message: fmt.Sprintf("%s has not been in touch for %s while carrying %s.",
 					d.DriverName, humanDuration(now.Sub(d.LastContact.Time)), d.TrackingNumber),
+				Episode: d.Episode,
 			})
 		}
 		return nil
 	})
 }
 
-// CheckETAs alerts on active shipments past their estimated delivery.
+// CheckETAs alerts on shipments on the road past their estimated delivery,
+// once per ETA, and closes alerts whose ETA has since changed or passed out
+// of question.
 func (j *Jobs) CheckETAs(ctx context.Context) error {
+	if err := j.q.AcknowledgeStaleETAAlerts(ctx); err != nil {
+		return err
+	}
 	late, err := j.q.ListOverdueShipments(ctx)
 	if err != nil {
 		return err
@@ -116,6 +129,36 @@ func (j *Jobs) CheckETAs(ctx context.Context) error {
 			j.raise(ctx, q, after, newAlert{
 				TenantID: s.TenantID, ShipmentID: s.ID, DriverID: s.DriverID, Type: AlertETAExceeded, Severity: SeverityWarning,
 				Message: fmt.Sprintf("%s is past its estimated delivery of %s.", s.TrackingNumber, j.formatWhen(s.EstimatedDelivery.Time)),
+				Episode: s.Episode,
+			})
+		}
+		return nil
+	})
+}
+
+// CheckPickups alerts on loads still waiting to be collected two hours after
+// their planned pickup.
+func (j *Jobs) CheckPickups(ctx context.Context) error {
+	if err := j.q.AcknowledgeStalePickupAlerts(ctx); err != nil {
+		return err
+	}
+	waiting, err := j.q.ListPickupOverdue(ctx, toTimestamp(j.now().Add(-pickupGrace)))
+	if err != nil {
+		return err
+	}
+	if len(waiting) == 0 {
+		return nil
+	}
+	return j.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		for _, s := range waiting {
+			why := "no driver is assigned"
+			if s.Status == model.StatusAssigned {
+				why = "the driver has not set off"
+			}
+			j.raise(ctx, q, after, newAlert{
+				TenantID: s.TenantID, ShipmentID: s.ID, DriverID: s.DriverID, Type: AlertPickupOverdue, Severity: SeverityWarning,
+				Message: fmt.Sprintf("%s was due for pickup at %s and %s.", s.TrackingNumber, j.formatWhen(s.PlannedPickupAt.Time), why),
+				Episode: s.Episode,
 			})
 		}
 		return nil

@@ -20,6 +20,8 @@ const (
 	AlertDriverMessage      = "driver_message"
 	AlertSyncConflict       = "sync_conflict"
 	AlertDeliveryOnCanceled = "delivery_on_cancelled"
+	AlertDeliveryHeld       = "delivery_held"
+	AlertPickupOverdue      = "pickup_overdue"
 )
 
 // Severities.
@@ -30,7 +32,7 @@ const (
 )
 
 // resolvedByCompletion are the alerts a shipment's completion makes moot.
-var resolvedByCompletion = []string{AlertETAExceeded, AlertDelayReported, AlertIssueReported, AlertDriverOffline}
+var resolvedByCompletion = []string{AlertETAExceeded, AlertDelayReported, AlertIssueReported, AlertDriverOffline, AlertPickupOverdue}
 
 var alertLabels = map[string]string{
 	AlertIssueReported:      "Issue reported",
@@ -43,6 +45,8 @@ var alertLabels = map[string]string{
 	AlertDriverMessage:      "Message from driver",
 	AlertSyncConflict:       "Offline update not applied",
 	AlertDeliveryOnCanceled: "Delivery recorded on a cancelled shipment",
+	AlertDeliveryHeld:       "Delivery needs review",
+	AlertPickupOverdue:      "Not collected",
 }
 
 // AlertLabel is the display name of an alert type.
@@ -63,10 +67,15 @@ type newAlert struct {
 	Type       string
 	Severity   string
 	Message    string
+	// Episode, for alerts raised by a periodic check, names the situation the
+	// alert is about, such as the ETA that passed. The check raises it once:
+	// dismissed, it does not return until the episode changes.
+	Episode string
 }
 
 // raise records an alert within the caller's transaction and pushes it to
-// dashboards after commit. An identical open alert makes this a no-op.
+// dashboards after commit. An identical open alert, or an earlier alert of
+// the same episode, makes this a no-op.
 func (c *core) raise(ctx context.Context, q *db.Queries, after *afterCommit, a newAlert) {
 	row, err := q.CreateAlert(ctx, db.CreateAlertParams{
 		TenantID:   a.TenantID,
@@ -75,6 +84,7 @@ func (c *core) raise(ctx context.Context, q *db.Queries, after *afterCommit, a n
 		AlertType:  a.Type,
 		Severity:   a.Severity,
 		Message:    a.Message,
+		Episode:    toText(a.Episode),
 	})
 	if isNoRows(err) {
 		return

@@ -74,12 +74,16 @@ func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status
 		if recipient != "" {
 			who = " to " + recipient
 		}
+		at := s.now()
+		if sh.ActualDelivery.Valid {
+			at = sh.ActualDelivery.Time
+		}
 		link := s.trackURL(sh)
 		if sh.ConfirmToken != nil {
 			link = s.confirmURL(*sh.ConfirmToken)
 		}
-		return fmt.Sprintf("%s: shipment %s was delivered%s. Confirm receipt or report a problem: %s",
-			t.Name, sh.TrackingNumber, who, link), true
+		return fmt.Sprintf("%s: shipment %s was delivered%s on %s. Confirm receipt or report a problem: %s",
+			t.Name, sh.TrackingNumber, who, s.formatWhen(at), link), true
 	}
 	return "", false
 }
@@ -111,9 +115,18 @@ func (s *ShipmentService) notifyDriverAssigned(ctx context.Context, q *db.Querie
 	if sh.Priority != model.PriorityNormal {
 		priority = strings.ToUpper(sh.Priority) + " "
 	}
-	body := fmt.Sprintf("%s: %snew shipment %s, %s to %s. Customer %s %s.%s Open the driver app, or text ET %s 1 when you leave.",
+	pickup := ""
+	if sh.PlannedPickupAt.Valid {
+		pickup = " Pickup " + s.formatWhen(sh.PlannedPickupAt.Time) + "."
+	}
+	// Without an inbound number there is nothing to text, only the app.
+	report := " Open the driver app when you leave."
+	if s.cfg.SMSNumber != "" {
+		report = fmt.Sprintf(" When you leave, open the driver app or text ET %s 1 to %s.", ref, s.cfg.SMSNumber)
+	}
+	body := fmt.Sprintf("%s: %snew shipment %s, %s to %s.%s Customer %s %s.%s%s",
 		t.Name, priority, ref, place(sh.OriginCity, sh.OriginAddress), place(sh.DestinationCity, sh.DestinationAddress),
-		sh.CustomerName, sh.CustomerPhone, cargo, ref)
+		pickup, sh.CustomerName, sh.CustomerPhone, cargo, report)
 	s.enqueueSMS(ctx, q, after, outboundSMS{
 		TenantID: t.ID, ShipmentID: sh.ID, Phone: *d.Phone, Body: body, Purpose: PurposeDriverAssigned,
 	})

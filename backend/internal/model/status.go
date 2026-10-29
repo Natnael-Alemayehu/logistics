@@ -70,6 +70,11 @@ const (
 	ActorDispatcher
 	// ActorPOD is the system applying a recorded proof of delivery.
 	ActorPOD
+	// ActorReview is the office accepting a proof of delivery that was held
+	// because the shipment changed while the driver was offline. The proof is
+	// the evidence, so it completes the shipment from any state, cancelled
+	// included.
+	ActorReview
 )
 
 var (
@@ -126,6 +131,10 @@ func CheckTransition(from, to string, actor Actor) error {
 	switch actor {
 	case ActorPOD:
 		if IsOnRoad(from) || from == StatusAssigned {
+			return nil
+		}
+	case ActorReview:
+		if to == StatusDelivered {
 			return nil
 		}
 	case ActorDriver:
@@ -201,9 +210,29 @@ var (
 	}
 	CancelReasons = []string{
 		"customer_request", "duplicate", "address_problem",
+		"cargo_unavailable", "payment_problem",
+		"recipient_refused", "returned_to_origin", "cargo_lost_damaged", "other",
+	}
+	// Cancelling before the cargo leaves withdraws a booking; cancelling on
+	// the road records how a trip ended without a delivery.
+	cancelBeforeDeparture = []string{
+		"customer_request", "duplicate", "address_problem",
 		"cargo_unavailable", "payment_problem", "other",
 	}
+	cancelOnRoad = []string{
+		"recipient_refused", "returned_to_origin", "cargo_lost_damaged",
+		"customer_request", "address_problem", "payment_problem", "other",
+	}
 )
+
+// CancelReasonsFor returns the cancellation reasons that make sense for a
+// shipment in this status.
+func CancelReasonsFor(status string) []string {
+	if IsOnRoad(status) {
+		return cancelOnRoad
+	}
+	return cancelBeforeDeparture
+}
 
 var reasonLabels = map[string]string{
 	"road_conditions":       "Road conditions",
@@ -222,6 +251,8 @@ var reasonLabels = map[string]string{
 	"address_problem":       "Address problem",
 	"cargo_unavailable":     "Cargo not ready",
 	"payment_problem":       "Payment problem",
+	"returned_to_origin":    "Returned to origin",
+	"cargo_lost_damaged":    "Cargo lost or damaged",
 	"other":                 "Other",
 }
 

@@ -100,6 +100,20 @@
 </div>
 
 <section class="card">
+  <div class="card-head"><h2>Cancellations</h2>{{if $r.Cancellations}}<a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=cancellations">{{template "icon" "download"}} CSV</a>{{end}}</div>
+  {{if $r.Cancellations}}
+  <div class="table-wrap">
+  <table class="table table-compact">
+    <thead><tr><th>Reason</th><th class="num">Cancelled</th><th class="num">After departure</th></tr></thead>
+    <tbody>{{range $r.Cancellations}}
+    <tr><td>{{reasonLabel .Reason}}</td><td class="num">{{.Total}}</td><td class="num">{{.OnRoad}}</td></tr>
+    {{end}}</tbody>
+  </table>
+  </div>
+  {{else}}<p class="muted">No cancellations in this period.</p>{{end}}
+</section>
+
+<section class="card">
   <div class="card-head"><h2>Top customers</h2><a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=customers">{{template "icon" "download"}} CSV</a></div>
   {{if $r.Customers}}
   <div class="table-wrap">
