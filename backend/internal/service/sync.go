@@ -135,6 +135,7 @@ type DriverShipment struct {
 	Instructions       string     `json:"instructions"`
 	Vehicle            string     `json:"vehicle"`
 	ETA                *time.Time `json:"eta"`
+	PlannedPickup      *time.Time `json:"planned_pickup"`
 	PickedUpAt         *time.Time `json:"picked_up_at"`
 	DeliveredAt        *time.Time `json:"delivered_at"`
 	CreatedAt          time.Time  `json:"created_at"`
@@ -231,7 +232,7 @@ func (s *SyncService) Sync(ctx context.Context, p *Principal, req SyncRequest, c
 		r := SyncResult{ClientID: m.ClientID, Kind: "message", OK: true}
 		id, err := parseUUID(m.ShipmentID)
 		if err == nil {
-			err = s.shipments.Note(ctx, actor, id, m.Text, false, false, m.ClientID, correct(m.RecordedAt))
+			_, err = s.shipments.Note(ctx, actor, id, m.Text, false, false, m.ClientID, correct(m.RecordedAt))
 		} else {
 			err = notFound("Shipment not found.")
 		}
@@ -317,25 +318,45 @@ func (s *SyncService) applyPOD(ctx context.Context, a Actor, in SyncPOD, at time
 	if err != nil {
 		return resultFor(r, notFound("Shipment not found."))
 	}
-	// A replay of a POD already stored must not upload its images again.
-	if _, err := s.q.GetPODByShipmentID(ctx, db.GetPODByShipmentIDParams{ShipmentID: id, TenantID: a.TenantID}); err == nil {
-		return r
+	pod := PODInput{
+		RecipientName: in.RecipientName, RecipientPhone: in.RecipientPhone, Notes: in.Notes,
+		Lat: in.Lat, Lng: in.Lng, RecordedAt: at, ClientID: in.ClientID,
+	}
+	// Whatever will be refused is refused before any image is stored.
+	if err := pod.Check(); err != nil {
+		return resultFor(r, err)
+	}
+	// A replay of a proof already stored must not upload its images again.
+	if in.ClientID != "" {
+		prior, err := s.q.GetPODByClientID(ctx, db.GetPODByClientIDParams{TenantID: a.TenantID, DriverID: a.UserID, ClientID: &in.ClientID})
+		if err == nil {
+			if prior.Status != PODAccepted {
+				return resultFor(r, conflict(heldMessage(deref(prior.HeldReason))))
+			}
+			return r
+		}
 	}
 	sh, err := s.shipments.Get(ctx, a.TenantID, id)
 	if err != nil {
 		return resultFor(r, err)
 	}
 	if sh.DriverID != a.UserID {
-		return resultFor(r, ErrNotAssigned)
+		// Handed over while this driver was offline: their proof is held for
+		// review, but only if the shipment was ever theirs.
+		had, err := s.q.WasAssignedTo(ctx, db.WasAssignedToParams{TenantID: a.TenantID, ShipmentID: id, DriverID: a.UserID})
+		if err != nil {
+			return resultFor(r, err)
+		}
+		if !had {
+			return resultFor(r, ErrNotAssigned)
+		}
 	}
 	sig, photos, err := s.media.SavePOD(ctx, id.String(), in.Signature, in.Photos)
 	if err != nil {
 		return resultFor(r, err)
 	}
-	_, err = s.shipments.RecordPOD(ctx, a, id, PODInput{
-		RecipientName: in.RecipientName, RecipientPhone: in.RecipientPhone, SignatureKey: sig,
-		PhotoKeys: photos, Notes: in.Notes, Lat: in.Lat, Lng: in.Lng, RecordedAt: at, ClientID: in.ClientID,
-	})
+	pod.SignatureKey, pod.PhotoKeys = sig, photos
+	_, err = s.shipments.RecordPOD(ctx, a, id, pod)
 	return resultFor(r, err)
 }
 
@@ -455,6 +476,7 @@ func toDriverShipment(sh db.Shipment, plate string) DriverShipment {
 		Instructions:       deref(sh.SpecialInstructions),
 		Vehicle:            plate,
 		ETA:                timePtr(sh.EstimatedDelivery),
+		PlannedPickup:      timePtr(sh.PlannedPickupAt),
 		PickedUpAt:         timePtr(sh.PickedUpAt),
 		DeliveredAt:        timePtr(sh.ActualDelivery),
 		CreatedAt:          sh.CreatedAt.Time,

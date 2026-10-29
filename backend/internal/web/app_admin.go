@@ -206,7 +206,7 @@ func reportPresets(loc *time.Location) []preset {
 }
 
 func (s *Server) reportCSV(w http.ResponseWriter, rep *service.Report, section string) {
-	name := map[string]string{"routes": "routes", "customers": "customers", "daily": "daily"}[section]
+	name := map[string]string{"routes": "routes", "customers": "customers", "daily": "daily", "cancellations": "cancellations"}[section]
 	if name == "" {
 		name = "drivers"
 	}
@@ -238,6 +238,11 @@ func (s *Server) reportCSV(w http.ResponseWriter, rep *service.Report, section s
 		for _, x := range rep.Customers {
 			_ = cw.Write([]string{csvSafe(x.CustomerName), x.CustomerPhone, strconv.FormatInt(x.Shipments, 10), strconv.FormatInt(x.Delivered, 10),
 				x.LastShipmentAt.Time.In(s.cfg.Timezone).Format("2006-01-02")})
+		}
+	case "cancellations":
+		_ = cw.Write([]string{"Reason", "Cancelled", "After departure"})
+		for _, x := range rep.Cancellations {
+			_ = cw.Write([]string{csvSafe(model.ReasonLabel(x.Reason)), strconv.FormatInt(x.Total, 10), strconv.FormatInt(x.OnRoad, 10)})
 		}
 	case "daily":
 		_ = cw.Write([]string{"Day", "Delivered", "On time"})
@@ -410,8 +415,20 @@ func (s *Server) smsSimulate(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	err := s.svc.SMS.Inbound(r.Context(), r.PostFormValue("from"), r.PostFormValue("body"))
-	s.actionResult(w, r, "/app/settings/sms", err, "Message received. Any reply is in the log below.")
+	res, err := s.svc.SMS.Inbound(r.Context(), r.PostFormValue("from"), r.PostFormValue("body"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	kind, msg := "success", res.Detail
+	switch res.Outcome {
+	case "bad_number", "unknown_sender", "refused":
+		kind = "error"
+	}
+	if res.Reply != "" {
+		msg += " Reply: “" + res.Reply + "”"
+	}
+	s.back(w, r, "/app/settings/sms", kind, msg)
 }
 
 // ---------------------------------------------------------------------------

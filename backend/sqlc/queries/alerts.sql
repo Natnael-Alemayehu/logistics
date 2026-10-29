@@ -1,8 +1,9 @@
 -- name: CreateAlert :one
--- An open alert for the same subject and type already covers this one; the
--- partial unique index turns the duplicate into a no-op and no row returns.
-INSERT INTO alerts (tenant_id, shipment_id, driver_id, alert_type, severity, message)
-VALUES ($1, $2, $3, $4, $5, $6)
+-- An open alert for the same subject and type already covers this one, and
+-- an alert of the same episode was raised before, even if dismissed since:
+-- the unique indexes turn either duplicate into a no-op and no row returns.
+INSERT INTO alerts (tenant_id, shipment_id, driver_id, alert_type, severity, message, episode)
+VALUES ($1, $2, $3, $4, $5, $6, sqlc.narg(episode))
 ON CONFLICT DO NOTHING
 RETURNING *;
 
@@ -57,3 +58,29 @@ DELETE FROM alerts WHERE created_at < $1;
 UPDATE alerts
 SET acknowledged_at = NOW(), read_at = COALESCE(read_at, NOW())
 WHERE driver_id = $1 AND alert_type = $2 AND acknowledged_at IS NULL;
+
+-- name: AcknowledgeStaleETAAlerts :exec
+-- A "past ETA" alert is moot once its shipment has a new ETA, is no longer on
+-- the road, or is no longer late.
+UPDATE alerts a
+SET acknowledged_at = NOW(), read_at = COALESCE(a.read_at, NOW())
+FROM shipments s
+WHERE a.shipment_id = s.id
+  AND a.alert_type = 'eta_exceeded'
+  AND a.acknowledged_at IS NULL
+  AND (s.status NOT IN ('in_transit', 'delayed', 'arrived', 'issue')
+       OR s.estimated_delivery IS NULL
+       OR s.estimated_delivery > NOW()
+       OR a.episode IS DISTINCT FROM floor(extract(epoch FROM s.estimated_delivery))::bigint::text);
+
+-- name: AcknowledgeStalePickupAlerts :exec
+-- Likewise a "not collected" alert once the load has left or been rescheduled.
+UPDATE alerts a
+SET acknowledged_at = NOW(), read_at = COALESCE(a.read_at, NOW())
+FROM shipments s
+WHERE a.shipment_id = s.id
+  AND a.alert_type = 'pickup_overdue'
+  AND a.acknowledged_at IS NULL
+  AND (s.status NOT IN ('pending', 'assigned')
+       OR s.planned_pickup_at IS NULL
+       OR a.episode IS DISTINCT FROM floor(extract(epoch FROM s.planned_pickup_at))::bigint::text);

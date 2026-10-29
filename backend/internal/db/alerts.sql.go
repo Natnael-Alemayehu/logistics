@@ -65,6 +65,44 @@ func (q *Queries) AcknowledgeShipmentAlerts(ctx context.Context, arg Acknowledge
 	return err
 }
 
+const acknowledgeStaleETAAlerts = `-- name: AcknowledgeStaleETAAlerts :exec
+UPDATE alerts a
+SET acknowledged_at = NOW(), read_at = COALESCE(a.read_at, NOW())
+FROM shipments s
+WHERE a.shipment_id = s.id
+  AND a.alert_type = 'eta_exceeded'
+  AND a.acknowledged_at IS NULL
+  AND (s.status NOT IN ('in_transit', 'delayed', 'arrived', 'issue')
+       OR s.estimated_delivery IS NULL
+       OR s.estimated_delivery > NOW()
+       OR a.episode IS DISTINCT FROM floor(extract(epoch FROM s.estimated_delivery))::bigint::text)
+`
+
+// A "past ETA" alert is moot once its shipment has a new ETA, is no longer on
+// the road, or is no longer late.
+func (q *Queries) AcknowledgeStaleETAAlerts(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, acknowledgeStaleETAAlerts)
+	return err
+}
+
+const acknowledgeStalePickupAlerts = `-- name: AcknowledgeStalePickupAlerts :exec
+UPDATE alerts a
+SET acknowledged_at = NOW(), read_at = COALESCE(a.read_at, NOW())
+FROM shipments s
+WHERE a.shipment_id = s.id
+  AND a.alert_type = 'pickup_overdue'
+  AND a.acknowledged_at IS NULL
+  AND (s.status NOT IN ('pending', 'assigned')
+       OR s.planned_pickup_at IS NULL
+       OR a.episode IS DISTINCT FROM floor(extract(epoch FROM s.planned_pickup_at))::bigint::text)
+`
+
+// Likewise a "not collected" alert once the load has left or been rescheduled.
+func (q *Queries) AcknowledgeStalePickupAlerts(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, acknowledgeStalePickupAlerts)
+	return err
+}
+
 const countAlerts = `-- name: CountAlerts :one
 SELECT COUNT(*) FROM alerts
 WHERE tenant_id = $1
@@ -98,10 +136,10 @@ func (q *Queries) CountUnreadAlerts(ctx context.Context, tenantID pgtype.UUID) (
 }
 
 const createAlert = `-- name: CreateAlert :one
-INSERT INTO alerts (tenant_id, shipment_id, driver_id, alert_type, severity, message)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO alerts (tenant_id, shipment_id, driver_id, alert_type, severity, message, episode)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT DO NOTHING
-RETURNING id, tenant_id, shipment_id, driver_id, alert_type, severity, message, created_at, read_at, acknowledged_at, acknowledged_by
+RETURNING id, tenant_id, shipment_id, driver_id, alert_type, severity, message, created_at, read_at, acknowledged_at, acknowledged_by, episode
 `
 
 type CreateAlertParams struct {
@@ -111,10 +149,12 @@ type CreateAlertParams struct {
 	AlertType  string      `db:"alert_type" json:"alert_type"`
 	Severity   string      `db:"severity" json:"severity"`
 	Message    string      `db:"message" json:"message"`
+	Episode    *string     `db:"episode" json:"episode"`
 }
 
-// An open alert for the same subject and type already covers this one; the
-// partial unique index turns the duplicate into a no-op and no row returns.
+// An open alert for the same subject and type already covers this one, and
+// an alert of the same episode was raised before, even if dismissed since:
+// the unique indexes turn either duplicate into a no-op and no row returns.
 func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error) {
 	row := q.db.QueryRow(ctx, createAlert,
 		arg.TenantID,
@@ -123,6 +163,7 @@ func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert
 		arg.AlertType,
 		arg.Severity,
 		arg.Message,
+		arg.Episode,
 	)
 	var i Alert
 	err := row.Scan(
@@ -137,6 +178,7 @@ func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert
 		&i.ReadAt,
 		&i.AcknowledgedAt,
 		&i.AcknowledgedBy,
+		&i.Episode,
 	)
 	return i, err
 }
@@ -151,7 +193,7 @@ func (q *Queries) DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestam
 }
 
 const listAlerts = `-- name: ListAlerts :many
-SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, s.tracking_number, d.full_name AS driver_name
+SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, a.episode, s.tracking_number, d.full_name AS driver_name
 FROM alerts a
 LEFT JOIN shipments s ON s.id = a.shipment_id
 LEFT JOIN users d ON d.id = a.driver_id
@@ -182,6 +224,7 @@ type ListAlertsRow struct {
 	ReadAt         pgtype.Timestamptz `db:"read_at" json:"read_at"`
 	AcknowledgedAt pgtype.Timestamptz `db:"acknowledged_at" json:"acknowledged_at"`
 	AcknowledgedBy pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
+	Episode        *string            `db:"episode" json:"episode"`
 	TrackingNumber *string            `db:"tracking_number" json:"tracking_number"`
 	DriverName     *string            `db:"driver_name" json:"driver_name"`
 }
@@ -213,6 +256,7 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 			&i.ReadAt,
 			&i.AcknowledgedAt,
 			&i.AcknowledgedBy,
+			&i.Episode,
 			&i.TrackingNumber,
 			&i.DriverName,
 		); err != nil {

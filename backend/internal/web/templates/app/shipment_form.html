@@ -124,12 +124,17 @@
   {{end}}
 
   <fieldset class="card">
-    <legend>Delivery estimate</legend>
-    <p class="small muted">Leave empty to estimate from the distance and how long this route has taken before.</p>
-    <label>Due by
+    <legend>Timing</legend>
+    <label>Pickup <span class="muted small">optional</span>
+      <input type="datetime-local" name="planned_pickup" value="{{field $f "planned_pickup" ""}}" {{if index $e "planned_pickup"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "planned_pickup")}}
+    </label>
+    <p class="small muted">When the load is ready to collect. If it is still waiting two hours later, you get an alert.</p>
+    <label>Due by <span class="muted small">optional</span>
       <input type="datetime-local" name="estimated_delivery" value="{{field $f "estimated_delivery" ""}}" {{if index $e "estimated_delivery"}}aria-invalid="true"{{end}}>
       {{template "field-error" (index $e "estimated_delivery")}}
     </label>
+    <p class="small muted">Leave empty to estimate from the pickup time, the distance and how long this route has taken before.</p>
     {{if $edit}}{{if $edit.EstimatedDelivery.Valid}}{{if not $edit.EtaManual}}<p class="small muted">Current estimate: {{when $edit.EstimatedDelivery}}</p>{{end}}{{end}}{{end}}
   </fieldset>
 

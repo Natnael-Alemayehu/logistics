@@ -222,7 +222,8 @@ func (s *Server) apiSMSInbound(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from and body are required.")
 		return
 	}
-	if err := s.svc.SMS.Inbound(r.Context(), from, body); err != nil {
+	res, err := s.svc.SMS.Inbound(r.Context(), from, body)
+	if err != nil {
 		s.apiError(w, r, err)
 		return
 	}
@@ -232,5 +233,5 @@ func (s *Server) apiSMSInbound(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "outcome": res.Outcome, "detail": res.Detail, "reply": res.Reply})
 }

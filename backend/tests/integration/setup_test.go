@@ -147,6 +147,7 @@ type env struct {
 	svc   *service.Services
 	inbox *console.Console
 	seen  map[string]time.Time // newest message received, by kind and recipient
+	files string               // where uploaded images are stored
 }
 
 func newEnv(t *testing.T) *env {
@@ -182,7 +183,7 @@ func newEnv(t *testing.T) *env {
 	ts.Config.Handler = app.Handler()
 	ts.Start()
 	t.Cleanup(ts.Close)
-	return &env{t: t, srv: ts, svc: svc, inbox: inbox, seen: map[string]time.Time{}}
+	return &env{t: t, srv: ts, svc: svc, inbox: inbox, seen: map[string]time.Time{}, files: cfg.StoragePath}
 }
 
 // received waits for an SMS or email to a recipient that mentions text and
@@ -416,6 +417,25 @@ func (d *driverApp) statusAt(clientID, shipmentID, status string, at time.Time) 
 	}}})
 	if code != http.StatusOK || len(resp.Results) != 1 {
 		d.e.t.Fatalf("sync %s: status %d, results %+v", status, code, resp.Results)
+	}
+	return resp.Results[0]
+}
+
+// pod sends a proof of delivery and returns the server's verdict on it.
+func (d *driverApp) pod(p service.SyncPOD) service.SyncResult {
+	d.e.t.Helper()
+	if p.ClientID == "" {
+		p.ClientID = clientID()
+	}
+	if p.Signature == "" {
+		p.Signature = signaturePNG
+	}
+	if p.RecordedAt.IsZero() {
+		p.RecordedAt = time.Now()
+	}
+	resp, code := d.sync(service.SyncRequest{PODs: []service.SyncPOD{p}})
+	if code != http.StatusOK || len(resp.Results) != 1 {
+		d.e.t.Fatalf("sync POD: status %d, results %+v", code, resp.Results)
 	}
 	return resp.Results[0]
 }

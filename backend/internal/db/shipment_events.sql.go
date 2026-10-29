@@ -368,3 +368,25 @@ func (q *Queries) ListTenantActivity(ctx context.Context, arg ListTenantActivity
 	}
 	return items, nil
 }
+
+const wasAssignedTo = `-- name: WasAssignedTo :one
+SELECT EXISTS (
+    SELECT 1 FROM shipment_events
+    WHERE tenant_id = $1 AND shipment_id = $2 AND event_type = 'assigned' AND driver_id = $3
+)
+`
+
+type WasAssignedToParams struct {
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	DriverID   pgtype.UUID `db:"driver_id" json:"driver_id"`
+}
+
+// Whether a driver ever had the shipment, for a proof of delivery sent after
+// it was handed to someone else.
+func (q *Queries) WasAssignedTo(ctx context.Context, arg WasAssignedToParams) (bool, error) {
+	row := q.db.QueryRow(ctx, wasAssignedTo, arg.TenantID, arg.ShipmentID, arg.DriverID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}

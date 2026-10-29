@@ -259,32 +259,50 @@ func smsHelp() string {
 	return "Reply: ET <last 4 of tracking no.> <code> [note]. Codes: 1 Departed, 2 Delayed, 3 Arrived, 4 Delivered, 5 Problem. Example: ET 7K3M 1"
 }
 
+// InboundResult says what an inbound message did. The dashboard's simulator
+// shows it and the webhook returns it, so a test can tell a recorded update
+// from a message that was ignored.
+type InboundResult struct {
+	// Outcome is recorded, unchanged, refused, replied, opted_out, opted_in,
+	// unknown_sender or bad_number.
+	Outcome string `json:"outcome"`
+	// Detail says the same for people.
+	Detail string `json:"detail"`
+	// Reply is the text sent back, if any.
+	Reply string `json:"reply,omitempty"`
+}
+
 // Inbound handles a message received from the provider. Replies go only to
 // registered drivers, so a stranger cannot make the platform spend money.
-func (s *SMSService) Inbound(ctx context.Context, from, body string) error {
+func (s *SMSService) Inbound(ctx context.Context, from, body string) (InboundResult, error) {
 	local, err := phone.Normalize(from)
 	if err != nil {
-		return nil // not a number we could ever reply to
+		// Not a number we could ever reply to.
+		return InboundResult{Outcome: "bad_number", Detail: fmt.Sprintf("%q is not a phone number we can read.", from)}, nil
 	}
 	cmd, parseErr := ParseSMSCommand(body)
 
 	if parseErr == nil && cmd.Keyword == "STOP" {
 		s.logInbound(ctx, pgtype.UUID{}, pgtype.UUID{}, local, body)
-		return s.q.AddSMSOptOut(ctx, local)
+		return InboundResult{Outcome: "opted_out", Detail: local + " gets no more text messages until it sends START."},
+			s.q.AddSMSOptOut(ctx, local)
 	}
 	if parseErr == nil && cmd.Keyword == "START" {
 		s.logInbound(ctx, pgtype.UUID{}, pgtype.UUID{}, local, body)
-		return s.q.RemoveSMSOptOut(ctx, local)
+		return InboundResult{Outcome: "opted_in", Detail: local + " gets text messages again."},
+			s.q.RemoveSMSOptOut(ctx, local)
 	}
 
 	user, err := s.q.GetUserByPhone(ctx, &local)
 	if err != nil || user.Role != model.RoleDriver || !user.IsActive {
 		s.logInbound(ctx, pgtype.UUID{}, pgtype.UUID{}, local, body)
-		return nil
+		return InboundResult{Outcome: "unknown_sender",
+			Detail: local + " is not an active driver's number, so the message was logged and not answered."}, nil
 	}
 
-	reply := func(shipmentID pgtype.UUID, text string) error {
-		return s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+	reply := func(shipmentID pgtype.UUID, outcome, detail, text string) (InboundResult, error) {
+		res := InboundResult{Outcome: outcome, Detail: detail, Reply: text}
+		return res, s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 			s.enqueueSMS(ctx, q, after, outboundSMS{
 				TenantID: user.TenantID, ShipmentID: shipmentID, Phone: local,
 				Body: text, Purpose: PurposeDriverReply, Sensitive: false,
@@ -295,17 +313,17 @@ func (s *SMSService) Inbound(ctx context.Context, from, body string) error {
 
 	if parseErr != nil || cmd.Keyword == "HELP" {
 		s.logInbound(ctx, user.TenantID, pgtype.UUID{}, local, body)
-		return reply(pgtype.UUID{}, smsHelp())
+		return reply(pgtype.UUID{}, "replied", "Not a status report, so "+user.FullName+" was sent the list of codes.", smsHelp())
 	}
 
 	active, err := s.q.ListActiveShipmentsByDriver(ctx, db.ListActiveShipmentsByDriverParams{DriverID: user.ID, TenantID: user.TenantID})
 	if err != nil {
-		return err
+		return InboundResult{}, err
 	}
 	target, msg := matchShipment(active, cmd.Ref)
 	if target == nil {
 		s.logInbound(ctx, user.TenantID, pgtype.UUID{}, local, body)
-		return reply(pgtype.UUID{}, msg)
+		return reply(pgtype.UUID{}, "replied", "No shipment matched, so "+user.FullName+" was told why.", msg)
 	}
 	s.logInbound(ctx, user.TenantID, target.ID, local, body)
 
@@ -318,16 +336,20 @@ func (s *SMSService) Inbound(ctx context.Context, from, body string) error {
 		Status: cmd.Status, Reason: reason, Note: cmd.Note, By: model.ActorDriverSMS,
 	})
 	short := ShortRef(target.TrackingNumber)
+	label := model.StatusLabel(cmd.Status)
 	switch {
 	case err == nil:
-		return reply(target.ID, fmt.Sprintf("%s: %s recorded. Thank you.", short, model.StatusLabel(cmd.Status)))
+		return reply(target.ID, "recorded", fmt.Sprintf("%s recorded on %s.", label, target.TrackingNumber),
+			fmt.Sprintf("%s: %s recorded. Thank you.", short, label))
 	case errors.Is(err, model.ErrSameStatus):
-		return reply(target.ID, fmt.Sprintf("%s is already %s.", short, model.StatusLabel(cmd.Status)))
+		return reply(target.ID, "unchanged", fmt.Sprintf("%s was already %s.", target.TrackingNumber, strings.ToLower(label)),
+			fmt.Sprintf("%s is already %s.", short, label))
 	default:
 		if de, ok := AsError(err); ok {
-			return reply(target.ID, fmt.Sprintf("%s: %s", short, de.Message))
+			return reply(target.ID, "refused", fmt.Sprintf("Not applied to %s: %s", target.TrackingNumber, de.Message),
+				fmt.Sprintf("%s: %s", short, de.Message))
 		}
-		return err
+		return InboundResult{}, err
 	}
 }
 

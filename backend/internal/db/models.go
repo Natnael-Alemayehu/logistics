@@ -20,6 +20,7 @@ type Alert struct {
 	ReadAt         pgtype.Timestamptz `db:"read_at" json:"read_at"`
 	AcknowledgedAt pgtype.Timestamptz `db:"acknowledged_at" json:"acknowledged_at"`
 	AcknowledgedBy pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
+	Episode        *string            `db:"episode" json:"episode"`
 }
 
 type AuditLog struct {
@@ -70,6 +71,11 @@ type ProofOfDelivery struct {
 	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
 	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
 	SyncedAt               pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
+	ClientID               *string            `db:"client_id" json:"client_id"`
+	Status                 string             `db:"status" json:"status"`
+	HeldReason             *string            `db:"held_reason" json:"held_reason"`
+	ReviewedAt             pgtype.Timestamptz `db:"reviewed_at" json:"reviewed_at"`
+	ReviewedBy             pgtype.UUID        `db:"reviewed_by" json:"reviewed_by"`
 }
 
 type Session struct {
@@ -124,6 +130,7 @@ type Shipment struct {
 	CustomerConfirmedAt pgtype.Timestamptz `db:"customer_confirmed_at" json:"customer_confirmed_at"`
 	CustomerFeedback    *string            `db:"customer_feedback" json:"customer_feedback"`
 	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
+	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
 }
 
 type ShipmentEvent struct {

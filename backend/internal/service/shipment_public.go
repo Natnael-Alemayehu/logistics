@@ -137,7 +137,7 @@ func (s *ShipmentService) Track(ctx context.Context, number string) (*PublicTrac
 			pe.Label = "Driver assigned"
 		case "customer_confirmed":
 			pe.Label = "Receipt confirmed by customer"
-		case "status_changed":
+		case "status_changed", "status_updated":
 			to := deref(e.ToStatus)
 			pe.Label = customerStatusLabel(to)
 			if to == model.StatusDelayed && e.Reason != nil {

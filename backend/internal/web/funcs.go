@@ -63,6 +63,7 @@ func (s *Server) funcs() template.FuncMap {
 		"roleLabel":   model.RoleLabel,
 		"planName":    model.PlanName,
 		"alertLabel":  service.AlertLabel,
+		"heldReason":  service.HeldReasonLabel,
 		"vehicleType": service.VehicleTypeLabel,
 		"reasonsFor":  model.ReasonsFor,
 		"isFinal":     model.IsFinalStatus,

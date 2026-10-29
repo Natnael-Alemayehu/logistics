@@ -20,6 +20,8 @@ type Report struct {
 	Drivers   []db.ReportDriverPerformanceRow
 	Routes    []db.ReportRoutesRow
 	Customers []db.ReportCustomersRow
+	// Cancellations counts cancelled shipments by reason.
+	Cancellations []db.ReportCancellationsRow
 }
 
 // DailyDeliveries is one day of the deliveries chart.
@@ -87,6 +89,9 @@ func (s *ReportService) Build(ctx context.Context, tenantID pgtype.UUID, from, t
 		return nil, err
 	}
 	if r.Customers, err = s.q.ReportCustomers(ctx, db.ReportCustomersParams{TenantID: tenantID, DateFrom: f, DateTo: t}); err != nil {
+		return nil, err
+	}
+	if r.Cancellations, err = s.q.ReportCancellations(ctx, db.ReportCancellationsParams{TenantID: tenantID, DateFrom: f, DateTo: t}); err != nil {
 		return nil, err
 	}
 	return r, nil

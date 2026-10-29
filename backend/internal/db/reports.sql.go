@@ -11,6 +11,53 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const reportCancellations = `-- name: ReportCancellations :many
+SELECT COALESCE(status_reason, 'other')::text AS reason,
+       COUNT(*)::bigint AS total,
+       COUNT(*) FILTER (WHERE picked_up_at IS NOT NULL)::bigint AS on_road
+FROM shipments
+WHERE tenant_id = $1
+  AND status = 'cancelled'
+  AND status_changed_at >= $2
+  AND status_changed_at < $3
+GROUP BY 1
+ORDER BY total DESC, reason
+`
+
+type ReportCancellationsParams struct {
+	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DateFrom pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo   pgtype.Timestamptz `db:"date_to" json:"date_to"`
+}
+
+type ReportCancellationsRow struct {
+	Reason string `db:"reason" json:"reason"`
+	Total  int64  `db:"total" json:"total"`
+	OnRoad int64  `db:"on_road" json:"on_road"`
+}
+
+// Why shipments were cancelled, and how many of them after the cargo had
+// left: a refused or returned load cost a trip.
+func (q *Queries) ReportCancellations(ctx context.Context, arg ReportCancellationsParams) ([]ReportCancellationsRow, error) {
+	rows, err := q.db.Query(ctx, reportCancellations, arg.TenantID, arg.DateFrom, arg.DateTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ReportCancellationsRow{}
+	for rows.Next() {
+		var i ReportCancellationsRow
+		if err := rows.Scan(&i.Reason, &i.Total, &i.OnRoad); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reportCustomers = `-- name: ReportCustomers :many
 SELECT customer_name, customer_phone,
        COUNT(*)::bigint AS shipments,
@@ -259,9 +306,9 @@ SELECT
        AND e.occurred_at >= $2 AND e.occurred_at < $3)::bigint AS issues,
     (SELECT COUNT(*) FROM shipments c
      WHERE c.tenant_id = $1 AND c.status = 'cancelled'
-       AND c.updated_at >= $2 AND c.updated_at < $3)::bigint AS cancelled,
+       AND c.status_changed_at >= $2 AND c.status_changed_at < $3)::bigint AS cancelled,
     (SELECT COUNT(*) FROM proof_of_deliveries p
-     WHERE p.tenant_id = $1
+     WHERE p.tenant_id = $1 AND p.status = 'accepted'
        AND p.recorded_at >= $2 AND p.recorded_at < $3)::bigint AS with_pod
 FROM shipments
 WHERE tenant_id = $1

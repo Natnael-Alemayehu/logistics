@@ -52,3 +52,11 @@ WHERE e.tenant_id = sqlc.arg(tenant_id)
   AND e.previous_driver_id = sqlc.arg(driver_id)
   AND e.created_at > sqlc.arg(since)
   AND (s.driver_id IS NULL OR s.driver_id <> sqlc.arg(driver_id));
+
+-- name: WasAssignedTo :one
+-- Whether a driver ever had the shipment, for a proof of delivery sent after
+-- it was handed to someone else.
+SELECT EXISTS (
+    SELECT 1 FROM shipment_events
+    WHERE tenant_id = $1 AND shipment_id = $2 AND event_type = 'assigned' AND driver_id = $3
+);
