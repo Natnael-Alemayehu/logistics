@@ -10,7 +10,7 @@
 {{if .App.MockSMS}}
 <section class="card callout-info">
   <h2>Try a driver's SMS report</h2>
-  <p class="small">Messages are simulated in this installation. Send one as if from a driver's phone — it goes through the same handling as a real text. Try <code>ET 1234 3</code> (shipment ending 1234 arrived), <code>2 road closed</code>, or <code>HELP</code>.</p>
+  <p class="small">Messages are simulated in this installation: each one is printed in the server's terminal, codes and passwords included. Send one as if from a driver's phone — it goes through the same handling as a real text. Try <code>ET 1234 3</code> (shipment ending 1234 arrived), <code>2 road closed</code>, or <code>HELP</code>.</p>
   <form method="post" action="/app/settings/sms/simulate" class="row-wrap">
     <label class="inline">From
       <select name="from" required>
@@ -43,7 +43,7 @@
     <td class="nowrap">{{when .CreatedAt}}</td>
     <td>{{if eq .Direction "inbound"}}<span class="badge s-assigned">In</span>{{else}}<span class="badge">Out</span>{{end}}</td>
     <td class="nowrap">{{maskPhone .Phone}}</td>
-    <td>{{if .Sensitive}}<span class="muted">Sign-in code (hidden)</span>{{else}}{{.Body}}{{end}}{{with .TrackingNumber}}<div class="small"><span class="mono">{{.}}</span></div>{{end}}</td>
+    <td>{{if .Sensitive}}<span class="muted">Code or password (hidden){{if $.App.MockSMS}} · printed in the server terminal{{end}}</span>{{else}}{{.Body}}{{end}}{{with .TrackingNumber}}<div class="small"><span class="mono">{{.}}</span></div>{{end}}</td>
     <td>{{if eq .Status "sent"}}<span class="text-good">Sent</span>{{else if eq .Status "failed"}}<span class="text-bad" title="{{str .LastError}}">Failed</span>{{else if eq .Status "received"}}Received{{else}}<span class="text-warn">{{title .Status}}{{if gt .Attempts 0}} (try {{.Attempts}}){{end}}</span>{{end}}</td>
   </tr>
   {{else}}

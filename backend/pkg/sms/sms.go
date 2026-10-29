@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/natnael-alemayehu/logistics/pkg/console"
 )
 
 type MessageType string
@@ -57,6 +59,8 @@ type Config struct {
 	EthioTelecomAPIURL   string
 	EthioTelecomAPIKey   string
 	EthioTelecomSenderID string
+	// Console is where the mock provider prints messages.
+	Console *console.Console
 }
 
 func NewProvider(cfg Config, logger Logger, rateLimiter RateLimiter, optOutStore OptOutStore) (SMSProvider, error) {
@@ -72,7 +76,9 @@ func NewProvider(cfg Config, logger Logger, rateLimiter RateLimiter, optOutStore
 		}
 		return NewEthioTelecomProvider(cfg.EthioTelecomAPIURL, cfg.EthioTelecomAPIKey, cfg.EthioTelecomSenderID, logger, rateLimiter, optOutStore), nil
 	case ProviderMock:
-		return NewMockProvider(logger), nil
+		p := NewMockProvider(logger)
+		p.Console = cfg.Console
+		return p, nil
 	default:
 		return nil, fmt.Errorf("unknown SMS provider: %s", cfg.Provider)
 	}

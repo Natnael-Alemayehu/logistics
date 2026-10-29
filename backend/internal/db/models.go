@@ -36,6 +36,23 @@ type AuditLog struct {
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type Email struct {
+	ID            pgtype.UUID        `db:"id" json:"id"`
+	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ToAddress     string             `db:"to_address" json:"to_address"`
+	Subject       string             `db:"subject" json:"subject"`
+	Body          string             `db:"body" json:"body"`
+	Purpose       string             `db:"purpose" json:"purpose"`
+	Sensitive     bool               `db:"sensitive" json:"sensitive"`
+	Status        string             `db:"status" json:"status"`
+	Attempts      int32              `db:"attempts" json:"attempts"`
+	LastError     *string            `db:"last_error" json:"last_error"`
+	Provider      *string            `db:"provider" json:"provider"`
+	NextAttemptAt pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	SentAt        pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type ProofOfDelivery struct {
 	ID                     pgtype.UUID        `db:"id" json:"id"`
 	TenantID               pgtype.UUID        `db:"tenant_id" json:"tenant_id"`

@@ -17,6 +17,8 @@ type Querier interface {
 	// A shipment that reaches a final state resolves whatever was open on it.
 	AcknowledgeShipmentAlerts(ctx context.Context, arg AcknowledgeShipmentAlertsParams) error
 	AddSMSOptOut(ctx context.Context, phone string) error
+	// The same five-minute lease as ClaimQueuedSMS.
+	ClaimQueuedEmails(ctx context.Context, limit int32) ([]Email, error)
 	// SKIP LOCKED lets several API replicas drain the queue without sending the
 	// same message twice.
 	// The claim is a five-minute lease: next_attempt_at moves to when the row may
@@ -57,8 +59,10 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteExpiredVerificationCodes(ctx context.Context) error
 	DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestamptz) error
+	DeleteOldEmails(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldTrackingEvents(ctx context.Context, recordedAt pgtype.Timestamptz) error
+	EnqueueEmail(ctx context.Context, arg EnqueueEmailParams) (Email, error)
 	EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMessage, error)
 	GetActiveSessionByTokenHash(ctx context.Context, arg GetActiveSessionByTokenHashParams) (Session, error)
 	GetActiveVerificationCode(ctx context.Context, arg GetActiveVerificationCodeParams) (VerificationCode, error)
@@ -142,6 +146,9 @@ type Querier interface {
 	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
 	MarkAlertRead(ctx context.Context, arg MarkAlertReadParams) error
 	MarkAllAlertsRead(ctx context.Context, tenantID pgtype.UUID) error
+	MarkEmailFailed(ctx context.Context, arg MarkEmailFailedParams) error
+	MarkEmailRetry(ctx context.Context, arg MarkEmailRetryParams) error
+	MarkEmailSent(ctx context.Context, arg MarkEmailSentParams) error
 	MarkSMSFailed(ctx context.Context, arg MarkSMSFailedParams) error
 	MarkSMSRetry(ctx context.Context, arg MarkSMSRetryParams) error
 	MarkSMSSent(ctx context.Context, arg MarkSMSSentParams) error
@@ -159,6 +166,7 @@ type Querier interface {
 	ReportDriverPerformance(ctx context.Context, arg ReportDriverPerformanceParams) ([]ReportDriverPerformanceRow, error)
 	ReportRoutes(ctx context.Context, arg ReportRoutesParams) ([]ReportRoutesRow, error)
 	ReportSummary(ctx context.Context, arg ReportSummaryParams) (ReportSummaryRow, error)
+	RequeueStuckEmails(ctx context.Context) error
 	// A process that died mid-send leaves rows in 'sending' past their lease.
 	RequeueStuckSMS(ctx context.Context) error
 	RevokeAllUserSessions(ctx context.Context, userID pgtype.UUID) error

@@ -21,6 +21,7 @@ const (
 	retainTracking = 90 * 24 * time.Hour
 	retainAlerts   = 90 * 24 * time.Hour
 	retainSMS      = 180 * 24 * time.Hour
+	retainEmail    = 180 * 24 * time.Hour
 )
 
 // Run performs the checks every minute and retention every hour until ctx
@@ -66,6 +67,9 @@ func (j *Jobs) once(ctx context.Context, retention bool) error {
 	}
 	if err := j.q.RequeueStuckSMS(ctx); err != nil {
 		return fmt.Errorf("requeue sms: %w", err)
+	}
+	if err := j.q.RequeueStuckEmails(ctx); err != nil {
+		return fmt.Errorf("requeue email: %w", err)
 	}
 	if retention {
 		if err := j.Retention(ctx); err != nil {
@@ -128,6 +132,9 @@ func (j *Jobs) Retention(ctx context.Context) error {
 		return err
 	}
 	if err := j.q.DeleteOldSMS(ctx, toTimestamp(now.Add(-retainSMS))); err != nil {
+		return err
+	}
+	if err := j.q.DeleteOldEmails(ctx, toTimestamp(now.Add(-retainEmail))); err != nil {
 		return err
 	}
 	if err := j.q.DeleteExpiredSessions(ctx); err != nil {

@@ -79,3 +79,38 @@ func TestBadTimezone(t *testing.T) {
 		t.Error("an unknown time zone should fail")
 	}
 }
+
+func TestProvidersDefaultToMocksInDevelopment(t *testing.T) {
+	t.Setenv("APP_SECRET_FILE", filepath.Join(t.TempDir(), "secret"))
+	t.Setenv("PORT", "8090")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.MockedProviders(); len(got) != 3 {
+		t.Errorf("MockedProviders = %v, want SMS, email and payments", got)
+	}
+	if c.MailFrom != "Menged <no-reply@localhost>" {
+		t.Errorf("MailFrom = %q", c.MailFrom)
+	}
+}
+
+func TestProductionHasNoPaymentStandIn(t *testing.T) {
+	t.Setenv("APP_SECRET_FILE", filepath.Join(t.TempDir(), "secret"))
+	t.Setenv("ENVIRONMENT", "production")
+	t.Setenv("PUBLIC_URL", "https://menged.example.et/")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PaymentProvider != "none" {
+		t.Errorf("PaymentProvider = %q, want none", c.PaymentProvider)
+	}
+	if c.MailFrom != "Menged <no-reply@menged.example.et>" {
+		t.Errorf("MailFrom = %q", c.MailFrom)
+	}
+	t.Setenv("PAYMENT_PROVIDER", "paypal")
+	if _, err := Load(); err == nil {
+		t.Error("an unknown PAYMENT_PROVIDER should be rejected")
+	}
+}

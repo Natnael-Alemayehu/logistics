@@ -9,9 +9,11 @@ automated version of the core flows is `make test-integration`.
 make db && make seed && make run
 ```
 
-Open http://localhost:8080. SMS is simulated: every message appears under
-Settings → Text messages, and the server log prints `[MOCK SMS]` lines. Links
-in seeded messages use the URL from when `make seed` ran.
+Open http://localhost:8080. SMS, email and payments are stand-ins: what they
+would send is printed in the terminal running `make run`, in a framed block
+(`┌─ SMS to 0912345601`). Codes, passwords and links are only readable there;
+Settings → Text messages lists every SMS but hides codes. Links in seeded
+messages use the URL from when `make seed` ran.
 
 To use the driver app on a real phone, the phone must reach your machine, and
 service workers need HTTPS except on `localhost`. A tunnel (for example
@@ -80,8 +82,8 @@ Also try:
   on the dashboard at once, as a toast and on the bell.
 - Send a message from the shipment page with **To the driver**. It appears in
   the app after the next sync.
-- **Forgot your PIN?**: request a code, read it under Settings → Text
-  messages, and set a new PIN.
+- **Forgot your PIN?**: request a code, read it in the server terminal, and
+  set a new PIN.
 
 ## 5. Conflicts
 
@@ -102,8 +104,9 @@ on a cancelled shipment, and the office is alerted.
 
 ## 6. Drivers without a smartphone
 
-Settings → Text messages → **Simulate an incoming text**, from a driver's
-number:
+Settings → Text messages → **Try a driver's SMS report**, from a driver's
+number, or from a second terminal (from `backend/`):
+`go run ./cmd/server sms-in 0912345601 "ET 7K3M 1"`.
 
 | Text | Effect |
 |---|---|
@@ -122,8 +125,8 @@ from an unknown number changes nothing and gets no reply.
    page shows the status steps, due time, a coarse last-known position ("45 km
    from Adama") and public history. It never shows phone numbers or the
    driver's name.
-2. `/track/phone`: enter the customer's phone, read the 6-digit code from the
-   SMS log, and see all of their shipments.
+2. `/track/phone`: enter the customer's phone, read the 6-digit code in the
+   server terminal, and see all of their shipments.
 3. Open the confirmation link from the delivery SMS. Confirm, or report a
    problem with a note. A reported problem raises an alert for the office.
 
