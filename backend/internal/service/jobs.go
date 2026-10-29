@@ -26,6 +26,7 @@ const (
 	retainAlerts   = 90 * 24 * time.Hour
 	retainSMS      = 180 * 24 * time.Hour
 	retainEmail    = 180 * 24 * time.Hour
+	retainLinks    = 30 * 24 * time.Hour
 )
 
 // Run performs the checks every minute and retention every hour until ctx
@@ -178,6 +179,12 @@ func (j *Jobs) Retention(ctx context.Context) error {
 		return err
 	}
 	if err := j.q.DeleteOldEmails(ctx, toTimestamp(now.Add(-retainEmail))); err != nil {
+		return err
+	}
+	if err := j.q.DeleteOldEmailTokens(ctx, toTimestamp(now.Add(-retainLinks))); err != nil {
+		return err
+	}
+	if err := j.q.DeleteExpiredPendingSignups(ctx, toTimestamp(now)); err != nil {
 		return err
 	}
 	if err := j.q.DeleteExpiredSessions(ctx); err != nil {

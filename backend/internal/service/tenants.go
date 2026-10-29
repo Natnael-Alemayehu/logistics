@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/mail"
 	"strings"
 	"time"
@@ -37,78 +38,198 @@ type SignupInput struct {
 	Password  string
 }
 
-// Signup creates a company on a free trial with its first admin, and signs
-// that admin in.
-func (s *TenantService) Signup(ctx context.Context, in SignupInput, ci ClientInfo) (*LoginResult, error) {
-	company := strings.Join(strings.Fields(in.Company), " ")
-	if len(company) < 2 {
-		return nil, invalid("company", "Enter your company's name.")
+// A sign-up waits this long for the code texted to the admin's phone.
+const signupTTL = time.Hour
+
+var errSignupExpired = &Error{Kind: KindNotFound, Message: "This sign-up has expired or is already complete. If you finished it, sign in; otherwise fill in the form again."}
+
+// newCompany is a validated sign-up.
+type newCompany struct {
+	name, city   string
+	admin        validPerson
+	passwordHash string
+}
+
+func (in SignupInput) validate() (newCompany, error) {
+	var c newCompany
+	c.name = strings.Join(strings.Fields(in.Company), " ")
+	if len(c.name) < 2 {
+		return c, invalid("company", "Enter your company's name.")
 	}
-	if len(company) > 120 {
-		return nil, invalid("company", "That name is too long.")
+	if len(c.name) > 120 {
+		return c, invalid("company", "That name is too long.")
 	}
-	city := "Addis Ababa"
+	c.city = "Addis Ababa"
 	if strings.TrimSpace(in.City) != "" {
 		p, ok := geo.Lookup(in.City)
 		if !ok {
-			return nil, invalid("city", "Pick your base town from the list.")
+			return c, invalid("city", "Pick your base town from the list.")
 		}
-		city = p.Name
+		c.city = p.Name
 	}
-	person, err := validatePerson(PersonInput{FullName: in.AdminName, Phone: in.Phone, Email: in.Email}, true)
+	var err error
+	c.admin, err = validatePerson(PersonInput{FullName: in.AdminName, Phone: in.Phone, Email: in.Email}, true)
 	if err != nil {
-		return nil, err
+		return c, err
 	}
-	if person.email == nil {
-		return nil, invalid("email", "Enter your email address.")
+	if c.admin.email == nil {
+		return c, invalid("email", "Enter your email address.")
 	}
 	if err := checkPassword(in.Password); err != nil {
 		e := *err.(*Error) // a copy: checkPassword may return a shared value
 		e.Field = "password"
-		return nil, &e
+		return c, &e
 	}
-	h, err := hash.Password(in.Password)
-	if err != nil {
-		return nil, err
-	}
+	c.passwordHash, err = hash.Password(in.Password)
+	return c, err
+}
 
+// StartSignup checks a registration and texts a code to the admin's phone.
+// The company is created only once the code comes back (CompleteSignup): its
+// phone is how drivers, customers and the platform reach the company, so it
+// must be one the person holds. The token identifies the waiting sign-up to
+// the browser that started it.
+func (s *TenantService) StartSignup(ctx context.Context, in SignupInput) (token string, err error) {
+	c, err := in.validate()
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.q.GetUserByEmail(ctx, *c.admin.email); err == nil {
+		return "", invalid("email", "Someone is already registered with this email address. Sign in, or reset your password from the sign-in page.")
+	} else if !isNoRows(err) {
+		return "", err
+	}
+	if _, err := s.q.GetUserByPhone(ctx, c.admin.phone); err == nil {
+		return "", invalid("phone", "Someone is already registered with this phone number.")
+	} else if !isNoRows(err) {
+		return "", err
+	}
+	if err := s.issueCode(ctx, pgtype.UUID{}, *c.admin.phone, codePurposeSignup, s.signupText); err != nil {
+		return "", err
+	}
+	token = randomToken(32)
+	err = s.q.CreatePendingSignup(ctx, db.CreatePendingSignupParams{
+		TokenHash: hashToken(token), Company: c.name, City: c.city, FullName: c.admin.name,
+		Email: *c.admin.email, Phone: *c.admin.phone, PasswordHash: c.passwordHash,
+		Plan: model.PlanTrial, BillingCycle: "monthly", ExpiresAt: toTimestamp(s.now().Add(signupTTL)),
+	})
+	return token, err
+}
+
+func (s *TenantService) signupText(code string) string {
+	return fmt.Sprintf("%s: your sign-up code is %s. It expires in 10 minutes. Never share it.", s.cfg.AppName, code)
+}
+
+// PendingSignup is a sign-up waiting for its code.
+func (s *TenantService) PendingSignup(ctx context.Context, token string) (db.PendingSignup, error) {
+	ps, err := s.q.GetPendingSignup(ctx, hashToken(token))
+	if isNoRows(err) {
+		return ps, errSignupExpired
+	}
+	return ps, err
+}
+
+// ResendSignupCode texts a new code for a waiting sign-up.
+func (s *TenantService) ResendSignupCode(ctx context.Context, token string) error {
+	ps, err := s.PendingSignup(ctx, token)
+	if err != nil {
+		return err
+	}
+	return s.issueCode(ctx, pgtype.UUID{}, ps.Phone, codePurposeSignup, s.signupText)
+}
+
+// CompleteSignup checks the texted code, creates the company on a free trial
+// with its first admin, emails them a link to confirm their address, and
+// signs them in.
+func (s *TenantService) CompleteSignup(ctx context.Context, token, code string, ci ClientInfo) (*LoginResult, error) {
 	var admin db.User
-	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
-		var tenant db.Tenant
-		base := slugify(company)
-		for attempt := 0; ; attempt++ {
-			slug := base
-			if attempt > 0 {
-				slug = base + "-" + strings.ToLower(randomDigits(4))
-			}
-			tenant, err = q.CreateTenant(ctx, db.CreateTenantParams{
-				Name: company, Slug: slug, Plan: model.PlanTrial, MaxDrivers: 5,
-				ContactPhone: person.phone, ContactEmail: person.email, RegionCity: city,
-				TrialEndsAt: toTimestamp(s.now().Add(TrialLength)),
-			})
-			if _, dup := isUniqueViolation(err); dup && attempt < 5 {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			break
+	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		// Locked, so a second submission of the same code waits for this
+		// one and then finds the sign-up finished.
+		ps, err := q.GetPendingSignup(ctx, hashToken(token))
+		if isNoRows(err) {
+			return errSignupExpired
 		}
-		admin, err = q.CreateUser(ctx, db.CreateUserParams{
-			TenantID: tenant.ID, Role: model.RoleAdmin, FullName: person.name,
-			Phone: person.phone, Email: person.email, PasswordHash: &h,
-		})
 		if err != nil {
-			return duplicateUser(err)
+			return err
 		}
-		s.audit(ctx, q, Actor{UserID: admin.ID, TenantID: tenant.ID, Name: admin.FullName, Role: admin.Role, IP: ci.IP, UserAgent: ci.UserAgent},
-			"company_signup", "tenant", tenant.ID, nil, map[string]any{"name": company})
-		return nil
+		if err := s.checkCode(ctx, ps.Phone, codePurposeSignup, strings.TrimSpace(code)); err != nil {
+			return err
+		}
+		admin, err = s.createCompany(ctx, q, newCompany{
+			name: ps.Company, city: ps.City, passwordHash: ps.PasswordHash,
+			admin: validPerson{name: ps.FullName, phone: &ps.Phone, email: &ps.Email},
+		}, ci)
+		if err != nil {
+			return err
+		}
+		if err := s.sendEmailVerification(ctx, q, after, admin,
+			"Welcome to "+s.cfg.AppName+". "+ps.Company+" is set up, with a free trial for the next 14 days."); err != nil {
+			return err
+		}
+		return q.DeletePendingSignup(ctx, ps.ID)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return s.auth.startSession(ctx, admin, SessionWeb, false, ci)
+}
+
+// CreateCompany registers a company whose admin's phone and email have been
+// checked some other way: the demo data and the platform operator's own
+// account. Self-service sign-up goes through StartSignup and CompleteSignup.
+func (s *TenantService) CreateCompany(ctx context.Context, in SignupInput, ci ClientInfo) (*LoginResult, error) {
+	c, err := in.validate()
+	if err != nil {
+		return nil, err
+	}
+	var admin db.User
+	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		if admin, err = s.createCompany(ctx, q, c, ci); err != nil {
+			return err
+		}
+		_, err = q.SetEmailVerified(ctx, db.SetEmailVerifiedParams{ID: admin.ID, TenantID: admin.TenantID, Email: admin.Email})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.auth.startSession(ctx, admin, SessionWeb, false, ci)
+}
+
+// createCompany creates a company on a free trial and its first admin.
+func (s *TenantService) createCompany(ctx context.Context, q *db.Queries, c newCompany, ci ClientInfo) (db.User, error) {
+	trial, _ := model.PlanByCode(model.PlanTrial)
+	var tenant db.Tenant
+	var err error
+	base := slugify(c.name)
+	for attempt := 0; ; attempt++ {
+		slug := base
+		if attempt > 0 {
+			slug = base + "-" + randomDigits(4)
+		}
+		tenant, err = q.CreateTenant(ctx, db.CreateTenantParams{
+			Name: c.name, Slug: slug, Plan: model.PlanTrial, MaxDrivers: trial.MaxDrivers,
+			ContactPhone: c.admin.phone, ContactEmail: c.admin.email, RegionCity: c.city,
+			TrialEndsAt: toTimestamp(s.now().Add(TrialLength)),
+		})
+		if isNoRows(err) && attempt < 5 { // the slug is taken
+			continue
+		}
+		if err != nil {
+			return db.User{}, err
+		}
+		break
+	}
+	admin, err := q.CreateUser(ctx, db.CreateUserParams{
+		TenantID: tenant.ID, Role: model.RoleAdmin, FullName: c.admin.name,
+		Phone: c.admin.phone, Email: c.admin.email, PasswordHash: &c.passwordHash,
+	})
+	if err != nil {
+		return admin, duplicateUser(err)
+	}
+	s.audit(ctx, q, userActor(admin, ci), "company_signup", "tenant", tenant.ID, nil, map[string]any{"name": c.name})
+	return admin, nil
 }
 
 func slugify(s string) string {

@@ -38,6 +38,7 @@ type Server struct {
 	version  string
 	upgrader gorillaws.Upgrader
 	mockSMS  bool
+	mockMail bool
 }
 
 // New builds the server.
@@ -56,7 +57,7 @@ func New(cfg *config.Config, svc *service.Services, pool *pgxpool.Pool, hub *web
 	}
 	s := &Server{
 		cfg: cfg, svc: svc, log: log, hub: hub, pool: pool, assets: assets,
-		mockSMS: svc.SMS.ProviderName() == "mock",
+		mockSMS: svc.SMS.ProviderName() == "mock", mockMail: svc.Mail.ProviderName() == "mock",
 	}
 	s.version = assetVersion(assets)
 	s.views, err = newRenderer(tpl, s.funcs(), cfg.DevReload)
@@ -113,6 +114,14 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/logout", s.logout)
 		r.Get("/signup", s.signupPage)
 		r.With(strict).Post("/signup", s.signup)
+		r.Get("/signup/verify", s.signupVerifyPage)
+		r.With(strict).Post("/signup/verify", s.signupVerify)
+		r.With(strict).Post("/signup/resend", s.signupResend)
+		r.Get("/forgot", s.forgotPage)
+		r.With(strict).Post("/forgot", s.forgot)
+		r.With(lookup).Get("/reset/{token}", s.resetPage)
+		r.With(strict).Post("/reset/{token}", s.reset)
+		r.With(lookup).Get("/verify-email/{token}", s.verifyEmail)
 
 		r.With(lookup).Get("/track", s.trackForm)
 		r.With(lookup).Post("/track", s.trackSubmit)
@@ -162,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 
 			r.Get("/account", s.accountPage)
 			r.Post("/account", s.accountUpdate)
+			r.Post("/account/verify-email", s.accountVerifyEmail)
 			r.Post("/account/sessions/{id}/revoke", s.sessionRevoke)
 			r.Post("/account/sessions/revoke-others", s.sessionRevokeOthers)
 

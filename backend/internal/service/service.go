@@ -179,6 +179,8 @@ type Principal struct {
 	// MustChangeCredential is set after an admin reset or on first login with
 	// an issued credential. The caller may do nothing else until it is changed.
 	MustChangeCredential bool
+	// EmailVerified reports whether Email has been confirmed by a link.
+	EmailVerified bool
 }
 
 func (p *Principal) IsDriver() bool         { return p.Role == model.RoleDriver }

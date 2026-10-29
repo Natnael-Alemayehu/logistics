@@ -74,27 +74,216 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+func (s *Server) signupView(w http.ResponseWriter, r *http.Request) *View {
+	trial, _ := model.PlanByCode(model.PlanTrial)
+	return s.view(w, r, "Start your free trial", "", map[string]any{"Towns": geo.Places(), "TrialDrivers": trial.MaxDrivers})
+}
+
+// signupPage is the registration form, filled in again from a sign-up still
+// waiting for its code when someone goes back to correct it.
 func (s *Server) signupPage(w http.ResponseWriter, r *http.Request) {
-	v := s.view(w, r, "Start your free trial", "", map[string]any{"Towns": geo.Places()})
+	v := s.signupView(w, r)
+	if ps, err := s.svc.Tenants.PendingSignup(r.Context(), s.signupToken(r)); err == nil {
+		v.Form = url.Values{"company": {ps.Company}, "city": {ps.City}, "name": {ps.FullName}, "email": {ps.Email}, "phone": {ps.Phone}}
+	}
 	s.render(w, r, http.StatusOK, "public/signup", v)
 }
 
+// signupCookie holds the sign-up waiting for its SMS code, so only the
+// browser that filled in the form can finish it.
+const signupCookie = "signup"
+
+func (s *Server) signupToken(r *http.Request) string {
+	if c, err := r.Cookie(signupCookie); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
 func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
-	res, err := s.svc.Tenants.Signup(r.Context(), service.SignupInput{
+	token, err := s.svc.Tenants.StartSignup(r.Context(), service.SignupInput{
 		Company: r.PostFormValue("company"), City: r.PostFormValue("city"),
 		AdminName: r.PostFormValue("name"), Email: r.PostFormValue("email"),
 		Phone: r.PostFormValue("phone"), Password: r.PostFormValue("password"),
-	}, clientInfo(r))
+	})
 	if err != nil {
-		v := s.view(w, r, "Start your free trial", "", map[string]any{"Towns": geo.Places()})
-		if !s.formError(w, r, "public/signup", v, err) {
+		if !s.formError(w, r, "public/signup", s.signupView(w, r), err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: signupCookie, Value: token, Path: "/signup", MaxAge: 3600,
+		HttpOnly: true, Secure: s.cfg.SecureCookies(), SameSite: http.SameSiteLaxMode,
+	})
+	http.Redirect(w, r, "/signup/verify", http.StatusSeeOther)
+}
+
+// signupGone sends someone whose sign-up has expired back to the form.
+func (s *Server) signupGone(w http.ResponseWriter, r *http.Request, err error) bool {
+	if !service.IsNotFound(err) {
+		return false
+	}
+	de, _ := service.AsError(err)
+	s.setFlash(w, "error", de.Message)
+	http.Redirect(w, r, "/signup", http.StatusSeeOther)
+	return true
+}
+
+func (s *Server) signupVerifyView(w http.ResponseWriter, r *http.Request) (*View, error) {
+	ps, err := s.svc.Tenants.PendingSignup(r.Context(), s.signupToken(r))
+	if err != nil {
+		return nil, err
+	}
+	return s.view(w, r, "Confirm your phone", "", map[string]any{"Phone": ps.Phone, "Company": ps.Company}), nil
+}
+
+func (s *Server) signupVerifyPage(w http.ResponseWriter, r *http.Request) {
+	v, err := s.signupVerifyView(w, r)
+	if err != nil {
+		if !s.signupGone(w, r, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	s.render(w, r, http.StatusOK, "public/signup_verify", v)
+}
+
+func (s *Server) signupVerify(w http.ResponseWriter, r *http.Request) {
+	res, err := s.svc.Tenants.CompleteSignup(r.Context(), s.signupToken(r), r.PostFormValue("code"), clientInfo(r))
+	if err != nil {
+		if s.signupGone(w, r, err) {
+			return
+		}
+		v, verr := s.signupVerifyView(w, r)
+		if verr != nil {
+			if !s.signupGone(w, r, verr) {
+				s.fail(w, r, verr)
+			}
+			return
+		}
+		if !s.formError(w, r, "public/signup_verify", v, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: signupCookie, Path: "/signup", MaxAge: -1, HttpOnly: true, Secure: s.cfg.SecureCookies(), SameSite: http.SameSiteLaxMode})
+	s.setSessionCookie(w, res.Token, time.Time{})
+	s.setFlash(w, "success", "Welcome to "+s.cfg.AppName+"! Start by adding a vehicle and your first driver, then book a shipment.")
+	http.Redirect(w, r, "/app", http.StatusSeeOther)
+}
+
+func (s *Server) signupResend(w http.ResponseWriter, r *http.Request) {
+	err := s.svc.Tenants.ResendSignupCode(r.Context(), s.signupToken(r))
+	if s.signupGone(w, r, err) {
+		return
+	}
+	if de, ok := service.AsError(err); ok {
+		s.setFlash(w, "error", de.Message)
+	} else if err != nil {
+		s.fail(w, r, err)
+		return
+	} else {
+		s.setFlash(w, "success", "A new code is on its way. Use the latest one you receive.")
+	}
+	http.Redirect(w, r, "/signup/verify", http.StatusSeeOther)
+}
+
+// ---------------------------------------------------------------------------
+// Forgotten passwords and email confirmation
+// ---------------------------------------------------------------------------
+
+func (s *Server) forgotPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, http.StatusOK, "public/forgot", s.view(w, r, "Reset your password", "", map[string]any{}))
+}
+
+func (s *Server) forgot(w http.ResponseWriter, r *http.Request) {
+	email := strings.TrimSpace(r.PostFormValue("email"))
+	if err := s.svc.Auth.RequestPasswordReset(r.Context(), email, clientInfo(r)); err != nil {
+		v := s.view(w, r, "Reset your password", "", map[string]any{})
+		if !s.formError(w, r, "public/forgot", v, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	v := s.view(w, r, "Check your email", "", map[string]any{"Sent": true, "Email": strings.ToLower(email)})
+	s.render(w, r, http.StatusOK, "public/forgot", v)
+}
+
+// resetExpired shows the request form again in place of a dead link.
+func (s *Server) resetExpired(w http.ResponseWriter, r *http.Request, err error) bool {
+	if !service.IsNotFound(err) {
+		return false
+	}
+	v := s.view(w, r, "Reset your password", "", map[string]any{})
+	v.Error = "This reset link has expired or has already been used. Links work once, for an hour. Ask for a new one below."
+	s.render(w, r, http.StatusNotFound, "public/forgot", v)
+	return true
+}
+
+func (s *Server) resetPage(w http.ResponseWriter, r *http.Request) {
+	who, err := s.svc.Auth.PasswordResetFor(r.Context(), chi.URLParam(r, "token"))
+	if err != nil {
+		if !s.resetExpired(w, r, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	s.render(w, r, http.StatusOK, "public/reset", s.view(w, r, "Choose a new password", "", who))
+}
+
+func (s *Server) reset(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	var res *service.LoginResult
+	var err error
+	if r.PostFormValue("new_password") != r.PostFormValue("confirm_password") {
+		err = &service.Error{Kind: service.KindInvalid, Field: "confirm_password", Message: "The passwords don't match."}
+	} else {
+		res, err = s.svc.Auth.ResetPassword(r.Context(), token, r.PostFormValue("new_password"), clientInfo(r))
+	}
+	if err != nil {
+		if s.resetExpired(w, r, err) {
+			return
+		}
+		who, werr := s.svc.Auth.PasswordResetFor(r.Context(), token)
+		if werr != nil {
+			if !s.resetExpired(w, r, werr) {
+				s.fail(w, r, werr)
+			}
+			return
+		}
+		v := s.view(w, r, "Choose a new password", "", who)
+		if !s.formError(w, r, "public/reset", v, err) {
 			s.fail(w, r, err)
 		}
 		return
 	}
 	s.setSessionCookie(w, res.Token, time.Time{})
-	s.setFlash(w, "success", "Welcome! Add a vehicle and your first driver, then book a shipment.")
-	http.Redirect(w, r, "/app", http.StatusSeeOther)
+	s.setFlash(w, "success", "Your password is changed and you're signed in. Any other devices were signed out.")
+	next := "/app"
+	if res.Principal.IsPlatformAdmin() {
+		next = "/app/platform"
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func (s *Server) verifyEmail(w http.ResponseWriter, r *http.Request) {
+	email, err := s.svc.Auth.VerifyEmail(r.Context(), chi.URLParam(r, "token"), clientInfo(r))
+	if service.IsNotFound(err) {
+		s.renderError(w, r, http.StatusNotFound, "This link has expired",
+			"Confirmation links work for 7 days, and only while the address they were sent to is still on the account. Sign in and send a new one from your account page.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.setFlash(w, "success", email+" is confirmed. Thank you.")
+	if principal(r) != nil {
+		http.Redirect(w, r, "/app/account", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 // passwordPage is the change-password form, which is also where someone

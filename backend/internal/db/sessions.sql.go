@@ -135,6 +135,7 @@ const getSessionPrincipal = `-- name: GetSessionPrincipal :one
 SELECT s.id AS session_id, s.kind, s.remember, s.last_seen_at, s.expires_at,
        u.id AS user_id, u.tenant_id, u.role, u.full_name, u.phone, u.email,
        u.is_active AS user_active, u.password_reset_required,
+       (u.email_verified_at IS NOT NULL)::bool AS email_verified,
        t.name AS tenant_name, t.is_active AS tenant_active, t.plan AS tenant_plan,
        t.trial_ends_at
 FROM sessions s
@@ -165,6 +166,7 @@ type GetSessionPrincipalRow struct {
 	Email                 *string            `db:"email" json:"email"`
 	UserActive            bool               `db:"user_active" json:"user_active"`
 	PasswordResetRequired bool               `db:"password_reset_required" json:"password_reset_required"`
+	EmailVerified         bool               `db:"email_verified" json:"email_verified"`
 	TenantName            string             `db:"tenant_name" json:"tenant_name"`
 	TenantActive          bool               `db:"tenant_active" json:"tenant_active"`
 	TenantPlan            string             `db:"tenant_plan" json:"tenant_plan"`
@@ -189,6 +191,7 @@ func (q *Queries) GetSessionPrincipal(ctx context.Context, arg GetSessionPrincip
 		&i.Email,
 		&i.UserActive,
 		&i.PasswordResetRequired,
+		&i.EmailVerified,
 		&i.TenantName,
 		&i.TenantActive,
 		&i.TenantPlan,

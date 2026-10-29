@@ -52,7 +52,7 @@ INSERT INTO users (
     tenant_id, role, full_name, phone, email, password_hash, pin_hash,
     is_active, password_reset_required, vehicle_id
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at
 `
 
 type CreateUserParams struct {
@@ -97,12 +97,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.PasswordResetRequired,
 		&i.VehicleID,
 		&i.LastLoginAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
 WHERE lower(email) = lower($1)
 `
 
@@ -126,12 +127,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.PasswordResetRequired,
 		&i.VehicleID,
 		&i.LastLoginAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -160,12 +162,13 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.PasswordResetRequired,
 		&i.VehicleID,
 		&i.LastLoginAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
 WHERE phone = $1
 `
 
@@ -189,6 +192,7 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone *string) (User, erro
 		&i.PasswordResetRequired,
 		&i.VehicleID,
 		&i.LastLoginAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
@@ -197,7 +201,7 @@ const incrementFailedLoginAttempts = `-- name: IncrementFailedLoginAttempts :one
 UPDATE users
 SET failed_login_attempts = failed_login_attempts + 1
 WHERE id = $1
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at
 `
 
 func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -220,6 +224,7 @@ func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UU
 		&i.PasswordResetRequired,
 		&i.VehicleID,
 		&i.LastLoginAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
@@ -350,7 +355,7 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 }
 
 const listUsersByTenant = `-- name: ListUsersByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
 WHERE tenant_id = $1 AND role <> 'driver'
 ORDER BY is_active DESC, full_name
 LIMIT $2 OFFSET $3
@@ -388,6 +393,7 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 			&i.PasswordResetRequired,
 			&i.VehicleID,
 			&i.LastLoginAt,
+			&i.EmailVerifiedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -510,9 +516,10 @@ UPDATE users
 SET full_name = $3,
     phone = $4,
     email = $5,
+    email_verified_at = CASE WHEN email IS NOT DISTINCT FROM $5 THEN email_verified_at END,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at
 `
 
 type UpdateUserProfileParams struct {
@@ -523,6 +530,7 @@ type UpdateUserProfileParams struct {
 	Email    *string     `db:"email" json:"email"`
 }
 
+// A changed email address has to be confirmed again.
 func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
 	row := q.db.QueryRow(ctx, updateUserProfile,
 		arg.ID,
@@ -549,6 +557,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.PasswordResetRequired,
 		&i.VehicleID,
 		&i.LastLoginAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }

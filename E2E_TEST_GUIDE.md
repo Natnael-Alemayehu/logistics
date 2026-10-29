@@ -24,12 +24,19 @@ app with `PUBLIC_URL` set to the tunnel address so that SMS links point there.
 
 1. On the landing page, choose **Start a free trial**. Enter a company, city,
    your name, email, an Ethiopian mobile number (`09…` or `07…`) and an
-   8-character password.
-2. You land on an empty dashboard with a trial banner. The setup steps point
-   to adding a vehicle, a driver and a first shipment.
+   8-character password, then **Continue**.
+2. A code is texted to that number: read it in the server terminal
+   (`your sign-up code is …`) and enter it. Nothing is created until the code
+   comes back. **Send a new code** sends another (at most 3 an hour), and
+   **Change your details** returns to the form with what you typed.
+3. You land on an empty dashboard. A banner asks you to confirm your email
+   address: open the `/verify-email/…` link printed in the terminal and the
+   banner goes. The setup steps point to adding a vehicle, a driver and a
+   first shipment.
 
-Check: a second signup with the same email or phone is refused with a
-field-level message.
+Check: a wrong code is refused next to the field, and after five wrong tries
+the code stops working. A second signup with the same email or phone is
+refused with a field-level message.
 
 ## 2. Vehicles, drivers and the team
 
@@ -37,10 +44,17 @@ field-level message.
 2. **Drivers → Add driver**: name, phone, default vehicle. A one-time PIN is
    shown once (and texted to the driver).
 3. **Team → Add person**: a dispatcher with an email. A temporary password is
-   shown once.
+   shown once, and texted if you gave a phone. The terminal also shows an
+   email to the dispatcher saying who added them, with a link to confirm the
+   address.
 4. Sign in as the dispatcher in a private window. You must choose a new
    password first. A dispatcher can book and manage shipments but gets 403 on
    Team, Settings and Audit log.
+5. Sign out and choose **Forgot your password?**. Enter the dispatcher's
+   email: the page reads the same whether or not an account has that address.
+   Open the `/reset/…` link from the terminal and choose a new password. You
+   are signed in, and the dispatcher's other sessions end. The link works
+   once, within the hour.
 
 Check: the trial allows 5 drivers, and adding a sixth explains the limit.
 
@@ -173,7 +187,8 @@ or isn't a phone number at all.
   and every change to people, vehicles and settings, with before and after
   values.
 - **Account**: profile, password, and sessions on other devices, which you
-  can sign out.
+  can sign out. A new email address must be confirmed again: a link goes to
+  it, and reset links sent to the old address stop working.
 
 ## 9. The operator
 

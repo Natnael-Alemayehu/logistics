@@ -27,10 +27,12 @@ INSERT INTO users (
 RETURNING *;
 
 -- name: UpdateUserProfile :one
+-- A changed email address has to be confirmed again.
 UPDATE users
 SET full_name = $3,
     phone = $4,
     email = $5,
+    email_verified_at = CASE WHEN email IS NOT DISTINCT FROM $5 THEN email_verified_at END,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
 RETURNING *;

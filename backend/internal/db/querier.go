@@ -35,6 +35,7 @@ type Querier interface {
 	CountActiveShipmentsByDriver(ctx context.Context, arg CountActiveShipmentsByDriverParams) (int64, error)
 	CountAlerts(ctx context.Context, arg CountAlertsParams) (int64, error)
 	CountDeliveredSince(ctx context.Context, arg CountDeliveredSinceParams) (int64, error)
+	CountEmailTokensSince(ctx context.Context, arg CountEmailTokensSinceParams) (int64, error)
 	CountHeldPODs(ctx context.Context, arg CountHeldPODsParams) (int64, error)
 	CountSMSByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountSMSSentSince(ctx context.Context, arg CountSMSSentSinceParams) (int64, error)
@@ -51,10 +52,15 @@ type Querier interface {
 	// the unique indexes turn either duplicate into a no-op and no row returns.
 	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
+	// Links sent by email, and sign-ups waiting for their SMS code.
+	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) error
 	CreatePOD(ctx context.Context, arg CreatePODParams) (pgtype.UUID, error)
+	CreatePendingSignup(ctx context.Context, arg CreatePendingSignupParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error)
 	CreateShipmentEvent(ctx context.Context, arg CreateShipmentEventParams) (ShipmentEvent, error)
+	// A slug already taken returns no row, so the caller can try another
+	// without aborting its transaction.
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	// client_id carries the offline client's own row identifier. Paired with
 	// device_id it is what a retried batch conflicts on, so replaying a batch whose
@@ -63,19 +69,27 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)
 	CreateVerificationCode(ctx context.Context, arg CreateVerificationCodeParams) (VerificationCode, error)
+	DeleteExpiredPendingSignups(ctx context.Context, expiresAt pgtype.Timestamptz) error
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteExpiredVerificationCodes(ctx context.Context) error
 	DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestamptz) error
+	DeleteOldEmailTokens(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldEmails(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldTrackingEvents(ctx context.Context, recordedAt pgtype.Timestamptz) error
+	DeletePendingSignup(ctx context.Context, id pgtype.UUID) error
 	EnqueueEmail(ctx context.Context, arg EnqueueEmailParams) (Email, error)
 	EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMessage, error)
+	// Once a reset link is used, the others sent to that person stop working.
+	ExpireEmailTokens(ctx context.Context, arg ExpireEmailTokensParams) error
 	GetActiveSessionByTokenHash(ctx context.Context, arg GetActiveSessionByTokenHashParams) (Session, error)
 	GetActiveVerificationCode(ctx context.Context, arg GetActiveVerificationCodeParams) (VerificationCode, error)
 	GetDriverDeliveryCounts(ctx context.Context, arg GetDriverDeliveryCountsParams) (GetDriverDeliveryCountsRow, error)
 	// One driver's record over a period, for the driver page.
 	GetDriverPerformance(ctx context.Context, arg GetDriverPerformanceParams) (GetDriverPerformanceRow, error)
+	// A link that still works. Whoever follows it is not signed in, so the
+	// token itself says which company and person it is for.
+	GetEmailToken(ctx context.Context, arg GetEmailTokenParams) (GetEmailTokenRow, error)
 	GetHeldPOD(ctx context.Context, arg GetHeldPODParams) (GetHeldPODRow, error)
 	GetLatestDriverLocation(ctx context.Context, arg GetLatestDriverLocationParams) (GetLatestDriverLocationRow, error)
 	GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error)
@@ -84,6 +98,7 @@ type Querier interface {
 	// The device's identifier for a proof: a replayed upload finds the first.
 	GetPODByClientID(ctx context.Context, arg GetPODByClientIDParams) (GetPODByClientIDRow, error)
 	GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error)
+	GetPendingSignup(ctx context.Context, tokenHash string) (PendingSignup, error)
 	GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error)
 	// Everything a request needs to know about who is calling, in one lookup.
 	GetSessionPrincipal(ctx context.Context, arg GetSessionPrincipalParams) (GetSessionPrincipalRow, error)
@@ -188,6 +203,8 @@ type Querier interface {
 	RequeueStuckEmails(ctx context.Context) error
 	// A process that died mid-send leaves rows in 'sending' past their lease.
 	RequeueStuckSMS(ctx context.Context) error
+	// Following a reset link proves the address, and ends any lockout.
+	ResetUserPassword(ctx context.Context, arg ResetUserPasswordParams) error
 	ReviewPOD(ctx context.Context, arg ReviewPODParams) error
 	RevokeAllUserSessions(ctx context.Context, userID pgtype.UUID) error
 	RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) error
@@ -200,6 +217,7 @@ type Querier interface {
 	// A problem report: the customer has answered but not confirmed receipt.
 	SetCustomerFeedback(ctx context.Context, arg SetCustomerFeedbackParams) (Shipment, error)
 	SetDriverVehicle(ctx context.Context, arg SetDriverVehicleParams) error
+	SetEmailVerified(ctx context.Context, arg SetEmailVerifiedParams) (int64, error)
 	SetShipmentAssignment(ctx context.Context, arg SetShipmentAssignmentParams) (Shipment, error)
 	SetShipmentConfirmToken(ctx context.Context, arg SetShipmentConfirmTokenParams) error
 	// Credits a delivery to the driver who made it, when the office accepts a
@@ -227,6 +245,7 @@ type Querier interface {
 	UpdateShipmentDetails(ctx context.Context, arg UpdateShipmentDetailsParams) (Shipment, error)
 	UpdateTenantPlan(ctx context.Context, arg UpdateTenantPlanParams) error
 	UpdateTenantSettings(ctx context.Context, arg UpdateTenantSettingsParams) (Tenant, error)
+	// A changed email address has to be confirmed again.
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error)
 	UpsertSyncMetadata(ctx context.Context, arg UpsertSyncMetadataParams) error

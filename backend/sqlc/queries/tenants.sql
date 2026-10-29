@@ -5,8 +5,11 @@ SELECT * FROM tenants WHERE id = $1;
 SELECT * FROM tenants WHERE slug = $1;
 
 -- name: CreateTenant :one
+-- A slug already taken returns no row, so the caller can try another
+-- without aborting its transaction.
 INSERT INTO tenants (name, slug, plan, max_drivers, contact_phone, contact_email, region_city, trial_ends_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (slug) DO NOTHING
 RETURNING *;
 
 -- name: UpdateTenantSettings :one

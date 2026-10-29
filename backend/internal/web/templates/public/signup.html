@@ -2,7 +2,7 @@
 {{define "content"}}{{$f := .Form}}{{$e := .Errors}}
 <section class="card auth">
   <h1>Start your free trial</h1>
-  <p class="muted">14 days, up to 5 drivers, no card needed.</p>
+  <p class="muted">Free for 14 days, with up to {{.Data.TrialDrivers}} drivers. No payment needed.</p>
   {{template "form-error" .}}
   <form method="post" action="/signup" class="stack" novalidate>
     <label>Company name
@@ -23,6 +23,7 @@
     </label>
     <label>Mobile number
       <input name="phone" type="tel" value="{{field $f "phone" ""}}" autocomplete="tel" placeholder="09… or +251…" required {{if index $e "phone"}}aria-invalid="true"{{end}}>
+      <span class="hint">We'll text a code to this number to confirm it.</span>
       {{template "field-error" (index $e "phone")}}
     </label>
     <label>Password
@@ -30,7 +31,7 @@
       <span class="hint">At least 8 characters.</span>
       {{template "field-error" (index $e "password")}}
     </label>
-    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+    <button class="btn btn-primary btn-block" type="submit">Continue</button>
   </form>
   <p class="small">Already have an account? <a href="/login">Sign in</a></p>
   <datalist id="towns">{{range .Data.Towns}}<option value="{{.Name}}">{{end}}</datalist>

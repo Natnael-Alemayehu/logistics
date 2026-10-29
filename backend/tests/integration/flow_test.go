@@ -256,6 +256,10 @@ func TestStaffRoles(t *testing.T) {
 	if m == nil {
 		t.Fatalf("add dispatcher: status %d %s", p.Status, errorText(p.Body))
 	}
+	// The new member is told how to sign in, and asked to confirm the address.
+	if body := e.received("email", email, "/verify-email/").Body; !strings.Contains(body, "Owner of Role Check Logistics added you") {
+		t.Errorf("the invitation email doesn't say who added them:\n%s", body)
+	}
 
 	disp := e.browser()
 	disp.mustPost("/login", url.Values{"identifier": {email}, "password": {strings.TrimSpace(m[1])}})

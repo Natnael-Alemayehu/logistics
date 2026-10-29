@@ -257,6 +257,7 @@ func (s *AuthService) Authenticate(ctx context.Context, token, kind string) (*Pr
 		TenantPlan:           row.TenantPlan,
 		TrialEnds:            timePtr(row.TrialEndsAt),
 		MustChangeCredential: row.PasswordResetRequired,
+		EmailVerified:        row.EmailVerified,
 	}, nil
 }
 
