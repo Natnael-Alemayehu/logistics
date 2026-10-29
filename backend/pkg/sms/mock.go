@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/natnael-alemayehu/logistics/pkg/console"
 )
 
+// MockProvider stands in for a gateway: messages are kept, and printed to
+// Console when one is set, instead of being sent.
 type MockProvider struct {
+	Console  *console.Console
 	logger   Logger
 	messages []MockMessage
 	mutex    sync.RWMutex
@@ -53,13 +58,11 @@ func (m *MockProvider) Send(ctx context.Context, to, message string, msgType Mes
 	m.messages = append(m.messages, msg)
 	m.mutex.Unlock()
 
-	m.logger.Info("[MOCK SMS] Message sent",
-		"id", msg.ID,
-		"to", normalizedPhone,
-		"type", msgType,
-		"message", message,
-	)
-
+	if m.Console != nil {
+		m.Console.Print(console.Item{Kind: "sms", To: to, Body: message, At: msg.CreatedAt})
+	} else {
+		m.logger.Info("[MOCK SMS] Message sent", "id", msg.ID, "to", normalizedPhone, "type", msgType, "body", message)
+	}
 	return nil
 }
 

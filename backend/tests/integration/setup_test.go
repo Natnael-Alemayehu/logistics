@@ -39,6 +39,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/internal/web"
 	"github.com/natnael-alemayehu/logistics/migrations"
+	"github.com/natnael-alemayehu/logistics/pkg/console"
 	"github.com/natnael-alemayehu/logistics/pkg/storage"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 )
@@ -119,18 +120,33 @@ func migrate(ctx context.Context) error {
 	return goose.UpContext(ctx, db, ".")
 }
 
-// fakeSMS stands in for the provider. Its name makes the app treat SMS as
-// simulated, which also opens the inbound webhook without a secret.
-type fakeSMS struct{}
+// fakeSMS and fakeMail stand in for the providers, keeping what they would
+// send on a console the tests read, as a developer reads the terminal. The
+// name "mock" makes the app treat SMS as simulated, which also opens the
+// inbound webhook without a secret.
+type fakeSMS struct{ c *console.Console }
 
-func (fakeSMS) Name() string                               { return "mock" }
-func (fakeSMS) Send(context.Context, string, string) error { return nil }
+func (fakeSMS) Name() string { return "mock" }
+func (f fakeSMS) Send(_ context.Context, to, body string) error {
+	f.c.Print(console.Item{Kind: "sms", To: to, Body: body})
+	return nil
+}
+
+type fakeMail struct{ c *console.Console }
+
+func (fakeMail) Name() string { return "mock" }
+func (f fakeMail) Send(_ context.Context, to, subject, body string) error {
+	f.c.Print(console.Item{Kind: "email", To: to, Title: subject, Body: body})
+	return nil
+}
 
 // env is one running copy of the app.
 type env struct {
-	t   *testing.T
-	srv *httptest.Server
-	svc *service.Services
+	t     *testing.T
+	srv   *httptest.Server
+	svc   *service.Services
+	inbox *console.Console
+	seen  map[string]time.Time // newest message received, by kind and recipient
 }
 
 func newEnv(t *testing.T) *env {
@@ -150,10 +166,15 @@ func newEnv(t *testing.T) *env {
 	log := zerolog.Nop()
 	hub := websocket.NewHub(log)
 	go hub.Run()
+	inbox := console.New(nil)
 	svc := service.New(service.Deps{
-		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: fakeSMS{},
-		Settings: service.Settings{AppName: cfg.AppName, BaseURL: base, Location: tz, Secret: cfg.Secret},
+		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: fakeSMS{inbox}, Mail: fakeMail{inbox},
+		Settings: service.Settings{AppName: cfg.AppName, BaseURL: base, Location: tz, Secret: cfg.Secret, SMSNumber: "6060"},
 	})
+	ctx, stop := context.WithCancel(context.Background())
+	t.Cleanup(stop)
+	go svc.SMS.Run(ctx)
+	go svc.Mail.Run(ctx)
 	app, err := web.New(cfg, svc, pool, hub, log)
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +182,39 @@ func newEnv(t *testing.T) *env {
 	ts.Config.Handler = app.Handler()
 	ts.Start()
 	t.Cleanup(ts.Close)
-	return &env{t: t, srv: ts, svc: svc}
+	return &env{t: t, srv: ts, svc: svc, inbox: inbox, seen: map[string]time.Time{}}
+}
+
+// received waits for an SMS or email to a recipient that mentions text and
+// is newer than the last one this test received, and returns it.
+func (e *env) received(kind, to, text string) console.Item {
+	e.t.Helper()
+	key := kind + " " + to
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		for _, it := range e.inbox.Items() {
+			if it.Kind == kind && it.To == to && it.At.After(e.seen[key]) && strings.Contains(it.Title+"\n"+it.Body, text) {
+				e.seen[key] = it.At
+				return it
+			}
+		}
+		if time.Now().After(deadline) {
+			e.t.Fatalf("no %s to %s mentioning %q", kind, to, text)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+var codeRe = regexp.MustCompile(`\b\d{6}\b`)
+
+// code waits for an SMS with a one-time code and returns the code.
+func (e *env) code(phone string) string {
+	e.t.Helper()
+	m := codeRe.FindString(e.received("sms", phone, "code").Body)
+	if m == "" {
+		e.t.Fatalf("no code in the SMS to %s", phone)
+	}
+	return m
 }
 
 // ---------------------------------------------------------------------------

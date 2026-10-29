@@ -51,6 +51,7 @@ type Deps struct {
 	Publisher Publisher
 	Storage   storage.Storage
 	SMS       SMSSender
+	Mail      MailSender
 	Settings  Settings
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
@@ -65,6 +66,7 @@ type Services struct {
 	Tenants   *TenantService
 	Alerts    *AlertService
 	SMS       *SMSService
+	Mail      *MailService
 	Reports   *ReportService
 	Tracking  *TrackingService
 	Sync      *SyncService
@@ -90,6 +92,8 @@ func New(d Deps) *Services {
 	s.Audit = &AuditService{core: c}
 	s.SMS = newSMSService(c, d.SMS)
 	c.sms = s.SMS
+	s.Mail = newMailService(c, d.Mail)
+	c.mail = s.Mail
 	s.Alerts = &AlertService{core: c}
 	c.alerts = s.Alerts
 	s.Media = &MediaService{core: c, store: d.Storage, pod: podStorage(d.Storage)}
@@ -115,12 +119,13 @@ type core struct {
 	now    func() time.Time
 	cfg    Settings
 	sms    *SMSService
+	mail   *MailService
 	alerts *AlertService
 }
 
 // tx runs fn in a transaction, committing if it returns nil. Work that must
-// happen only once the data is durable — live updates, waking the SMS
-// sender — is queued with after and runs after commit.
+// happen only once the data is durable — live updates, waking the SMS and
+// email senders — is queued with after and runs after commit.
 func (c *core) tx(ctx context.Context, fn func(q *db.Queries, after *afterCommit) error) error {
 	tx, err := c.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {

@@ -1,9 +1,10 @@
 // Command server runs Menged: the dispatcher dashboard, public tracking, the
 // driver app and its API, and the background jobs, in one process.
 //
-//	server          serve (the default)
-//	server migrate  apply database migrations and exit
-//	server seed     load demo data into an empty database
+//	server                      serve (the default)
+//	server migrate              apply database migrations and exit
+//	server seed                 load demo data into an empty database
+//	server sms-in <phone> <text>  text the running server, as a phone would
 package main
 
 import (
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +27,8 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/internal/web"
 	"github.com/natnael-alemayehu/logistics/migrations"
+	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/logistics/pkg/mail"
 	"github.com/natnael-alemayehu/logistics/pkg/sms"
 	"github.com/natnael-alemayehu/logistics/pkg/storage"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
@@ -56,11 +60,13 @@ func main() {
 			}
 			return seed(ctx, cfg, pool, log)
 		})
+	case "sms-in":
+		err = smsIn(ctx, cfg, os.Args[2:])
 	case "help", "-h", "--help":
-		fmt.Println("usage: server [serve|migrate|seed]")
+		fmt.Println("usage: server [serve | migrate | seed | sms-in <phone> <text>]")
 		return
 	default:
-		err = fmt.Errorf("unknown command %q (want serve, migrate or seed)", cmd)
+		err = fmt.Errorf("unknown command %q (want serve, migrate, seed or sms-in)", cmd)
 	}
 	if err != nil {
 		log.Error().Err(err).Msg("exiting")
@@ -148,6 +154,14 @@ func (s smsSender) Send(ctx context.Context, to, body string) error {
 	return s.p.Send(ctx, to, body, sms.MessageTypeNotification)
 }
 
+// mailSender adapts the mail package to the service's outbox.
+type mailSender struct{ s mail.Sender }
+
+func (m mailSender) Name() string { return m.s.Name() }
+func (m mailSender) Send(ctx context.Context, to, subject, body string) error {
+	return m.s.Send(ctx, mail.Message{To: to, Subject: subject, Text: body})
+}
+
 // smsLog routes the provider's logging into ours.
 type smsLog struct{ l zerolog.Logger }
 
@@ -156,7 +170,14 @@ func (s smsLog) Error(msg string, kv ...interface{}) { s.l.Error().Fields(kv).Ms
 func (s smsLog) Warn(msg string, kv ...interface{})  { s.l.Warn().Fields(kv).Msg(msg) }
 func (s smsLog) Debug(msg string, kv ...interface{}) { s.l.Debug().Fields(kv).Msg(msg) }
 
+// terminal is where the stand-in providers print what they would have sent.
+var terminal = console.New(os.Stdout)
+
 func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher, log zerolog.Logger) (*service.Services, error) {
+	if mocked := cfg.MockedProviders(); cfg.IsProduction() && len(mocked) > 0 && !cfg.AllowMockProviders {
+		return nil, fmt.Errorf("%s would only be printed to the terminal in production: configure real providers, "+
+			"or set ALLOW_MOCK_PROVIDERS=true for a demo site", strings.Join(mocked, ", "))
+	}
 	store, err := storage.New(&storage.Config{
 		Type: cfg.StorageType, LocalPath: cfg.StoragePath,
 		S3Bucket: cfg.S3Bucket, S3Region: cfg.S3Region, S3Endpoint: cfg.S3Endpoint,
@@ -171,15 +192,20 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher
 		Provider:         sms.ProviderType(cfg.SMSProvider),
 		TwilioAccountSID: cfg.TwilioAccountSID, TwilioAuthToken: cfg.TwilioAuthToken, TwilioFromNumber: cfg.TwilioFromNumber,
 		EthioTelecomAPIURL: cfg.EthioTelecomAPIURL, EthioTelecomAPIKey: cfg.EthioTelecomAPIKey, EthioTelecomSenderID: cfg.EthioTelecomSenderID,
+		Console: terminal,
 	}, smsLog{log.With().Str("component", "sms").Logger()}, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("sms: %w", err)
 	}
-	if cfg.IsProduction() && provider.Name() == "mock" {
-		log.Warn().Msg("SMS_PROVIDER is mock: no text messages will reach customers or drivers")
+	mailer, err := mail.New(mail.Config{
+		Provider: cfg.MailProvider, Console: terminal,
+		SMTP: mail.SMTP{Addr: cfg.SMTPAddr, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.MailFrom},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("email: %w", err)
 	}
 	return service.New(service.Deps{
-		Pool: pool, Log: log, Publisher: pub, Storage: store, SMS: smsSender{provider},
+		Pool: pool, Log: log, Publisher: pub, Storage: store, SMS: smsSender{provider}, Mail: mailSender{mailer},
 		Settings: service.Settings{
 			AppName: cfg.AppName, BaseURL: cfg.PublicURL, Location: cfg.Timezone,
 			Secret: cfg.Secret, SMSNumber: cfg.SMSNumber,
@@ -214,6 +240,7 @@ func serve(ctx context.Context, cfg *config.Config, log zerolog.Logger) error {
 	bg, stopBG := context.WithCancel(context.Background())
 	defer stopBG()
 	go svc.SMS.Run(bg)
+	go svc.Mail.Run(bg)
 	go svc.Jobs.Run(bg)
 
 	httpSrv := &http.Server{
@@ -227,7 +254,11 @@ func serve(ctx context.Context, cfg *config.Config, log zerolog.Logger) error {
 	}
 	errc := make(chan error, 1)
 	go func() {
-		log.Info().Str("addr", httpSrv.Addr).Str("url", cfg.PublicURL).Str("sms", svc.SMS.ProviderName()).Msg(cfg.AppName + " is running")
+		log.Info().Str("addr", httpSrv.Addr).Str("url", cfg.PublicURL).Str("sms", svc.SMS.ProviderName()).
+			Str("email", svc.Mail.ProviderName()).Str("payments", cfg.PaymentProvider).Msg(cfg.AppName + " is running")
+		if mocked := cfg.MockedProviders(); len(mocked) > 0 {
+			log.Info().Msgf("Stand-ins for %s: what they would send is printed here", strings.Join(mocked, ", "))
+		}
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 		}

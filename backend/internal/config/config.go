@@ -61,6 +61,22 @@ type Config struct {
 	EthioTelecomAPIURL   string
 	EthioTelecomAPIKey   string
 	EthioTelecomSenderID string
+
+	// MailProvider is mock (printed to the terminal) or smtp.
+	MailProvider string
+	MailFrom     string
+	SMTPAddr     string
+	SMTPUsername string
+	SMTPPassword string
+
+	// PaymentProvider is mock (telebirr and CBE Birr stand-ins printed to the
+	// terminal) or none (bank transfer only). It defaults to none in
+	// production, since there is no real adapter yet.
+	PaymentProvider string
+
+	// AllowMockProviders lets a production deployment start with stand-in
+	// SMS, email or payments, for a demo or staging site.
+	AllowMockProviders bool
 }
 
 // Load reads the environment.
@@ -96,9 +112,32 @@ func Load() (*Config, error) {
 		EthioTelecomAPIURL:   getEnv("ETHIO_TELECOM_API_URL", ""),
 		EthioTelecomAPIKey:   getEnv("ETHIO_TELECOM_API_KEY", ""),
 		EthioTelecomSenderID: getEnv("ETHIO_TELECOM_SENDER_ID", ""),
+		MailProvider:         getEnv("MAIL_PROVIDER", "mock"),
+		MailFrom:             getEnv("MAIL_FROM", ""),
+		SMTPAddr:             getEnv("SMTP_ADDR", ""),
+		SMTPUsername:         getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:         getEnv("SMTP_PASSWORD", ""),
+		PaymentProvider:      getEnv("PAYMENT_PROVIDER", ""),
+		AllowMockProviders:   getBoolEnv("ALLOW_MOCK_PROVIDERS", false),
 	}
 	if c.PublicURL == "" {
 		c.PublicURL = "http://localhost:" + c.Port
+	}
+	if c.SMSNumber == "" && c.SMSProvider == "mock" {
+		// A stand-in short code, so the SMS instructions show in development.
+		c.SMSNumber = "6060"
+	}
+	if c.MailFrom == "" {
+		c.MailFrom = fmt.Sprintf("%s <no-reply@%s>", c.AppName, publicHost(c.PublicURL))
+	}
+	if c.PaymentProvider == "" {
+		c.PaymentProvider = "mock"
+		if c.IsProduction() {
+			c.PaymentProvider = "none"
+		}
+	}
+	if c.PaymentProvider != "mock" && c.PaymentProvider != "none" {
+		return nil, fmt.Errorf("PAYMENT_PROVIDER %q: want mock or none", c.PaymentProvider)
 	}
 
 	tz, err := time.LoadLocation(getEnv("APP_TIMEZONE", "Africa/Addis_Ababa"))
@@ -120,6 +159,36 @@ func Load() (*Config, error) {
 		return nil, errors.New("PUBLIC_URL must be set in production")
 	}
 	return c, nil
+}
+
+// MockedProviders lists the services that only print to the terminal.
+func (c *Config) MockedProviders() []string {
+	var out []string
+	if c.SMSProvider == "mock" {
+		out = append(out, "SMS")
+	}
+	if c.MailProvider == "mock" {
+		out = append(out, "email")
+	}
+	if c.PaymentProvider == "mock" {
+		out = append(out, "payments")
+	}
+	return out
+}
+
+// publicHost is the host part of a URL, without port, for addresses.
+func publicHost(u string) string {
+	h := u
+	if i := strings.Index(h, "://"); i >= 0 {
+		h = h[i+3:]
+	}
+	if i := strings.IndexAny(h, "/:"); i >= 0 {
+		h = h[:i]
+	}
+	if h == "" {
+		return "localhost"
+	}
+	return h
 }
 
 // IsProduction reports whether this is a production deployment.
