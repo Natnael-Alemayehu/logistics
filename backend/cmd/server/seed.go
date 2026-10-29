@@ -90,7 +90,7 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	now := time.Now()
 
 	// The platform operator's own account.
-	plat, err := svc.Tenants.Signup(ctx, service.SignupInput{
+	plat, err := svc.Tenants.CreateCompany(ctx, service.SignupInput{
 		Company: "Menged Platform", City: "Addis Ababa", AdminName: "Platform Admin",
 		Email: "admin@menged.et", Phone: "0911000001", Password: adminPassword,
 	}, ci)
@@ -105,7 +105,7 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	}
 
 	// The demo company.
-	res, err := svc.Tenants.Signup(ctx, service.SignupInput{
+	res, err := svc.Tenants.CreateCompany(ctx, service.SignupInput{
 		Company: "Abay Freight PLC", City: "Addis Ababa", AdminName: "Selam Tesfaye",
 		Email: "demo@menged.et", Phone: "0911000002", Password: demoPassword,
 	}, ci)
@@ -128,6 +128,13 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 		return err
 	}
 	if err := q.UpdatePassword(ctx, db.UpdatePasswordParams{ID: disp.User.ID, PasswordHash: &pw, PasswordResetRequired: false}); err != nil {
+		return err
+	}
+	// The demo dispatcher's address counts as confirmed, like the admin's.
+	if _, err := pool.Exec(ctx, `UPDATE users SET email_verified_at = NOW() WHERE id = $1`, disp.User.ID); err != nil {
+		return err
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM emails WHERE tenant_id = $1 AND purpose = 'email_verification'`, tenantID); err != nil {
 		return err
 	}
 

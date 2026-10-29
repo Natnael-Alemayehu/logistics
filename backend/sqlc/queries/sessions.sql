@@ -20,6 +20,7 @@ SELECT * FROM sessions WHERE id = $1;
 SELECT s.id AS session_id, s.kind, s.remember, s.last_seen_at, s.expires_at,
        u.id AS user_id, u.tenant_id, u.role, u.full_name, u.phone, u.email,
        u.is_active AS user_active, u.password_reset_required,
+       (u.email_verified_at IS NOT NULL)::bool AS email_verified,
        t.name AS tenant_name, t.is_active AS tenant_active, t.plan AS tenant_plan,
        t.trial_ends_at
 FROM sessions s

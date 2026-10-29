@@ -14,6 +14,7 @@ import (
 const createTenant = `-- name: CreateTenant :one
 INSERT INTO tenants (name, slug, plan, max_drivers, contact_phone, contact_email, region_city, trial_ends_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (slug) DO NOTHING
 RETURNING id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at
 `
 
@@ -28,6 +29,8 @@ type CreateTenantParams struct {
 	TrialEndsAt  pgtype.Timestamptz `db:"trial_ends_at" json:"trial_ends_at"`
 }
 
+// A slug already taken returns no row, so the caller can try another
+// without aborting its transaction.
 func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error) {
 	row := q.db.QueryRow(ctx, createTenant,
 		arg.Name,

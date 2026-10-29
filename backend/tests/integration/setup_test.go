@@ -225,6 +225,8 @@ func (e *env) code(phone string) string {
 type browser struct {
 	e *env
 	c *http.Client
+	// email and phone are the signed-up admin's, for a company's browser.
+	email, phone string
 }
 
 func (e *env) browser() *browser {
@@ -288,17 +290,22 @@ func errorText(body string) string {
 	return strings.Join(out, "; ")
 }
 
-// company signs up a new company and returns its administrator's session.
+// company signs up a new company, confirming the phone with the code texted
+// to it, and returns its administrator's session.
 func (e *env) company(name string) *browser {
 	e.t.Helper()
 	b := e.browser()
+	b.email = strings.ToLower(strings.ReplaceAll(name, " ", "")) + fmt.Sprintf("%d@example.et", rand.IntN(1e9))
+	b.phone = phoneNumber()
 	p := b.mustPost("/signup", url.Values{
 		"company": {name}, "city": {"Addis Ababa"}, "name": {"Owner of " + name},
-		"email": {strings.ToLower(strings.ReplaceAll(name, " ", "")) + fmt.Sprintf("%d@example.et", rand.IntN(1e9))},
-		"phone": {phoneNumber()}, "password": {"correct-horse-1"},
+		"email": {b.email}, "phone": {b.phone}, "password": {"correct-horse-1"},
 	})
-	if p.Location != "/app" {
+	if p.Location != "/signup/verify" {
 		e.t.Fatalf("signup redirected to %q", p.Location)
+	}
+	if p = b.mustPost("/signup/verify", url.Values{"code": {e.code(b.phone)}}); p.Location != "/app" {
+		e.t.Fatalf("signup code redirected to %q", p.Location)
 	}
 	return b
 }

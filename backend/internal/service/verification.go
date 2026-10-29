@@ -15,10 +15,12 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/db"
 )
 
-// One-time codes sent by SMS, for driver PIN reset and customer lookups.
+// One-time codes sent by SMS: driver PIN reset, customer lookups, and the
+// phone check at sign-up.
 const (
 	codePurposePINReset    = "pin_reset"
 	codePurposeTrackLookup = "track_lookup"
+	codePurposeSignup      = "signup"
 
 	codeTTL          = 10 * time.Minute
 	codeMaxAttempts  = 5

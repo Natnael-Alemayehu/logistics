@@ -54,6 +54,33 @@ type Email struct {
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type EmailToken struct {
+	ID        pgtype.UUID        `db:"id" json:"id"`
+	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
+	Purpose   string             `db:"purpose" json:"purpose"`
+	Email     string             `db:"email" json:"email"`
+	TokenHash string             `db:"token_hash" json:"token_hash"`
+	ExpiresAt pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `db:"used_at" json:"used_at"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type PendingSignup struct {
+	ID           pgtype.UUID        `db:"id" json:"id"`
+	TokenHash    string             `db:"token_hash" json:"token_hash"`
+	Company      string             `db:"company" json:"company"`
+	City         string             `db:"city" json:"city"`
+	FullName     string             `db:"full_name" json:"full_name"`
+	Email        string             `db:"email" json:"email"`
+	Phone        string             `db:"phone" json:"phone"`
+	PasswordHash string             `db:"password_hash" json:"password_hash"`
+	Plan         string             `db:"plan" json:"plan"`
+	BillingCycle string             `db:"billing_cycle" json:"billing_cycle"`
+	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type ProofOfDelivery struct {
 	ID                     pgtype.UUID        `db:"id" json:"id"`
 	TenantID               pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
@@ -254,6 +281,7 @@ type User struct {
 	PasswordResetRequired bool               `db:"password_reset_required" json:"password_reset_required"`
 	VehicleID             pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
 	LastLoginAt           pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
+	EmailVerifiedAt       pgtype.Timestamptz `db:"email_verified_at" json:"email_verified_at"`
 }
 
 type Vehicle struct {

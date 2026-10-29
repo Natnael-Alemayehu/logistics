@@ -475,6 +475,12 @@ func (s *Server) accountUpdate(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/account", http.StatusSeeOther)
 }
 
+func (s *Server) accountVerifyEmail(w http.ResponseWriter, r *http.Request) {
+	p := principal(r)
+	err := s.svc.Auth.ResendVerification(r.Context(), p)
+	s.actionResult(w, r, "/app/account", err, "We've sent a new link to "+p.Email+". It works for 7 days.")
+}
+
 func (s *Server) sessionRevoke(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r, "id")
 	if err != nil {
@@ -512,26 +518,31 @@ type auditRow struct {
 type auditChange struct{ Field, From, To string }
 
 var auditActions = map[string]string{
-	"login":               "Signed in",
-	"login_failed":        "Failed sign-in",
-	"login_locked":        "Account locked after failed sign-ins",
-	"password_changed":    "Changed their password",
-	"pin_changed":         "Changed their PIN",
-	"pin_reset":           "Reset their PIN by SMS",
-	"credential_reset":    "Issued a temporary sign-in",
-	"driver_created":      "Added a driver",
-	"driver_updated":      "Edited a driver",
-	"staff_created":       "Added a team member",
-	"staff_updated":       "Edited a team member",
-	"user_deactivated":    "Deactivated an account",
-	"user_reactivated":    "Reactivated an account",
-	"vehicle_created":     "Added a vehicle",
-	"vehicle_updated":     "Edited a vehicle",
-	"settings_updated":    "Changed company settings",
-	"company_signup":      "Created the company",
-	"tenant_suspended":    "Suspended a company",
-	"tenant_restored":     "Restored a company",
-	"tenant_plan_changed": "Changed a company's plan",
+	"login":                    "Signed in",
+	"login_failed":             "Failed sign-in",
+	"login_locked":             "Account locked after failed sign-ins",
+	"password_changed":         "Changed their password",
+	"pin_changed":              "Changed their PIN",
+	"pin_reset":                "Reset their PIN by SMS",
+	"credential_reset":         "Issued a temporary sign-in",
+	"driver_created":           "Added a driver",
+	"driver_updated":           "Edited a driver",
+	"staff_created":            "Added a team member",
+	"staff_updated":            "Edited a team member",
+	"user_deactivated":         "Deactivated an account",
+	"user_reactivated":         "Reactivated an account",
+	"vehicle_created":          "Added a vehicle",
+	"vehicle_updated":          "Edited a vehicle",
+	"settings_updated":         "Changed company settings",
+	"company_signup":           "Created the company",
+	"password_reset_requested": "Asked for a password reset link",
+	"password_reset":           "Reset their password by email",
+	"email_verified":           "Confirmed their email address",
+	"pod_accepted":             "Accepted a held delivery",
+	"pod_dismissed":            "Dismissed a held delivery",
+	"tenant_suspended":         "Suspended a company",
+	"tenant_restored":          "Restored a company",
+	"tenant_plan_changed":      "Changed a company's plan",
 }
 
 func (s *Server) userNames(ctx context.Context, tenantID pgtype.UUID) map[pgtype.UUID]string {

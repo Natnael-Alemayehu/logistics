@@ -17,7 +17,7 @@
     <label class="check"><input type="checkbox" name="remember" value="1" {{if checked .Form "remember" false}}checked{{end}}> Keep me signed in for 30 days</label>
     <button class="btn btn-primary btn-block" type="submit">Sign in</button>
   </form>
-  <p class="small muted">Forgot your password? Ask your company's administrator to issue a temporary one.</p>
+  <p class="small"><a href="/forgot">Forgot your password?</a></p>
   <p class="small">New to {{.App.Name}}? <a href="/signup">Start a free trial</a></p>
 </section>
 {{end}}

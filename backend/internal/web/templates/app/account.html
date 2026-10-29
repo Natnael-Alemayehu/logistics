@@ -13,6 +13,7 @@
   </label>
   <label>Email
     <input name="email" type="email" value="{{field $f "email" ""}}" {{if index $e "email"}}aria-invalid="true"{{end}}>
+    {{if .Me.Email}}<span class="hint">{{if .Me.EmailVerified}}Confirmed. Password resets, invoices and receipts are sent here.{{else}}Not confirmed yet: open the link we emailed to {{.Me.Email}}.{{end}} A new address has to be confirmed again.</span>{{end}}
     {{template "field-error" (index $e "email")}}
   </label>
   <label>Mobile number

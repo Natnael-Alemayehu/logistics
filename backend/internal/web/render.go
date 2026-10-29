@@ -109,6 +109,7 @@ type AppInfo struct {
 	TileURL       string
 	TileCredit    string
 	MockSMS       bool
+	MockMail      bool
 	SMSNumber     string
 	PublicURL     string
 	TrialDaysLeft int
@@ -155,7 +156,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 		Form: url.Values{}, Errors: map[string]string{},
 		App: AppInfo{
 			Name: s.cfg.AppName, Version: s.version, TileURL: s.cfg.MapTileURL, TileCredit: s.cfg.MapTileAttribution,
-			MockSMS: s.mockSMS, SMSNumber: s.cfg.SMSNumber, PublicURL: s.cfg.PublicURL,
+			MockSMS: s.mockSMS, MockMail: s.mockMail, SMSNumber: s.cfg.SMSNumber, PublicURL: s.cfg.PublicURL,
 		},
 		Flash: s.takeFlash(w, r),
 	}

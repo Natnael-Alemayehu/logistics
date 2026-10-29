@@ -179,6 +179,11 @@ func (s *UserService) UpdateDriver(ctx context.Context, p *Principal, id pgtype.
 		if err != nil {
 			return duplicateUser(err)
 		}
+		if emailChanged(cur, out) {
+			if err := s.sendEmailVerification(ctx, q, after, out, "Your "+s.cfg.AppName+" account at "+p.TenantName+" now uses this email address."); err != nil {
+				return err
+			}
+		}
 		if err := q.SetDriverVehicle(ctx, db.SetDriverVehicleParams{ID: id, TenantID: p.TenantID, VehicleID: vehicle}); err != nil {
 			return err
 		}
@@ -259,6 +264,15 @@ func (s *UserService) CreateStaff(ctx context.Context, p *Principal, in PersonIn
 			})
 			out.Texted = true
 		}
+		password := p.Name + " will give you a temporary password for your first sign-in."
+		if out.Texted {
+			password = "We've texted a temporary password for your first sign-in to your phone."
+		}
+		intro := fmt.Sprintf("%s added you to %s on %s. Sign in at %s/login with this email address. %s",
+			p.Name, p.TenantName, s.cfg.AppName, s.cfg.BaseURL, password)
+		if err := s.sendEmailVerification(ctx, q, after, u, intro); err != nil {
+			return err
+		}
 		s.audit(ctx, q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), "staff_created", "user", u.ID, nil,
 			map[string]any{"name": u.FullName, "role": u.Role})
 		return nil
@@ -290,6 +304,11 @@ func (s *UserService) UpdateStaff(ctx context.Context, p *Principal, id pgtype.U
 		out, err = q.UpdateUserProfile(ctx, db.UpdateUserProfileParams{ID: id, TenantID: p.TenantID, FullName: v.name, Phone: v.phone, Email: v.email})
 		if err != nil {
 			return duplicateUser(err)
+		}
+		if emailChanged(cur, out) {
+			if err := s.sendEmailVerification(ctx, q, after, out, "Your "+s.cfg.AppName+" account at "+p.TenantName+" now uses this email address."); err != nil {
+				return err
+			}
 		}
 		if in.Role != "" && in.Role != cur.Role && p.CanManageCompany() {
 			if !contains(model.StaffRoles, in.Role) {

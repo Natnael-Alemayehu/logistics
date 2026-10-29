@@ -25,7 +25,9 @@ perfect coverage. Drivers with feature phones report by SMS instead
 | Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
 | The operator | `/app/platform` | Every company on the platform, plans, driver limits, suspension |
 
-Companies sign up on their own and get a 14-day trial with up to 5 drivers.
+Companies sign up on their own, confirming the admin's phone with an SMS code,
+and get a 14-day trial with up to 5 drivers. Staff who forget their password
+reset it with an emailed link.
 Data is separated per company throughout, and there are five roles: driver,
 dispatcher, fleet manager, admin and platform admin.
 
