@@ -2,7 +2,7 @@
 {{define "content"}}{{$f := .Form}}{{$e := .Errors}}
 <section class="card auth">
   <h1>Start your free trial</h1>
-  <p class="muted">Free for 14 days, with up to {{.Data.TrialDrivers}} drivers. No payment needed.</p>
+  <p class="muted">Free for {{.Data.TrialDays}} days, with up to {{.Data.TrialDrivers}} drivers. No payment needed.</p>
   {{template "form-error" .}}
   <form method="post" action="/signup" class="stack" novalidate>
     <label>Company name
@@ -30,6 +30,18 @@
       <input name="password" type="password" autocomplete="new-password" minlength="8" required {{if index $e "password"}}aria-invalid="true"{{end}}>
       <span class="hint">At least 8 characters.</span>
       {{template "field-error" (index $e "password")}}
+    </label>
+    {{$plan := field $f "plan" "trial:monthly"}}
+    <label>Plan
+      <select name="plan" {{if or (index $e "plan") (index $e "cycle")}}aria-invalid="true"{{end}}>
+        <option value="trial:monthly" {{if eq $plan "trial:monthly"}}selected{{end}}>Free trial: decide later</option>
+        {{range .Data.Plans}}
+        <option value="{{.Code}}:monthly" {{if eq $plan (printf "%s:monthly" .Code)}}selected{{end}}>{{.Name}}: {{money .MonthlyETB}} a month</option>
+        <option value="{{.Code}}:annual" {{if eq $plan (printf "%s:annual" .Code)}}selected{{end}}>{{.Name}}: {{money (mul (float .MonthlyETB) 10)}} a year</option>
+        {{end}}
+      </select>
+      <span class="hint">Every company starts with the free trial. Choose a plan now to get its invoice straight away: it starts when the trial ends. Prices are before VAT.</span>
+      {{template "field-error" (or (index $e "plan") (index $e "cycle"))}}
     </label>
     <button class="btn btn-primary btn-block" type="submit">Continue</button>
   </form>

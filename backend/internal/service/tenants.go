@@ -19,13 +19,14 @@ import (
 
 // TrialLength is how long a new company may use the product before choosing
 // a plan.
-const TrialLength = 14 * 24 * time.Hour
+const TrialLength = model.TrialDays * 24 * time.Hour
 
 // TenantService manages companies: sign-up, settings, usage, and the
 // platform operator's view across them.
 type TenantService struct {
 	*core
-	auth *AuthService
+	auth    *AuthService
+	billing *BillingService
 }
 
 // SignupInput is the self-service registration form.
@@ -36,6 +37,10 @@ type SignupInput struct {
 	Email     string
 	Phone     string
 	Password  string
+	// Plan is the plan to pay for straight away, or empty (or trial) to
+	// start with the free trial; Cycle its billing cycle.
+	Plan  string
+	Cycle string
 }
 
 // A sign-up waits this long for the code texted to the admin's phone.
@@ -48,6 +53,7 @@ type newCompany struct {
 	name, city   string
 	admin        validPerson
 	passwordHash string
+	plan, cycle  string
 }
 
 func (in SignupInput) validate() (newCompany, error) {
@@ -80,6 +86,19 @@ func (in SignupInput) validate() (newCompany, error) {
 		e.Field = "password"
 		return c, &e
 	}
+	c.plan, c.cycle = in.Plan, in.Cycle
+	if c.plan == "" {
+		c.plan = model.PlanTrial
+	}
+	if c.cycle == "" {
+		c.cycle = model.CycleMonthly
+	}
+	if p, ok := model.PlanByCode(c.plan); !ok || !(p.SelfServe || p.Code == model.PlanTrial) {
+		return c, invalid("plan", "Choose the free trial or a plan.")
+	}
+	if !model.ValidCycle(c.cycle) {
+		return c, invalid("cycle", "Choose monthly or annual billing.")
+	}
 	c.passwordHash, err = hash.Password(in.Password)
 	return c, err
 }
@@ -111,7 +130,7 @@ func (s *TenantService) StartSignup(ctx context.Context, in SignupInput) (token 
 	err = s.q.CreatePendingSignup(ctx, db.CreatePendingSignupParams{
 		TokenHash: hashToken(token), Company: c.name, City: c.city, FullName: c.admin.name,
 		Email: *c.admin.email, Phone: *c.admin.phone, PasswordHash: c.passwordHash,
-		Plan: model.PlanTrial, BillingCycle: "monthly", ExpiresAt: toTimestamp(s.now().Add(signupTTL)),
+		Plan: c.plan, BillingCycle: c.cycle, ExpiresAt: toTimestamp(s.now().Add(signupTTL)),
 	})
 	return token, err
 }
@@ -138,11 +157,22 @@ func (s *TenantService) ResendSignupCode(ctx context.Context, token string) erro
 	return s.issueCode(ctx, pgtype.UUID{}, ps.Phone, codePurposeSignup, s.signupText)
 }
 
+// SignupResult is a company just created, with its admin signed in.
+type SignupResult struct {
+	*LoginResult
+	// Invoice is the first period's invoice, when the company chose to pay
+	// for a plan straight away.
+	Invoice *db.Invoice
+}
+
 // CompleteSignup checks the texted code, creates the company on a free trial
 // with its first admin, emails them a link to confirm their address, and
-// signs them in.
-func (s *TenantService) CompleteSignup(ctx context.Context, token, code string, ci ClientInfo) (*LoginResult, error) {
+// signs them in. A company that chose a plan at sign-up gets its first
+// invoice too; the plan starts when the trial ends or, if paid later, on
+// payment.
+func (s *TenantService) CompleteSignup(ctx context.Context, token, code string, ci ClientInfo) (*SignupResult, error) {
 	var admin db.User
+	var plan, cycle string
 	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 		// Locked, so a second submission of the same code waits for this
 		// one and then finds the sign-up finished.
@@ -164,15 +194,31 @@ func (s *TenantService) CompleteSignup(ctx context.Context, token, code string, 
 			return err
 		}
 		if err := s.sendEmailVerification(ctx, q, after, admin,
-			"Welcome to "+s.cfg.AppName+". "+ps.Company+" is set up, with a free trial for the next 14 days."); err != nil {
+			fmt.Sprintf("Welcome to %s. %s is set up, with a free trial for the next %d days.", s.cfg.AppName, ps.Company, model.TrialDays)); err != nil {
 			return err
 		}
+		plan, cycle = ps.Plan, ps.BillingCycle
 		return q.DeletePendingSignup(ctx, ps.ID)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return s.auth.startSession(ctx, admin, SessionWeb, false, ci)
+	login, err := s.auth.startSession(ctx, admin, SessionWeb, false, ci)
+	if err != nil {
+		return nil, err
+	}
+	res := &SignupResult{LoginResult: login}
+	if plan != "" && plan != model.PlanTrial {
+		// The company exists whatever happens here: a failure leaves it on
+		// the trial, from which the plan can be chosen again.
+		change, err := s.billing.ChoosePlan(ctx, login.Principal, plan, cycle, ci)
+		if err != nil {
+			s.log.Error().Err(err).Str("plan", plan).Msg("plan chosen at sign-up")
+		} else {
+			res.Invoice = change.Invoice
+		}
+	}
+	return res, nil
 }
 
 // CreateCompany registers a company whose admin's phone and email have been
@@ -266,7 +312,9 @@ func (s *TenantService) Get(ctx context.Context, id pgtype.UUID) (db.Tenant, err
 
 // SettingsInput is the company settings form.
 type SettingsInput struct {
-	Name               string
+	Name string
+	// TIN is the taxpayer identification number printed on invoices.
+	TIN                string
 	ContactPhone       string
 	ContactEmail       string
 	RegionCity         string
@@ -310,6 +358,10 @@ func (s *TenantService) UpdateSettings(ctx context.Context, p *Principal, in Set
 	if in.MaxActivePerDriver < 1 || in.MaxActivePerDriver > 50 {
 		return db.Tenant{}, invalid("max_active_per_driver", "Choose between 1 and 50.")
 	}
+	tin := strings.Join(strings.Fields(in.TIN), "")
+	if tin != "" && (len(tin) != 10 || strings.Trim(tin, "0123456789") != "") {
+		return db.Tenant{}, invalid("tin", "A TIN is 10 digits.")
+	}
 	cur, err := s.Get(ctx, p.TenantID)
 	if err != nil {
 		return db.Tenant{}, err
@@ -319,7 +371,7 @@ func (s *TenantService) UpdateSettings(ctx context.Context, p *Principal, in Set
 		RegionCity: city.Name, MaxActivePerDriver: int32(in.MaxActivePerDriver),
 		SmsOnCreated: in.SMSOnCreated, SmsOnDispatched: in.SMSOnDispatched, SmsOnArrived: in.SMSOnArrived,
 		SmsOnDelivered: in.SMSOnDelivered, SmsOnCancelled: in.SMSOnCancelled, SmsOnDelayed: in.SMSOnDelayed,
-		SmsDriverOnAssign: in.SMSDriverOnAssign,
+		SmsDriverOnAssign: in.SMSDriverOnAssign, Tin: toText(tin),
 	})
 	if err != nil {
 		return t, err
@@ -336,8 +388,13 @@ type Usage struct {
 	Vehicles           int64
 	Staff              int64
 	ShipmentsThisMonth int64
-	SMSThisMonth       int64
-	TrialEnds          *time.Time
+	DeliveredThisMonth int64
+	// SMSThisMonth counts the texts sent this calendar month that count
+	// against SMSIncluded, the month's allowance: on a plan that started
+	// this month, those since it started.
+	SMSThisMonth int64
+	SMSIncluded  int32
+	TrialEnds    *time.Time
 }
 
 // Usage reports a company's consumption this calendar month.
@@ -348,7 +405,7 @@ func (s *TenantService) Usage(ctx context.Context, tenantID pgtype.UUID) (*Usage
 	}
 	now := s.now().In(s.cfg.Location)
 	month := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, s.cfg.Location)
-	u := &Usage{MaxDrivers: t.MaxDrivers, TrialEnds: timePtr(t.TrialEndsAt)}
+	u := &Usage{MaxDrivers: t.MaxDrivers, SMSIncluded: t.SmsMonthQuota, TrialEnds: timePtr(t.TrialEndsAt)}
 	u.Plan, _ = model.PlanByCode(t.Plan)
 	if u.Plan.Code == "" {
 		u.Plan = model.Plan{Code: t.Plan, Name: t.Plan, MaxDrivers: t.MaxDrivers}
@@ -365,7 +422,14 @@ func (s *TenantService) Usage(ctx context.Context, tenantID pgtype.UUID) (*Usage
 	if u.ShipmentsThisMonth, err = s.q.CountShipmentsCreatedSince(ctx, db.CountShipmentsCreatedSinceParams{TenantID: tenantID, CreatedAt: toTimestamp(month)}); err != nil {
 		return nil, err
 	}
-	if u.SMSThisMonth, err = s.q.CountSMSSentSince(ctx, db.CountSMSSentSinceParams{TenantID: tenantID, SentAt: toTimestamp(month)}); err != nil {
+	if u.DeliveredThisMonth, err = s.q.CountDeliveredSince(ctx, db.CountDeliveredSinceParams{TenantID: tenantID, ActualDelivery: toTimestamp(month)}); err != nil {
+		return nil, err
+	}
+	since := month
+	if t.Plan != model.PlanTrial && t.SubscribedAt.Valid && t.SubscribedAt.Time.After(since) {
+		since = t.SubscribedAt.Time
+	}
+	if u.SMSThisMonth, err = s.q.CountSMSSentSince(ctx, db.CountSMSSentSinceParams{TenantID: tenantID, SentAt: toTimestamp(since)}); err != nil {
 		return nil, err
 	}
 	return u, nil
@@ -396,29 +460,5 @@ func (s *TenantService) SetActive(ctx context.Context, p *Principal, id pgtype.U
 		action = "tenant_restored"
 	}
 	s.audit(ctx, s.q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), action, "tenant", id, nil, nil)
-	return nil
-}
-
-// SetPlan moves a company to a plan, with an optional custom driver limit.
-func (s *TenantService) SetPlan(ctx context.Context, p *Principal, id pgtype.UUID, code string, maxDrivers int, ci ClientInfo) error {
-	if !p.IsPlatformAdmin() {
-		return ErrUnauthorized
-	}
-	plan, ok := model.PlanByCode(code)
-	if !ok {
-		return invalid("plan", "Choose a plan.")
-	}
-	limit := plan.MaxDrivers
-	if maxDrivers > 0 {
-		if maxDrivers > 10000 {
-			return invalid("max_drivers", "That limit is too high.")
-		}
-		limit = int32(maxDrivers)
-	}
-	if err := s.q.UpdateTenantPlan(ctx, db.UpdateTenantPlanParams{ID: id, Plan: plan.Code, MaxDrivers: limit}); err != nil {
-		return err
-	}
-	s.audit(ctx, s.q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), "tenant_plan_changed", "tenant", id, nil,
-		map[string]any{"plan": plan.Code, "max_drivers": limit})
 	return nil
 }

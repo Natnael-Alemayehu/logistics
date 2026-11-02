@@ -100,9 +100,12 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	if _, err := pool.Exec(ctx, `UPDATE users SET role = $2 WHERE id = $1`, plat.Principal.UserID, model.RolePlatformAdmin); err != nil {
 		return err
 	}
-	if _, err := pool.Exec(ctx, `UPDATE tenants SET plan = 'enterprise', max_drivers = 500, trial_ends_at = NULL WHERE id = $1`, plat.Principal.TenantID); err != nil {
+	// The platform's own account never pays: Enterprise limits, no period.
+	if _, err := pool.Exec(ctx, `UPDATE tenants SET plan = 'enterprise', max_drivers = 500, sms_quota = 10000, sms_month_quota = 10000, trial_ends_at = NULL WHERE id = $1`, plat.Principal.TenantID); err != nil {
 		return err
 	}
+	operator := plat.Principal
+	operator.Role = model.RolePlatformAdmin
 
 	// The demo company.
 	res, err := svc.Tenants.CreateCompany(ctx, service.SignupInput{
@@ -114,8 +117,21 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	}
 	admin := res.Principal
 	tenantID := admin.TenantID
-	if _, err := pool.Exec(ctx, `UPDATE tenants SET plan = 'growth', max_drivers = 50, trial_ends_at = NULL, contact_phone = '+251911000002' WHERE id = $1`, tenantID); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE tenants SET contact_phone = '0911000002', tin = '0012345678' WHERE id = $1`, tenantID); err != nil {
 		return err
+	}
+	// The demo company pays for the Business plan the way a customer does:
+	// it chooses the plan, and the platform operator records its bank
+	// transfer. Its trial is over, so the paid month starts now.
+	change, err := svc.Billing.ChoosePlan(ctx, admin, model.PlanBusiness, model.CycleMonthly, ci)
+	if err != nil {
+		return fmt.Errorf("demo plan: %w", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE tenants SET trial_ends_at = NOW() - INTERVAL '1 minute' WHERE id = $1`, tenantID); err != nil {
+		return err
+	}
+	if err := svc.Billing.MarkPaid(ctx, operator, change.Invoice.ID, "CBE-DEMO-0001", "Demo data", ci); err != nil {
+		return fmt.Errorf("demo payment: %w", err)
 	}
 	disp, err := svc.Users.CreateStaff(ctx, admin, service.PersonInput{
 		FullName: "Dawit Bekele", Email: "dispatch@menged.et", Phone: "0911000003", Role: model.RoleDispatcher,
@@ -134,7 +150,9 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	if _, err := pool.Exec(ctx, `UPDATE users SET email_verified_at = NOW() WHERE id = $1`, disp.User.ID); err != nil {
 		return err
 	}
-	if _, err := pool.Exec(ctx, `DELETE FROM emails WHERE tenant_id = $1 AND purpose = 'email_verification'`, tenantID); err != nil {
+	// Nobody needs the setup's emails: the demo addresses are confirmed, and
+	// the first invoice is paid.
+	if _, err := pool.Exec(ctx, `DELETE FROM emails WHERE tenant_id = $1 AND purpose IN ('email_verification', 'invoice', 'receipt')`, tenantID); err != nil {
 		return err
 	}
 

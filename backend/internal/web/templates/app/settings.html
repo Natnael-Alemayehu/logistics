@@ -11,10 +11,17 @@
 <form method="post" action="/app/settings" class="col-main stack" novalidate>
   <fieldset class="card">
     <legend>Company</legend>
-    <label>Company name
-      <input name="name" value="{{field $f "name" ""}}" required {{if index $e "name"}}aria-invalid="true"{{end}}>
-      {{template "field-error" (index $e "name")}}
-    </label>
+    <div class="row-2">
+      <label>Company name
+        <input name="name" value="{{field $f "name" ""}}" required {{if index $e "name"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "name")}}
+      </label>
+      <label>TIN <span class="muted">(optional)</span>
+        <input name="tin" inputmode="numeric" maxlength="12" value="{{field $f "tin" ""}}" {{if index $e "tin"}}aria-invalid="true"{{end}}>
+        <span class="hint">Your taxpayer number, printed on invoices.</span>
+        {{template "field-error" (index $e "tin")}}
+      </label>
+    </div>
     <div class="row-2">
       <label>Phone customers can call
         <input name="contact_phone" type="tel" value="{{field $f "contact_phone" ""}}" {{if index $e "contact_phone"}}aria-invalid="true"{{end}}>
@@ -63,19 +70,11 @@
 <aside class="col-side">
   <section class="card" id="plan">
     <div class="card-head"><h2>Plan</h2><span class="badge">{{$u.Plan.Name}}</span></div>
-    {{with $u.TrialEnds}}<p>Free trial until <strong>{{date .}}</strong>.</p>{{end}}
     <dl class="facts">
       <div><dt>Drivers</dt><dd>{{$u.ActiveDrivers}} of {{$u.MaxDrivers}}</dd></div>
-      <div><dt>Office staff</dt><dd>{{$u.Staff}}</dd></div>
-      <div><dt>Vehicles</dt><dd>{{$u.Vehicles}}</dd></div>
-      <div><dt>Shipments this month</dt><dd>{{grouped $u.ShipmentsThisMonth}}</dd></div>
-      <div><dt>Texts this month</dt><dd>{{grouped $u.SMSThisMonth}}</dd></div>
+      <div><dt>Texts this month</dt><dd>{{grouped $u.SMSThisMonth}} of {{grouped $u.SMSIncluded}}</dd></div>
     </dl>
-    <h3 class="small">Plans</h3>
-    <ul class="plan-list">
-      {{range $d.Plans}}<li {{if eq .Code $u.Plan.Code}}class="is-current"{{end}}><strong>{{.Name}}</strong> · up to {{.MaxDrivers}} drivers · {{if .MonthlyETB}}{{money .MonthlyETB}}/month{{else}}contact us{{end}}</li>{{end}}
-    </ul>
-    <p class="small muted">To change plan, contact {{.App.Name}} support{{with .App.SMSNumber}} ({{.}}){{end}}.</p>
+    <p><a class="btn" href="/app/billing">Plans, invoices and payments</a></p>
   </section>
 </aside>
 </div>

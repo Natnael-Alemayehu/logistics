@@ -39,6 +39,9 @@ type Server struct {
 	upgrader gorillaws.Upgrader
 	mockSMS  bool
 	mockMail bool
+	// mockPay is set when payments only pretend to take money, which opens
+	// the page standing in for the payer's phone.
+	mockPay bool
 }
 
 // New builds the server.
@@ -58,6 +61,9 @@ func New(cfg *config.Config, svc *service.Services, pool *pgxpool.Pool, hub *web
 	s := &Server{
 		cfg: cfg, svc: svc, log: log, hub: hub, pool: pool, assets: assets,
 		mockSMS: svc.SMS.ProviderName() == "mock", mockMail: svc.Mail.ProviderName() == "mock",
+	}
+	for _, p := range svc.Billing.Providers() {
+		s.mockPay = s.mockPay || p.Mock()
 	}
 	s.version = assetVersion(assets)
 	s.views, err = newRenderer(tpl, s.funcs(), cfg.DevReload)
@@ -134,6 +140,12 @@ func (s *Server) Handler() http.Handler {
 		r.With(lookup).Get("/c/{token}", s.confirmPage)
 		r.With(strict).Post("/c/{token}", s.confirmSubmit)
 		r.With(lookup).Get("/c/{token}/media/{n}", s.confirmMedia)
+
+		// Stands in for the payer's phone while payments are simulated.
+		if s.mockPay {
+			r.With(lookup).Get("/dev/payments/{reference}", s.devPaymentPage)
+			r.With(lookup).Post("/dev/payments/{reference}", s.devPaymentAnswer)
+		}
 	})
 
 	// The driver app shell. The service worker is served from /driver/ so
@@ -156,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/driver/sync", s.apiSync)
 		})
 		r.Post("/sms/inbound", s.apiSMSInbound)
+		r.Post("/payments/{provider}/notify", s.apiPaymentNotify)
 	})
 
 	// The dashboard.
@@ -179,7 +192,13 @@ func (s *Server) Handler() http.Handler {
 				r.Use(s.requirePlatformAdmin)
 				r.Get("/platform", s.platform)
 				r.Post("/platform/tenants/{id}/active", s.platformTenantActive)
-				r.Post("/platform/tenants/{id}/plan", s.platformTenantPlan)
+				r.Post("/platform/tenants/{id}/trial", s.platformExtendTrial)
+				r.Post("/platform/tenants/{id}/offer", s.platformOffer)
+				r.Get("/platform/billing", s.platformBilling)
+				r.Get("/platform/invoices/{id}", s.platformInvoice)
+				r.Post("/platform/invoices/{id}/paid", s.platformMarkPaid)
+				r.Post("/platform/invoices/{id}/void", s.platformVoid)
+				r.Post("/platform/payments/{id}/refunded", s.platformRefunded)
 			})
 
 			// A company's own pages. The platform admin runs the service, not
@@ -244,6 +263,11 @@ func (s *Server) Handler() http.Handler {
 					r.Post("/team/{id}/reset", s.personReset)
 					r.Get("/settings", s.settingsPage)
 					r.Post("/settings", s.settingsUpdate)
+					r.Get("/billing", s.billingPage)
+					r.Post("/billing/plan", s.billingChoose)
+					r.Get("/billing/invoices/{id}", s.invoicePage)
+					r.Post("/billing/invoices/{id}/pay", s.invoicePay)
+					r.Get("/billing/payments/{id}", s.paymentPage)
 					r.Get("/settings/sms", s.smsLog)
 					r.Post("/settings/sms/simulate", s.smsSimulate)
 					r.Get("/audit", s.auditLog)

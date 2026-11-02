@@ -40,6 +40,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/web"
 	"github.com/natnael-alemayehu/logistics/migrations"
 	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/logistics/pkg/payments"
 	"github.com/natnael-alemayehu/logistics/pkg/storage"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 )
@@ -168,9 +169,17 @@ func newEnv(t *testing.T) *env {
 	hub := websocket.NewHub(log)
 	go hub.Run()
 	inbox := console.New(nil)
+	prompt := func(reference string) string { return base + "/dev/payments/" + reference }
 	svc := service.New(service.Deps{
 		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: fakeSMS{inbox}, Mail: fakeMail{inbox},
-		Settings: service.Settings{AppName: cfg.AppName, BaseURL: base, Location: tz, Secret: cfg.Secret, SMSNumber: "6060"},
+		Payments: []payments.Provider{
+			payments.NewMock("telebirr", "telebirr", cfg.Secret, prompt, inbox),
+			payments.NewMock("cbebirr", "CBE Birr", cfg.Secret, prompt, inbox),
+		},
+		Settings: service.Settings{
+			AppName: cfg.AppName, BaseURL: base, Location: tz, Secret: cfg.Secret, SMSNumber: "6060",
+			SupportEmail: "support@menged.test", BankDetails: "Test Bank, account 123",
+		},
 	})
 	ctx, stop := context.WithCancel(context.Background())
 	t.Cleanup(stop)

@@ -38,6 +38,11 @@ Check: a wrong code is refused next to the field, and after five wrong tries
 the code stops working. A second signup with the same email or phone is
 refused with a field-level message.
 
+Sign up again with another email and phone, choosing **Starter** under
+**Plan** (or **Start with Starter** on the landing page). The trial still
+starts, and you land on the Starter invoice instead of the dashboard. It asks
+you to confirm your email before paying; section 9 continues from there.
+
 ## 2. Vehicles, drivers and the team
 
 1. **Vehicles → Add vehicle**: plate `3-A12345 AA`, type, capacity.
@@ -56,7 +61,8 @@ refused with a field-level message.
    are signed in, and the dispatcher's other sessions end. The link works
    once, within the hour.
 
-Check: the trial allows 5 drivers, and adding a sixth explains the limit.
+Check: the trial allows 10 drivers, and adding an eleventh explains the
+limit.
 
 ## 3. Book a shipment
 
@@ -190,14 +196,94 @@ or isn't a phone number at all.
   can sign out. A new email address must be confirmed again: a link goes to
   it, and reset links sent to the old address stop working.
 
-## 9. The operator
+## 9. Paying for the product
+
+As the company's admin, open **Billing**. It shows the trial's days left, the
+plans, this month's usage (drivers and texts against the plan, shipments,
+deliveries) and the invoices.
+
+Some steps need time to pass. Move the clock in the database from `backend/`
+(replace the company name), and the background jobs, which run every minute,
+do the rest:
+
+```bash
+docker compose exec postgres psql -U logistics -c "UPDATE tenants SET trial_ends_at = NOW() WHERE name = 'Your company'"
+```
+
+1. **Choose a plan.** Under **Choose a plan**, pick Monthly or Annual and
+   **Choose Starter**. An invoice opens, due in 7 days. A notice explains that
+   the period starts when the trial ends, so paying early doesn't cut the
+   trial short.
+2. **Pay by mobile money.** If your email isn't confirmed yet, the invoice
+   asks you to confirm it first (receipts go there). Then choose telebirr,
+   enter a phone and **Pay**. The page waits for approval. In the terminal, a
+   `PAYMENT to 09…` block has a `/dev/payments/…` link: it plays the payer's
+   phone. Open it (a narrow window shows it as a phone would) and try
+   **Decline** first: nothing is paid, and the invoice stays open. Pay again
+   and **Approve**. The waiting page turns to **Paid** by itself, the invoice
+   is marked paid, and a receipt email is printed.
+3. **Pay by bank transfer.** The invoice lists the bank details
+   (`BILLING_BANK_DETAILS`) and asks for the invoice number as the reference.
+   The operator records the transfer (section 10).
+4. **The trial ends.** Set `trial_ends_at` to now on a company still on the
+   trial, without a paid plan. Within a minute, an email says the trial has
+   ended (earlier ones went out 3 days and 1 day before). The banner says the
+   account is read-only. **New shipment**, assigning an unassigned load, and
+   adding a driver, vehicle or person are refused with an explanation, while
+   a load already on the road still takes driver updates and a delivery.
+   Choosing a plan and paying lifts it at once.
+5. **Renewal.** On a paid company, end the period:
+   `UPDATE tenants SET period_end = NOW() WHERE name = '…'`. Within a minute a
+   renewal invoice is issued and emailed, and the period moves on. Make it
+   overdue (`UPDATE invoices SET due_at = NOW() - INTERVAL '1 day' WHERE
+   number = 'INV-…'`): the banner warns when the account becomes read-only.
+   With `INTERVAL '8 days'` it is read-only until the invoice is paid.
+6. **Upgrade and downgrade.** On Starter, **Upgrade to Business**: an invoice
+   for the difference over the rest of the period. Business applies, with its
+   driver limit, as soon as it is paid. **Move to Starter** from Business
+   waits for the end of the period, and is refused while more drivers are
+   active than Starter allows. **Keep things as they are** cancels a pending
+   change. While a renewal or usage invoice is unpaid, plan buttons say
+   which invoice to pay first.
+7. **Limits.** At 80% of the plan's driver places, an alert says so, once
+   per billing period; at 80% of the month's texts, once a month. Texts are
+   never blocked: those beyond the allowance appear on a usage invoice early
+   the next month, at ETB 0.50 each, with the month's count.
+
+Check:
+- **Print** on an invoice gives a one-page document with the company's TIN
+  when it has one, and VAT at 15%.
+- On a phone, the invoice table fits the screen: quantities move under each
+  description, and totals line up under the amounts.
+- Approving the same prompt twice, or a notification with a wrong signature
+  or amount, changes nothing (the integration tests cover the signed
+  notification endpoint).
+
+## 10. The operator
 
 Sign in as `admin@menged.et`. **Platform** lists every company with plan,
-drivers and activity. Company pages such as `/app/shipments` send the
-operator back to this list. Change a plan or driver limit, or suspend a company:
-its users are signed out at once and can't sign back in until it is restored.
+drivers, activity and billing state. Company pages such as `/app/shipments`
+send the operator back to this list. From a company's row:
+- **Extend trial** by a number of days.
+- **Offer Enterprise**: a monthly price, driver limit and text allowance. The
+  company is emailed the terms and chooses Enterprise on its billing page.
+- **Suspend** the company: its users are signed out at once and can't sign
+  back in until it is restored.
 
-## 10. Security checks
+**Billing** shows monthly recurring revenue, money collected this month,
+unpaid and overdue invoices, and recent payments. On an unpaid invoice:
+- **Mark paid** with the bank's reference records a transfer. The company is
+  emailed a receipt, and a read-only account is lifted at once.
+- **Cancel invoice** with a reason, which is emailed to the company.
+
+As the company, start a telebirr payment on an invoice but leave the prompt
+unanswered. As the operator, mark the same invoice paid. Then approve the
+prompt. The late payment is not applied to anything: it appears under
+**Refunds to send**, and its payment page tells the company it will be
+refunded. Record the refund with the bank's reference, and the company is
+emailed. (Two prompts approved for one invoice end the same way.)
+
+## 11. Security checks
 
 - Five wrong passwords lock the account for 15 minutes. Further attempts from
   the same address are rate-limited.

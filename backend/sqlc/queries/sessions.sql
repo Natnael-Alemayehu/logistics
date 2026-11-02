@@ -22,7 +22,15 @@ SELECT s.id AS session_id, s.kind, s.remember, s.last_seen_at, s.expires_at,
        u.is_active AS user_active, u.password_reset_required,
        (u.email_verified_at IS NOT NULL)::bool AS email_verified,
        t.name AS tenant_name, t.is_active AS tenant_active, t.plan AS tenant_plan,
-       t.trial_ends_at
+       t.trial_ends_at,
+       -- The oldest unpaid renewal or usage invoice, on which read-only mode
+       -- depends.
+       COALESCE((SELECT i.number FROM invoices i
+                 WHERE i.tenant_id = t.id AND i.status = 'open' AND i.kind IN ('renewal', 'usage')
+                 ORDER BY i.due_at LIMIT 1), '')::text AS debt_number,
+       (SELECT i.due_at FROM invoices i
+        WHERE i.tenant_id = t.id AND i.status = 'open' AND i.kind IN ('renewal', 'usage')
+        ORDER BY i.due_at LIMIT 1)::timestamptz AS debt_due_at
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 JOIN tenants t ON t.id = u.tenant_id

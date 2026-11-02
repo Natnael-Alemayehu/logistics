@@ -10,9 +10,12 @@ import (
 )
 
 // Jobs are the periodic checks: drivers gone quiet, shipments past their ETA,
-// and data retention. Each run takes a Postgres advisory lock, so running
-// several replicas does not raise every alert several times.
-type Jobs struct{ *core }
+// billing, and data retention. Each run takes a Postgres advisory lock, so
+// running several replicas does not raise every alert several times.
+type Jobs struct {
+	*core
+	billing *BillingService
+}
 
 const (
 	jobsLockKey = 7_311_042 // arbitrary, unique to this application
@@ -27,20 +30,30 @@ const (
 	retainSMS      = 180 * 24 * time.Hour
 	retainEmail    = 180 * 24 * time.Hour
 	retainLinks    = 30 * 24 * time.Hour
+
+	// usageEvery spaces out the plan-limit checks, which count every
+	// company's texts this month.
+	usageEvery = 10 * time.Minute
 )
 
-// Run performs the checks every minute and retention every hour until ctx
-// ends.
+// Run performs the checks every minute, the plan-limit checks every ten
+// minutes and retention every hour until ctx ends.
 func (j *Jobs) Run(ctx context.Context) {
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
-	var lastRetention time.Time
+	var lastRetention, lastUsage time.Time
 	for {
 		retention := time.Since(lastRetention) > time.Hour
-		if err := j.once(ctx, retention); err != nil && ctx.Err() == nil {
+		usage := time.Since(lastUsage) > usageEvery
+		if err := j.once(ctx, retention, usage); err != nil && ctx.Err() == nil {
 			j.log.Error().Err(err).Msg("periodic jobs")
-		} else if retention {
-			lastRetention = time.Now()
+		} else {
+			if retention {
+				lastRetention = time.Now()
+			}
+			if usage {
+				lastUsage = time.Now()
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -50,7 +63,7 @@ func (j *Jobs) Run(ctx context.Context) {
 	}
 }
 
-func (j *Jobs) once(ctx context.Context, retention bool) error {
+func (j *Jobs) once(ctx context.Context, retention, usage bool) error {
 	tx, err := j.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -78,6 +91,14 @@ func (j *Jobs) once(ctx context.Context, retention bool) error {
 	}
 	if err := j.q.RequeueStuckEmails(ctx); err != nil {
 		return fmt.Errorf("requeue email: %w", err)
+	}
+	if err := j.billing.Run(ctx); err != nil {
+		return fmt.Errorf("billing: %w", err)
+	}
+	if usage {
+		if err := j.billing.CheckUsage(ctx); err != nil {
+			return fmt.Errorf("plan limits: %w", err)
+		}
 	}
 	if retention {
 		if err := j.Retention(ctx); err != nil {

@@ -1,0 +1,31 @@
+{{/* While the payer hasn't answered, the page reloads itself; a live update
+   reloads it at once when the provider reports back. */}}
+{{define "head"}}{{if eq .Data.Pay.Status "pending"}}<meta http-equiv="refresh" content="5">{{end}}{{end}}
+{{define "content"}}{{$p := .Data.Pay}}
+<section class="card pay-status" data-payment="{{uuid $p.ID}}">
+  {{if eq $p.Status "pending"}}
+    <h1>Approve the payment on your phone</h1>
+    <p>{{.Data.Label}} sent a prompt to <strong>{{str $p.PayerPhone}}</strong> for <strong>{{birr $p.AmountSantim}}</strong>, invoice {{$p.InvoiceNumber}}. Enter your PIN there to approve it.</p>
+    <p class="muted small">This page updates by itself when the payment goes through.</p>
+    {{if .App.MockPay}}<p class="banner info">Payments are simulated on this server: the prompt is printed on the server terminal, with a link that approves or declines it.</p>{{end}}
+    <p><a href="/app/billing/invoices/{{uuid $p.InvoiceID}}">Back to the invoice</a></p>
+  {{else if eq $p.Status "paid"}}
+    <h1>Paid. Thank you</h1>
+    <p>We received {{birr $p.AmountSantim}} for invoice {{$p.InvoiceNumber}}. A receipt is on its way to your email.</p>
+    {{if $p.RefundDue}}<p class="banner warn">{{$p.Note}} We'll email you when it has been sent back.</p>{{end}}
+    <div class="actions"><a class="btn btn-primary" href="/app/billing">Back to billing</a><a class="btn" href="/app/billing/invoices/{{uuid $p.InvoiceID}}">See the invoice</a></div>
+  {{else if eq $p.Status "refunded"}}
+    <h1>This payment was refunded</h1>
+    <p>{{birr $p.AmountSantim}} for invoice {{$p.InvoiceNumber}} was sent back{{with $p.Note}}: {{.}}{{else}}.{{end}}</p>
+    <div class="actions"><a class="btn btn-primary" href="/app/billing">Back to billing</a></div>
+  {{else if eq $p.Status "failed"}}
+    <h1>The payment didn't go through</h1>
+    <p>{{.Data.Label}} reported that it was declined or could not be completed{{with $p.Note}}: {{.}}{{else}}.{{end}} Nothing was taken.</p>
+    <div class="actions"><a class="btn btn-primary" href="/app/billing/invoices/{{uuid $p.InvoiceID}}">Try again</a></div>
+  {{else}}
+    <h1>No answer from your phone</h1>
+    <p>The prompt for {{birr $p.AmountSantim}} wasn't approved within 30 minutes. If you approve it after all, the payment still counts when it arrives.</p>
+    <div class="actions"><a class="btn btn-primary" href="/app/billing/invoices/{{uuid $p.InvoiceID}}">Try again</a></div>
+  {{end}}
+</section>
+{{end}}

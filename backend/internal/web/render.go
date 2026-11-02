@@ -100,19 +100,24 @@ type View struct {
 	Path  string
 	Query url.Values
 	Now   time.Time
+	// Standing is the company's billing state, for the banner; zero for the
+	// platform operator.
+	Standing service.Standing
 }
 
 // AppInfo is deployment information templates use.
 type AppInfo struct {
-	Name          string
-	Version       string
-	TileURL       string
-	TileCredit    string
-	MockSMS       bool
-	MockMail      bool
-	SMSNumber     string
-	PublicURL     string
-	TrialDaysLeft int
+	Name         string
+	Version      string
+	TileURL      string
+	TileCredit   string
+	MockSMS      bool
+	MockMail     bool
+	MockPay      bool
+	SMSNumber    string
+	PublicURL    string
+	SupportEmail string
+	BankDetails  string
 }
 
 // Flash is a one-time message shown after a redirect.
@@ -156,7 +161,8 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 		Form: url.Values{}, Errors: map[string]string{},
 		App: AppInfo{
 			Name: s.cfg.AppName, Version: s.version, TileURL: s.cfg.MapTileURL, TileCredit: s.cfg.MapTileAttribution,
-			MockSMS: s.mockSMS, MockMail: s.mockMail, SMSNumber: s.cfg.SMSNumber, PublicURL: s.cfg.PublicURL,
+			MockSMS: s.mockSMS, MockMail: s.mockMail, MockPay: s.mockPay, SMSNumber: s.cfg.SMSNumber, PublicURL: s.cfg.PublicURL,
+			SupportEmail: s.cfg.SupportEmail, BankDetails: s.cfg.BankDetails,
 		},
 		Flash: s.takeFlash(w, r),
 	}
@@ -164,8 +170,8 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 		if n, err := s.svc.Alerts.Unread(r.Context(), v.Me.TenantID); err == nil {
 			v.Unread = n
 		}
-		if v.Me.TrialEnds != nil && v.Me.TenantPlan == "trial" {
-			v.App.TrialDaysLeft = int(time.Until(*v.Me.TrialEnds).Hours()/24) + 1
+		if !v.Me.IsPlatformAdmin() {
+			v.Standing = v.Me.Standing(v.Now)
 		}
 	}
 	return v

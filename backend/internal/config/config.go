@@ -73,6 +73,12 @@ type Config struct {
 	// terminal) or none (bank transfer only). It defaults to none in
 	// production, since there is no real adapter yet.
 	PaymentProvider string
+	// BankDetails tells companies where to send a bank transfer, which the
+	// platform operator then records by hand. Empty: transfers aren't
+	// offered.
+	BankDetails string
+	// SupportEmail is where companies write to the platform operator.
+	SupportEmail string
 
 	// AllowMockProviders lets a production deployment start with stand-in
 	// SMS, email or payments, for a demo or staging site.
@@ -118,6 +124,8 @@ func Load() (*Config, error) {
 		SMTPUsername:         getEnv("SMTP_USERNAME", ""),
 		SMTPPassword:         getEnv("SMTP_PASSWORD", ""),
 		PaymentProvider:      getEnv("PAYMENT_PROVIDER", ""),
+		BankDetails:          getEnv("BILLING_BANK_DETAILS", ""),
+		SupportEmail:         getEnv("SUPPORT_EMAIL", ""),
 		AllowMockProviders:   getBoolEnv("ALLOW_MOCK_PROVIDERS", false),
 	}
 	if c.PublicURL == "" {
@@ -139,6 +147,13 @@ func Load() (*Config, error) {
 	if c.PaymentProvider != "mock" && c.PaymentProvider != "none" {
 		return nil, fmt.Errorf("PAYMENT_PROVIDER %q: want mock or none", c.PaymentProvider)
 	}
+	if c.SupportEmail == "" {
+		c.SupportEmail = "support@" + publicHost(c.PublicURL)
+	}
+	if c.BankDetails == "" && !c.IsProduction() {
+		c.BankDetails = "Commercial Bank of Ethiopia, account 1000000000000, " + c.AppName +
+			" (example details: set BILLING_BANK_DETAILS)"
+	}
 
 	tz, err := time.LoadLocation(getEnv("APP_TIMEZONE", "Africa/Addis_Ababa"))
 	if err != nil {
@@ -157,6 +172,9 @@ func Load() (*Config, error) {
 
 	if c.IsProduction() && strings.HasPrefix(c.PublicURL, "http://localhost") {
 		return nil, errors.New("PUBLIC_URL must be set in production")
+	}
+	if c.IsProduction() && c.PaymentProvider == "none" && c.BankDetails == "" {
+		return nil, errors.New("BILLING_BANK_DETAILS must be set in production: without a payment provider, a bank transfer is the only way companies can pay")
 	}
 	return c, nil
 }

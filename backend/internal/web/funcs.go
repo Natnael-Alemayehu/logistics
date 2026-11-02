@@ -18,7 +18,23 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/internal/phone"
 	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/logistics/pkg/payments"
 )
+
+// invoiceKind names what an invoice is for.
+func invoiceKind(kind string) string {
+	switch kind {
+	case "subscription":
+		return "First period"
+	case "upgrade":
+		return "Upgrade"
+	case "renewal":
+		return "Renewal"
+	case "usage":
+		return "Text messages"
+	}
+	return kind
+}
 
 var errBadID = errors.New("malformed id")
 
@@ -169,12 +185,47 @@ func (s *Server) funcs() template.FuncMap {
 			return strconv.Itoa(int(*p))
 		},
 		"bool": func(p *bool) bool { return p != nil && *p },
+		"i64": func(p *int64) int64 {
+			if p == nil {
+				return 0
+			}
+			return *p
+		},
+		// wholeBirr is an optional santim amount in birr, for a form field.
+		"wholeBirr": func(p *int64) string {
+			if p == nil {
+				return ""
+			}
+			return strconv.FormatInt(*p/100, 10)
+		},
 		"i32": func(p *int32) int32 {
 			if p == nil {
 				return 0
 			}
 			return *p
 		},
+		// birr writes santim, hundredths of a birr, as "ETB 2,875.00".
+		// birr and etb join the currency to the number with a no-break
+		// space, so an amount never wraps between the two.
+		"birr": func(santim int64) string { return "ETB\u00a0" + payments.FormatETB(santim) },
+		// etb writes santim as whole birr, for figures read at a glance.
+		"etb":       func(santim int64) string { return "ETB\u00a0" + grouped((santim+50)/100) },
+		"cycleName": model.CycleName,
+		// share is used as a percentage of limit, from 0 to 100.
+		"share": func(used, limit any) int {
+			l := toFloat(limit)
+			if l <= 0 {
+				return 0
+			}
+			return int(math.Min(100, math.Round(toFloat(used)*100/l)))
+		},
+		// past reports whether a moment has gone by.
+		"past": func(v any) bool {
+			t, ok := toTime(v)
+			return ok && time.Now().After(t)
+		},
+		"invoiceKind":  invoiceKind,
+		"invoiceLines": service.InvoiceLines,
 		"money": func(v any) string {
 			f := toFloat(v)
 			return "ETB " + grouped(int64(math.Round(f)))

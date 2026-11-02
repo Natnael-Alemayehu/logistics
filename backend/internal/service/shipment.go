@@ -224,7 +224,7 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 		if err != nil {
 			return err
 		}
-		if err := checkTrial(tenant, now); err != nil {
+		if err := s.requireWritable(ctx, q, tenant); err != nil {
 			return err
 		}
 
@@ -445,6 +445,13 @@ func (s *ShipmentService) Assign(ctx context.Context, a Actor, id pgtype.UUID, d
 		if err != nil {
 			return err
 		}
+		// Read-only mode stops new work, not work under way: a load already
+		// assigned can still change hands.
+		if cur.Status == model.StatusPending {
+			if err := s.requireWritable(ctx, q, tenant); err != nil {
+				return err
+			}
+		}
 		driver, err := s.assignableDriver(ctx, q, tenant, driverID, id)
 		if err != nil {
 			return err
@@ -584,14 +591,6 @@ func (s *ShipmentService) lock(ctx context.Context, q *db.Queries, tenantID, id 
 		return sh, notFound("Shipment not found.")
 	}
 	return sh, err
-}
-
-// checkTrial stops new bookings once a free trial has run out.
-func checkTrial(t db.Tenant, now time.Time) error {
-	if t.Plan == model.PlanTrial && t.TrialEndsAt.Valid && now.After(t.TrialEndsAt.Time) {
-		return limitReached("Your free trial has ended. Contact us to choose a plan and keep booking shipments; your data is kept.")
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------
