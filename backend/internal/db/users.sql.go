@@ -52,7 +52,7 @@ INSERT INTO users (
     tenant_id, role, full_name, phone, email, password_hash, pin_hash,
     is_active, password_reset_required, vehicle_id
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate
 `
 
 type CreateUserParams struct {
@@ -99,12 +99,15 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
 		&i.AlertEmails,
+		&i.Language,
+		&i.AppBatterySaver,
+		&i.AppVibrate,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate FROM users
 WHERE lower(email) = lower($1)
 `
 
@@ -130,12 +133,15 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
 		&i.AlertEmails,
+		&i.Language,
+		&i.AppBatterySaver,
+		&i.AppVibrate,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate FROM users
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -166,12 +172,15 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
 		&i.AlertEmails,
+		&i.Language,
+		&i.AppBatterySaver,
+		&i.AppVibrate,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate FROM users
 WHERE phone = $1
 `
 
@@ -197,6 +206,9 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone *string) (User, erro
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
 		&i.AlertEmails,
+		&i.Language,
+		&i.AppBatterySaver,
+		&i.AppVibrate,
 	)
 	return i, err
 }
@@ -205,7 +217,7 @@ const incrementFailedLoginAttempts = `-- name: IncrementFailedLoginAttempts :one
 UPDATE users
 SET failed_login_attempts = failed_login_attempts + 1
 WHERE id = $1
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate
 `
 
 func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -230,6 +242,9 @@ func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UU
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
 		&i.AlertEmails,
+		&i.Language,
+		&i.AppBatterySaver,
+		&i.AppVibrate,
 	)
 	return i, err
 }
@@ -283,6 +298,7 @@ const listDriversWithStatus = `-- name: ListDriversWithStatus :many
 SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at,
        v.plate_number AS vehicle_plate,
        sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version, sm.storage_used_kb,
+       COALESCE(sm.power_saving, false)::bool AS power_saving,
        -- On duty (FR-031): carrying a load that has left, or with the app
        -- open and sharing location in the last half hour.
        -- A driver who never synced has no sync row, hence the COALESCEs.
@@ -330,6 +346,7 @@ type ListDriversWithStatusRow struct {
 	TrackingPaused     *bool              `db:"tracking_paused" json:"tracking_paused"`
 	AppVersion         *string            `db:"app_version" json:"app_version"`
 	StorageUsedKb      *int32             `db:"storage_used_kb" json:"storage_used_kb"`
+	PowerSaving        bool               `db:"power_saving" json:"power_saving"`
 	OnDuty             bool               `db:"on_duty" json:"on_duty"`
 	ActiveShipments    int64              `db:"active_shipments" json:"active_shipments"`
 	DeliveredThisMonth int64              `db:"delivered_this_month" json:"delivered_this_month"`
@@ -364,6 +381,7 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 			&i.TrackingPaused,
 			&i.AppVersion,
 			&i.StorageUsedKb,
+			&i.PowerSaving,
 			&i.OnDuty,
 			&i.ActiveShipments,
 			&i.DeliveredThisMonth,
@@ -379,7 +397,7 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 }
 
 const listUsersByTenant = `-- name: ListUsersByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate FROM users
 WHERE tenant_id = $1 AND role <> 'driver'
 ORDER BY is_active DESC, full_name
 LIMIT $2 OFFSET $3
@@ -419,6 +437,9 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 			&i.LastLoginAt,
 			&i.EmailVerifiedAt,
 			&i.AlertEmails,
+			&i.Language,
+			&i.AppBatterySaver,
+			&i.AppVibrate,
 		); err != nil {
 			return nil, err
 		}
@@ -454,6 +475,35 @@ WHERE id = $1
 
 func (q *Queries) RecordSuccessfulLogin(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, recordSuccessfulLogin, id)
+	return err
+}
+
+const setDriverAppSettings = `-- name: SetDriverAppSettings :exec
+UPDATE users
+SET language = COALESCE($1::text, language),
+    app_battery_saver = COALESCE($2::boolean, app_battery_saver),
+    app_vibrate = COALESCE($3::boolean, app_vibrate)
+WHERE id = $4 AND tenant_id = $5 AND role = 'driver'
+`
+
+type SetDriverAppSettingsParams struct {
+	Language     *string     `db:"language" json:"language"`
+	BatterySaver *bool       `db:"battery_saver" json:"battery_saver"`
+	Vibrate      *bool       `db:"vibrate" json:"vibrate"`
+	ID           pgtype.UUID `db:"id" json:"id"`
+	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// The driver app's settings, chosen on the phone (FR-026 AC-026.6). The
+// phone sends only those the driver changed; the rest stay as they are.
+func (q *Queries) SetDriverAppSettings(ctx context.Context, arg SetDriverAppSettingsParams) error {
+	_, err := q.db.Exec(ctx, setDriverAppSettings,
+		arg.Language,
+		arg.BatterySaver,
+		arg.Vibrate,
+		arg.ID,
+		arg.TenantID,
+	)
 	return err
 }
 
@@ -544,7 +594,7 @@ SET full_name = $3,
     email_verified_at = CASE WHEN email IS NOT DISTINCT FROM $5 THEN email_verified_at END,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate
 `
 
 type UpdateUserProfileParams struct {
@@ -584,6 +634,9 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
 		&i.AlertEmails,
+		&i.Language,
+		&i.AppBatterySaver,
+		&i.AppVibrate,
 	)
 	return i, err
 }

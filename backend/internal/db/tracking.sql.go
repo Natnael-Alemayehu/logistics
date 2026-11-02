@@ -145,7 +145,8 @@ SELECT DISTINCT ON (t.driver_id)
        ST_Y(t.coordinates)::float8 AS latitude,
        ST_X(t.coordinates)::float8 AS longitude,
        t.speed_kph, t.battery_level, t.recorded_at,
-       sm.last_sync_at, sm.tracking_paused
+       sm.last_sync_at, sm.tracking_paused,
+       COALESCE(sm.power_saving, false)::bool AS power_saving
 FROM tracking_events t
 JOIN users u ON u.id = t.driver_id
 LEFT JOIN sync_metadata sm ON sm.driver_id = t.driver_id
@@ -167,6 +168,7 @@ type GetLatestDriverLocationsRow struct {
 	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
 	LastSyncAt     pgtype.Timestamptz `db:"last_sync_at" json:"last_sync_at"`
 	TrackingPaused *bool              `db:"tracking_paused" json:"tracking_paused"`
+	PowerSaving    bool               `db:"power_saving" json:"power_saving"`
 }
 
 func (q *Queries) GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error) {
@@ -189,6 +191,7 @@ func (q *Queries) GetLatestDriverLocations(ctx context.Context, tenantID pgtype.
 			&i.RecordedAt,
 			&i.LastSyncAt,
 			&i.TrackingPaused,
+			&i.PowerSaving,
 		); err != nil {
 			return nil, err
 		}

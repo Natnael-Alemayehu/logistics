@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/internal/geo"
 	"github.com/natnael-alemayehu/logistics/internal/model"
 )
 
@@ -30,6 +31,12 @@ type SyncRequest struct {
 	Pending        *int       `json:"pending"`
 	StorageKB      *int       `json:"storage_kb"`
 	TrackingPaused bool       `json:"tracking_paused"`
+	// PowerSaving says the phone records a position only every 15 minutes,
+	// by the driver's choice or because its battery is low.
+	PowerSaving bool `json:"power_saving"`
+	// Settings holds the settings the driver changed on this phone since
+	// the last sync.
+	Settings *SettingsChange `json:"settings,omitempty"`
 	// Since is the cursor from the previous response; empty on first sync.
 	Since *time.Time `json:"since"`
 
@@ -54,15 +61,18 @@ type SyncStatus struct {
 // SyncPOD is a proof of delivery captured on the device. Images are data
 // URLs.
 type SyncPOD struct {
-	ClientID       string    `json:"client_id"`
-	ShipmentID     string    `json:"shipment_id"`
-	RecipientName  string    `json:"recipient_name"`
-	RecipientPhone string    `json:"recipient_phone"`
-	Signature      string    `json:"signature"`
-	Photos         []string  `json:"photos"`
-	Notes          string    `json:"notes"`
-	Lat            *float64  `json:"lat"`
-	Lng            *float64  `json:"lng"`
+	ClientID       string   `json:"client_id"`
+	ShipmentID     string   `json:"shipment_id"`
+	RecipientName  string   `json:"recipient_name"`
+	RecipientPhone string   `json:"recipient_phone"`
+	Signature      string   `json:"signature"`
+	Photos         []string `json:"photos"`
+	Notes          string   `json:"notes"`
+	Lat            *float64 `json:"lat"`
+	Lng            *float64 `json:"lng"`
+	// LocationReason is why the driver delivered away from the destination
+	// after the app warned them.
+	LocationReason string    `json:"location_reason"`
 	RecordedAt     time.Time `json:"recorded_at"`
 }
 
@@ -113,33 +123,39 @@ type SyncResponse struct {
 
 // DriverShipment is a shipment as the driver app holds it.
 type DriverShipment struct {
-	ID                 string     `json:"id"`
-	TrackingNumber     string     `json:"tracking_number"`
-	Ref                string     `json:"ref"`
-	Status             string     `json:"status"`
-	StatusReason       string     `json:"status_reason,omitempty"`
-	Priority           string     `json:"priority"`
-	OriginCity         string     `json:"origin_city"`
-	OriginAddress      string     `json:"origin_address"`
-	OriginLat          *float64   `json:"origin_lat"`
-	OriginLng          *float64   `json:"origin_lng"`
-	DestinationCity    string     `json:"destination_city"`
-	DestinationAddress string     `json:"destination_address"`
-	DestinationLat     *float64   `json:"destination_lat"`
-	DestinationLng     *float64   `json:"destination_lng"`
-	DestinationPrecise bool       `json:"destination_precise"`
-	CustomerName       string     `json:"customer_name"`
-	CustomerPhone      string     `json:"customer_phone"`
-	Cargo              string     `json:"cargo"`
-	WeightKg           float64    `json:"weight_kg"`
-	Instructions       string     `json:"instructions"`
-	Vehicle            string     `json:"vehicle"`
-	ETA                *time.Time `json:"eta"`
-	PlannedPickup      *time.Time `json:"planned_pickup"`
-	PickedUpAt         *time.Time `json:"picked_up_at"`
-	DeliveredAt        *time.Time `json:"delivered_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                 string   `json:"id"`
+	TrackingNumber     string   `json:"tracking_number"`
+	Ref                string   `json:"ref"`
+	Status             string   `json:"status"`
+	StatusReason       string   `json:"status_reason,omitempty"`
+	Priority           string   `json:"priority"`
+	OriginCity         string   `json:"origin_city"`
+	OriginAddress      string   `json:"origin_address"`
+	OriginLat          *float64 `json:"origin_lat"`
+	OriginLng          *float64 `json:"origin_lng"`
+	DestinationCity    string   `json:"destination_city"`
+	DestinationAddress string   `json:"destination_address"`
+	DestinationLat     *float64 `json:"destination_lat"`
+	DestinationLng     *float64 `json:"destination_lng"`
+	DestinationPrecise bool     `json:"destination_precise"`
+	// ToleranceM is how far from the destination a delivery may be recorded
+	// before the app asks why.
+	ToleranceM    float64    `json:"tolerance_m"`
+	CustomerName  string     `json:"customer_name"`
+	CustomerPhone string     `json:"customer_phone"`
+	Cargo         string     `json:"cargo"`
+	WeightKg      float64    `json:"weight_kg"`
+	Instructions  string     `json:"instructions"`
+	Vehicle       string     `json:"vehicle"`
+	ETA           *time.Time `json:"eta"`
+	PlannedPickup *time.Time `json:"planned_pickup"`
+	PickedUpAt    *time.Time `json:"picked_up_at"`
+	DeliveredAt   *time.Time `json:"delivered_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	// RecentRecipients are people who signed for this customer before,
+	// newest first, to suggest on the delivery screen.
+	RecentRecipients []string `json:"recent_recipients"`
 }
 
 // DriverMessage is a note from the office, shown in the app.
@@ -161,7 +177,31 @@ type DriverProfile struct {
 	Vehicle       string `json:"vehicle"`
 	MustChangePIN bool   `json:"must_change_pin"`
 	SMSNumber     string `json:"sms_number"`
+	// OfficePhone is the company's number, for the driver to call.
+	OfficePhone string         `json:"office_phone"`
+	Settings    DriverSettings `json:"settings"`
 }
+
+// DriverSettings are the driver app's settings, kept on the server so they
+// follow the driver to a new phone (FR-026 AC-026.6).
+type DriverSettings struct {
+	// Language is "en" or "am", or empty until the driver chooses one.
+	Language     string `json:"language"`
+	BatterySaver bool   `json:"battery_saver"`
+	Vibrate      bool   `json:"vibrate"`
+}
+
+// SettingsChange is what the driver changed on the phone. Settings left out
+// stay as they are, so a language picked at sign-in on a new phone doesn't
+// undo the others.
+type SettingsChange struct {
+	Language     *string `json:"language"`
+	BatterySaver *bool   `json:"battery_saver"`
+	Vibrate      *bool   `json:"vibrate"`
+}
+
+// recentRecipients is how many earlier recipients the app suggests.
+const recentRecipients = 5
 
 // Sync limits per request, beyond which the device sends the rest next time.
 const (
@@ -277,9 +317,20 @@ func (s *SyncService) Sync(ctx context.Context, p *Principal, req SyncRequest, c
 	if err := s.q.UpsertSyncMetadata(ctx, db.UpsertSyncMetadataParams{
 		DriverID: p.UserID, DeviceID: toText(truncate(req.DeviceID, 100)), AppVersion: toText(truncate(req.AppVersion, 40)),
 		BatteryLevel: battery, PendingSyncCount: pending, StorageUsedKb: storageKB,
-		ClockOffsetSeconds: clockOffset, TrackingPaused: req.TrackingPaused,
+		ClockOffsetSeconds: clockOffset, TrackingPaused: req.TrackingPaused, PowerSaving: req.PowerSaving,
 	}); err != nil {
 		s.log.Error().Err(err).Msg("upsert sync metadata")
+	}
+	if st := req.Settings; st != nil {
+		lang := st.Language
+		if lang != nil && *lang != "en" && *lang != "am" {
+			lang = nil
+		}
+		if err := s.q.SetDriverAppSettings(ctx, db.SetDriverAppSettingsParams{
+			Language: lang, BatterySaver: st.BatterySaver, Vibrate: st.Vibrate, ID: p.UserID, TenantID: p.TenantID,
+		}); err != nil {
+			return nil, err
+		}
 	}
 	_ = s.q.AcknowledgeDriverAlerts(ctx, db.AcknowledgeDriverAlertsParams{DriverID: p.UserID, AlertType: AlertDriverOffline})
 
@@ -320,7 +371,7 @@ func (s *SyncService) applyPOD(ctx context.Context, a Actor, in SyncPOD, at time
 	}
 	pod := PODInput{
 		RecipientName: in.RecipientName, RecipientPhone: in.RecipientPhone, Notes: in.Notes,
-		Lat: in.Lat, Lng: in.Lng, RecordedAt: at, ClientID: in.ClientID,
+		Lat: in.Lat, Lng: in.Lng, LocationReason: in.LocationReason, RecordedAt: at, ClientID: in.ClientID,
 	}
 	// Whatever will be refused is refused before any image is stored.
 	if err := pod.Check(); err != nil {
@@ -403,8 +454,29 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 			plates[v.ID] = v.PlateNumber
 		}
 	}
+	phones := make([]string, 0, len(ships))
 	for _, sh := range ships {
-		resp.Shipments = append(resp.Shipments, toDriverShipment(sh, plates[sh.VehicleID]))
+		phones = append(phones, sh.CustomerPhone)
+	}
+	signed := map[string][]string{}
+	if len(phones) > 0 {
+		rows, err := s.q.ListRecentRecipients(ctx, db.ListRecentRecipientsParams{TenantID: p.TenantID, Phones: phones})
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			if len(signed[r.CustomerPhone]) < recentRecipients {
+				signed[r.CustomerPhone] = append(signed[r.CustomerPhone], r.RecipientName)
+			}
+		}
+	}
+	for _, sh := range ships {
+		ds := toDriverShipment(sh, plates[sh.VehicleID])
+		ds.RecentRecipients = signed[sh.CustomerPhone]
+		if ds.RecentRecipients == nil {
+			ds.RecentRecipients = []string{}
+		}
+		resp.Shipments = append(resp.Shipments, ds)
 	}
 
 	if since != nil {
@@ -453,6 +525,10 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 	resp.Driver = DriverProfile{
 		ID: u.ID.String(), Name: u.FullName, Phone: deref(u.Phone), Company: p.TenantName,
 		MustChangePIN: u.PasswordResetRequired, SMSNumber: s.cfg.SMSNumber,
+		Settings: DriverSettings{Language: deref(u.Language), BatterySaver: u.AppBatterySaver, Vibrate: u.AppVibrate},
+	}
+	if t, err := s.q.GetTenantByID(ctx, p.TenantID); err == nil {
+		resp.Driver.OfficePhone = deref(t.ContactPhone)
 	}
 	if u.VehicleID.Valid {
 		if v, err := s.q.GetVehicleByID(ctx, db.GetVehicleByIDParams{ID: u.VehicleID, TenantID: p.TenantID}); err == nil {
@@ -479,6 +555,7 @@ func toDriverShipment(sh db.Shipment, plate string) DriverShipment {
 		DestinationLat:     sh.DestinationLat,
 		DestinationLng:     sh.DestinationLng,
 		DestinationPrecise: sh.DestinationPrecise,
+		ToleranceM:         geo.DeliveryTolerance(sh.DestinationPrecise),
 		CustomerName:       sh.CustomerName,
 		CustomerPhone:      sh.CustomerPhone,
 		Cargo:              deref(sh.CargoDescription),

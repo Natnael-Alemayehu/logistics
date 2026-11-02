@@ -48,7 +48,11 @@ func (s *Server) apiDriverConfig(w http.ResponseWriter, r *http.Request) {
 		"pod_from":      append(append([]string{}, model.OnRoadStatuses...), model.StatusAssigned),
 		"delay_reasons": reasonList(model.DelayReasons),
 		"issue_reasons": reasonList(model.IssueReasons),
-		"max_photos":    3,
+		// Asked for when a delivery is recorded away from the destination.
+		"location_reasons": reasonList(model.LocationReasons),
+		"max_photos":       3,
+		"tile_url":         s.cfg.MapTileURL,
+		"tile_credit":      s.cfg.MapTileAttribution,
 	})
 }
 

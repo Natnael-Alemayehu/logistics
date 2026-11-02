@@ -20,7 +20,7 @@ perfect coverage. Drivers with feature phones report by SMS instead
 | For | Where | What they get |
 |---|---|---|
 | Dispatchers, fleet managers, admins | `/app` | A live fleet map with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences |
-| Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) and a sync indicator that shows what is still waiting to send |
+| Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) with a warning away from the drop-off, distance and direction to the drop-off, battery saver, settings that follow the driver to a new phone, and a sync indicator that shows what is still waiting to send and when the signal is weak |
 | Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
 | Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
 | Company admins | `/app/billing` | The plan and this month's usage, plan changes, printable invoices, payment by telebirr or CBE Birr, or bank transfer details |
@@ -96,7 +96,9 @@ One Go binary serves everything:
   /api/v1/driver/sync` exchanges everything in one gzip-compressed request.
   Every change carries a client ID, so a resend after a lost response is
   harmless. When the phone and the office disagree, the office wins and the
-  driver is told why.
+  driver is told why. The app asks the browser to keep its data
+  (`navigator.storage.persist()`), so unsent deliveries survive a full
+  phone.
 - **SMS and email go through outboxes** in the database, sent by a background
   worker with retries, so a provider outage delays a message rather than
   losing it. Customers can text STOP to opt out.
@@ -108,8 +110,9 @@ One Go binary serves everything:
   binary, which migrates the database on start.
 
 Tradeoff: a web app cannot record GPS while it is fully closed, so positions
-come while the app is open or in the background on Android. Status changes,
-proof of delivery and SMS reporting don't depend on GPS.
+come while the app is open or in the background on Android. The app can keep
+the screen on while charging for long drives. Status changes, proof of
+delivery and SMS reporting don't depend on GPS.
 
 ### Code map
 
@@ -166,7 +169,9 @@ make test-integration   # end-to-end: signup → book → driver sync → POD �
                         # replayed syncs, conflicts, tenant isolation, roles, SMS commands,
                         # accounts, billing from trial to renewal, upgrade and refund, and
                         # dispatch tools: bulk assign, saved views, broadcasts, alert emails,
-                        # route deviation, location history and report filters
+                        # route deviation, location history and report filters, and the
+                        # driver app: settings across phones, deliveries away from the
+                        # drop-off, suggested recipients
 ```
 
 The integration tests create a scratch database on the server from `make db`

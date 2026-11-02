@@ -189,6 +189,9 @@ type Querier interface {
 	ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error)
 	ListPublicShipmentEvents(ctx context.Context, shipmentID pgtype.UUID) ([]ListPublicShipmentEventsRow, error)
 	ListRecentPayments(ctx context.Context, limit int32) ([]ListRecentPaymentsRow, error)
+	// Who signed for each customer's deliveries in the last year, newest first,
+	// so the driver app can suggest the name (AC-020.4).
+	ListRecentRecipients(ctx context.Context, arg ListRecentRecipientsParams) ([]ListRecentRecipientsRow, error)
 	ListRecentShipmentsByDriver(ctx context.Context, arg ListRecentShipmentsByDriverParams) ([]Shipment, error)
 	ListRecentShipmentsByVehicle(ctx context.Context, arg ListRecentShipmentsByVehicleParams) ([]ListRecentShipmentsByVehicleRow, error)
 	ListRefundsDue(ctx context.Context) ([]ListRefundsDueRow, error)
@@ -312,6 +315,9 @@ type Querier interface {
 	SetCustomerConfirmation(ctx context.Context, arg SetCustomerConfirmationParams) (Shipment, error)
 	// A problem report: the customer has answered but not confirmed receipt.
 	SetCustomerFeedback(ctx context.Context, arg SetCustomerFeedbackParams) (Shipment, error)
+	// The driver app's settings, chosen on the phone (FR-026 AC-026.6). The
+	// phone sends only those the driver changed; the rest stay as they are.
+	SetDriverAppSettings(ctx context.Context, arg SetDriverAppSettingsParams) error
 	SetDriverVehicle(ctx context.Context, arg SetDriverVehicleParams) error
 	SetEmailVerified(ctx context.Context, arg SetEmailVerifiedParams) (int64, error)
 	SetEnterpriseOffer(ctx context.Context, arg SetEnterpriseOfferParams) error

@@ -36,7 +36,9 @@ type DriverPin struct {
 	At       time.Time  `json:"at"`
 	LastSync *time.Time `json:"last_sync"`
 	Paused   bool       `json:"paused"`
-	State    string     `json:"state"`
+	// PowerSaving: the phone records a position every 15 minutes.
+	PowerSaving bool   `json:"power_saving"`
+	State       string `json:"state"`
 	// Region is the region of the nearest known town, for the map filter.
 	Region string `json:"region"`
 }
@@ -100,7 +102,7 @@ func (s *TrackingService) Map(ctx context.Context, tenantID pgtype.UUID) (*MapDa
 		m.Drivers = append(m.Drivers, DriverPin{
 			ID: l.DriverID.String(), Name: l.DriverName, Phone: deref(l.DriverPhone),
 			Lat: l.Latitude, Lng: l.Longitude, SpeedKPH: numericOr(l.SpeedKph), Battery: l.BatteryLevel,
-			At: l.RecordedAt.Time, LastSync: timePtr(l.LastSyncAt), Paused: deref(l.TrackingPaused),
+			At: l.RecordedAt.Time, LastSync: timePtr(l.LastSyncAt), Paused: deref(l.TrackingPaused), PowerSaving: l.PowerSaving,
 			State: ConnectionState(last, now), Region: regionAt(l.Latitude, l.Longitude),
 		})
 	}

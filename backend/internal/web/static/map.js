@@ -171,7 +171,7 @@
         document.createElement("br"),
         d.phone ? link("tel:" + d.phone, d.phone) : null,
         text("div", "Position " + ago(d.at) + (d.speed_kph > 3 ? " · " + Math.round(d.speed_kph) + " km/h" : ""), "muted"),
-        d.battery != null ? text("div", "Battery " + d.battery + "%", "muted") : null,
+        d.battery != null ? text("div", "Battery " + d.battery + "%" + (d.power_saving ? " · saving battery, a position every 15 min" : ""), "muted") : null,
         d.paused ? text("div", "Location sharing is off", "text-warn") : null,
         list || text("div", "No shipment assigned", "muted"),
         link("/app/drivers/" + d.id, "Driver page →"),

@@ -4,11 +4,12 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.0";
+  const VERSION = "1.1.0";
   const API = "/api/v1";
   const ON_ROAD = ["in_transit", "delayed", "arrived", "issue"];
   const ACTIVE = ["assigned", ...ON_ROAD];
   const MAX_PHOTOS = 3;
+  const DEFAULT_SETTINGS = { language: "", battery_saver: false, vibrate: true };
 
   // ---------------------------------------------------------------------------
   // Text. Amharic is the default for drivers whose phone is set to it.
@@ -45,7 +46,25 @@
       codeSent: "If this number belongs to a driver, a code is on its way.", version: "Version", deliveredAt: "Delivered",
       shipmentGone: "This shipment is no longer assigned to you.", install: "Install the app", installHelp: "Add it to your home screen so it opens without the browser.",
       locationOff: "Location is off", battery: "Battery", appUpdated: "App updated.", pinChanged: "PIN changed.",
-      kg: "kg",
+      kg: "kg", m: "m", km: "km", weak: "Weak signal", settings: "Settings", photoUnreadable: "The photo couldn't be read. Take it again.",
+      batterySaver: "Battery saver", batterySaverHelp: "Records your position every 15 minutes and syncs less often. It turns on by itself when the battery is below 20%.",
+      savingNow: "Saving battery now: the battery is low.", vibrate: "Vibrate when the office writes",
+      keepAwake: "Keep the screen on while charging", keepAwakeHelp: "Your position keeps updating on long drives. Only while the phone is plugged in.",
+      storage: "Storage on this phone", storageUse: "{used} used, room for {free} more",
+      storageSafe: "Saved work is protected from automatic clean-up.",
+      storageUnsafe: "The phone may delete saved work when space runs low. Install the app to protect it.",
+      storageLow: "Your phone is almost full. Deliveries not sent yet are kept, but free up space so new photos can be saved.",
+      clearData: "Clear saved data", clearDataHelp: "Removes shipments and messages saved on this phone, then downloads your current work again. Updates not sent yet are kept.",
+      clearDataConfirm: "Clear saved data now?", clearDataDone: "Saved data cleared.", clearDataOffline: "Needs signal, so your current work can download again.",
+      help: "Help", callOffice: "Call the office",
+      awayFrom: "{d} {dir} of you, in a straight line", fixFrom: "From your position {t}",
+      dir_n: "north", dir_ne: "north-east", dir_e: "east", dir_se: "south-east", dir_s: "south", dir_sw: "south-west", dir_w: "west", dir_nw: "north-west",
+      farTitle: "You're {d} from the drop-off", farHelp: "Deliveries should be recorded within {tol} of it. Go closer and try again, or say why you're delivering here.",
+      whyHere: "Why here?", deliverAnyway: "Deliver here anyway", goBack: "Go back", needWhy: "Choose why you're delivering here.", needWhyNote: "Say why in the notes.",
+      suggested: "Suggestions", quickNotes: "Quick notes", quickMessages: "Quick messages", you: "You", dropOff: "Drop-off",
+      locationOffHere: "Location sharing is off, so the distance isn't shown.",
+      note_security: "Left with security guard", note_reception: "Left at reception", note_partial: "Partial delivery", note_damaged: "Package damaged upon arrival",
+      quick_onway: "On my way", quick_unloading: "Waiting to unload", quick_callme: "Please call me", quick_roadclosed: "The road ahead is closed",
     },
     am: {
       signIn: "ግባ", phone: "ስልክ ቁጥር", pin: "ፒን", forgotPin: "ፒንዎን ረሱ?",
@@ -78,7 +97,25 @@
       codeSent: "ቁጥሩ የሹፌር ከሆነ ኮድ ይላካል።", version: "ስሪት", deliveredAt: "የተረከበው",
       shipmentGone: "ይህ ጭነት ከእንግዲህ ለእርስዎ አልተመደበም።", install: "መተግበሪያውን ጫን", installHelp: "ያለ ብሮውዘር እንዲከፈት ወደ መነሻ ገጽ ያክሉት።",
       locationOff: "አካባቢ ጠፍቷል", battery: "ባትሪ", appUpdated: "መተግበሪያው ተዘምኗል።", pinChanged: "ፒን ተቀይሯል።",
-      kg: "ኪ.ግ",
+      kg: "ኪ.ግ", m: "ሜ", km: "ኪ.ሜ", weak: "ደካማ ኔትወርክ", settings: "ቅንብሮች", photoUnreadable: "ፎቶው ሊነበብ አልቻለም። እንደገና ያንሱ።",
+      batterySaver: "ባትሪ ቆጣቢ", batterySaverHelp: "አካባቢዎን በየ15 ደቂቃው ይመዘግባል፣ ብዙ ጊዜም አያመሳስልም። ባትሪው ከ20% በታች ሲሆን በራሱ ይበራል።",
+      savingNow: "አሁን ባትሪ እየቆጠበ ነው፦ ባትሪው ዝቅተኛ ነው።", vibrate: "ቢሮው ሲጽፍ ይንዘር",
+      keepAwake: "ቻርጅ ላይ ሲሆን ስክሪኑ አይጥፋ", keepAwakeHelp: "በረጅም ጉዞ አካባቢዎ መዘመኑን ይቀጥላል። ስልኩ ቻርጅ ላይ ሲሆን ብቻ።",
+      storage: "በዚህ ስልክ ያለ ማከማቻ", storageUse: "{used} ጥቅም ላይ ውሏል፣ ተጨማሪ {free} ቦታ አለ",
+      storageSafe: "የተቀመጠው ሥራ በራሱ እንዳይጠፋ ተጠብቋል።",
+      storageUnsafe: "ቦታ ሲያንስ ስልኩ የተቀመጠ ሥራ ሊያጠፋ ይችላል። ለመጠበቅ መተግበሪያውን ይጫኑ።",
+      storageLow: "ስልክዎ ሊሞላ ነው። ያልተላኩ ርክክቦች ይቀመጣሉ፣ ነገር ግን አዲስ ፎቶ እንዲቀመጥ ቦታ ያስለቅቁ።",
+      clearData: "የተቀመጠ መረጃ አጥፋ", clearDataHelp: "በዚህ ስልክ የተቀመጡ ጭነቶችንና መልዕክቶችን ያጠፋል፣ ከዚያ የአሁኑን ሥራዎን እንደገና ያወርዳል። ያልተላኩ መረጃዎች ይቀመጣሉ።",
+      clearDataConfirm: "የተቀመጠውን መረጃ አሁን ላጥፋ?", clearDataDone: "የተቀመጠው መረጃ ጠፍቷል።", clearDataOffline: "የአሁኑ ሥራዎ እንደገና እንዲወርድ ኔትወርክ ያስፈልጋል።",
+      help: "እርዳታ", callOffice: "ለቢሮ ደውል",
+      awayFrom: "ከእርስዎ በስተ{dir} {d}፣ በቀጥታ መስመር", fixFrom: "ከ{t} አካባቢዎ",
+      dir_n: "ሰሜን", dir_ne: "ሰሜን ምሥራቅ", dir_e: "ምሥራቅ", dir_se: "ደቡብ ምሥራቅ", dir_s: "ደቡብ", dir_sw: "ደቡብ ምዕራብ", dir_w: "ምዕራብ", dir_nw: "ሰሜን ምዕራብ",
+      farTitle: "ከመድረሻው {d} ርቀዋል", farHelp: "ርክክብ ከመድረሻው በ{tol} ውስጥ መመዝገብ አለበት። ቀረብ ብለው እንደገና ይሞክሩ፣ ወይም ለምን እዚህ እንደሚያስረክቡ ይግለጹ።",
+      whyHere: "ለምን እዚህ?", deliverAnyway: "ቢሆንም እዚህ አስረክብ", goBack: "ተመለስ", needWhy: "ለምን እዚህ እንደሚያስረክቡ ይምረጡ።", needWhyNote: "ምክንያቱን በማስታወሻው ይጻፉ።",
+      suggested: "ጥቆማዎች", quickNotes: "ፈጣን ማስታወሻ", quickMessages: "ፈጣን መልዕክቶች", you: "እርስዎ", dropOff: "መድረሻ",
+      locationOffHere: "አካባቢ ማጋራት ስለጠፋ ርቀቱ አይታይም።",
+      note_security: "ለጥበቃ ተሰጥቷል", note_reception: "ለእንግዳ መቀበያ ተሰጥቷል", note_partial: "ከፊል ርክክብ", note_damaged: "ጭነቱ ሲደርስ ተጎድቶ ነበር",
+      quick_onway: "በመንገድ ላይ ነኝ", quick_unloading: "ለማውረድ እየጠበቅሁ ነው", quick_callme: "እባክዎ ይደውሉልኝ", quick_roadclosed: "ከፊት ያለው መንገድ ተዘግቷል",
     },
   };
   const STATUS_AM = {
@@ -89,6 +126,7 @@
     road_conditions: "የመንገድ ሁኔታ", weather: "የአየር ሁኔታ", security_checkpoint: "የፍተሻ ኬላ", mechanical_issue: "የመኪና ብልሽት",
     traffic: "የትራፊክ መጨናነቅ", accident: "አደጋ", breakdown: "መኪናው ተበላሽቷል", recipient_unavailable: "ተቀባዩ የለም",
     wrong_address: "የተሳሳተ አድራሻ", cargo_damaged: "ጭነቱ ተጎድቷል", recipient_refused: "ተቀባዩ አልተቀበለም", other: "ሌላ",
+    met_elsewhere: "ተቀባዩ በሌላ ቦታ ተቀበለ", address_wrong: "በጭነቱ ላይ ያለው መድረሻ ተሳስቷል", gps_inaccurate: "እዚህ የስልኩ አካባቢ ትክክል አይደለም",
   };
 
   // ---------------------------------------------------------------------------
@@ -138,8 +176,13 @@
   const S = {
     token: null, driver: null, config: null, deviceId: null, cursor: null, lang: "en",
     shipments: new Map(), outbox: [], messages: [], seen: new Set(), notices: [],
-    tracking: true, lastFix: null, lastRecorded: null, battery: null, pendingLocations: 0,
-    online: navigator.onLine, syncing: false, lastSync: null, failures: 0, installPrompt: null,
+    tracking: true, lastFix: null, lastRecorded: null, battery: null, charging: false, pendingLocations: 0,
+    online: navigator.onLine, weak: false, syncing: false, lastSync: null, failures: 0, installPrompt: null,
+    // The driver's choices, kept on the server too. changed: what was
+    // changed here since the server last heard; rev tells a change made
+    // during a sync.
+    settings: { ...DEFAULT_SETTINGS }, changed: {}, settingsRev: 0,
+    keepAwake: false, storage: null, persisted: false, parked: false, anchor: null,
   };
 
   function t(key, vars) {
@@ -154,7 +197,7 @@
   }
   function reasonLabel(code) {
     if (S.lang === "am" && REASON_AM[code]) return REASON_AM[code];
-    const list = S.config ? [...S.config.delay_reasons, ...S.config.issue_reasons] : [];
+    const list = S.config ? [...S.config.delay_reasons, ...S.config.issue_reasons, ...(S.config.location_reasons || [])] : [];
     const found = list.find((x) => x.code === code);
     return found ? found.label : code;
   }
@@ -205,6 +248,15 @@
     if (d.toDateString() !== now.toDateString()) Object.assign(opts, { weekday: "short", day: "numeric", month: "short" });
     return d.toLocaleString(S.lang === "am" ? "am-ET" : "en-GB", opts);
   }
+  function fmtDist(m) {
+    if (m < 1000) return Math.max(10, Math.round(m / 10) * 10) + " " + t("m");
+    return (m < 10000 ? (m / 1000).toFixed(1) : Math.round(m / 1000)) + " " + t("km");
+  }
+  function fmtBytes(b) {
+    if (b < 1048576) return Math.max(1, Math.round(b / 1024)) + " KB";
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + " MB";
+    return (b / 1073741824).toFixed(1) + " GB";
+  }
   function ago(ms) {
     const s = (Date.now() - ms) / 1000;
     if (s < 60) return S.lang === "am" ? "አሁን" : "just now";
@@ -230,7 +282,7 @@
     return new Response(stream).arrayBuffer();
   }
 
-  async function api(path, { method = "GET", body, auth = true, compress = false } = {}) {
+  async function api(path, { method = "GET", body, auth = true, compress = false, timeout = 30000 } = {}) {
     const headers = { Accept: "application/json" };
     let payload;
     if (body !== undefined) {
@@ -245,15 +297,21 @@
       }
     }
     if (auth && S.token) headers.Authorization = "Bearer " + S.token;
-    const res = await fetch(API + path, { method, headers, body: payload, cache: "no-store" });
-    let data = null;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeout);
     try {
-      data = await res.json();
-    } catch {
-      /* empty body */
+      const res = await fetch(API + path, { method, headers, body: payload, cache: "no-store", signal: ctl.signal });
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (e) {
+        if (ctl.signal.aborted) throw e; // empty bodies are fine, cut-off ones aren't
+      }
+      if (!res.ok) throw new ApiError(res.status, data);
+      return data;
+    } finally {
+      clearTimeout(timer);
     }
-    if (!res.ok) throw new ApiError(res.status, data);
-    return data;
   }
 
   // ---------------------------------------------------------------------------
@@ -310,6 +368,66 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Settings. They are kept on the server too, so a new phone starts the way
+  // the driver left the last one (AC-026.6). A change made here goes with the
+  // next sync, and until then the server's copy doesn't replace it.
+  // ---------------------------------------------------------------------------
+  async function changeSetting(key, value) {
+    S.settings = { ...S.settings, [key]: value };
+    S.changed = { ...S.changed, [key]: value };
+    S.settingsRev++;
+    await kvSet("settings", S.settings);
+    await kvSet("settingsChanged", S.changed);
+    applySettings();
+    scheduleSync(800);
+  }
+  function applySettings() {
+    if (S.settings.language) S.lang = S.settings.language;
+    document.documentElement.lang = S.lang;
+    updateTracking();
+  }
+  // The server's copy, for each setting not changed here since.
+  async function adoptSettings(server) {
+    if (!server) return;
+    const next = { ...S.settings };
+    if (server.language && !("language" in S.changed)) next.language = server.language;
+    if (!("battery_saver" in S.changed)) next.battery_saver = !!server.battery_saver;
+    if (!("vibrate" in S.changed)) next.vibrate = server.vibrate !== false;
+    if (JSON.stringify(next) === JSON.stringify(S.settings)) return;
+    S.settings = next;
+    await kvSet("settings", S.settings);
+    applySettings();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Storage. The browser is asked to keep this app's data when space runs
+  // low, so unsent deliveries survive (AC-014.7), and the office sees how much
+  // the app holds (AC-014.6).
+  // ---------------------------------------------------------------------------
+  async function storageEstimate() {
+    if (!navigator.storage || !navigator.storage.estimate) return null;
+    try {
+      const e = await navigator.storage.estimate();
+      return { usage: e.usage || 0, quota: e.quota || 0 };
+    } catch {
+      return null;
+    }
+  }
+  // Short of space: under 50 MB left, or more than 80% of the allowance used.
+  function storageLow() {
+    const st = S.storage;
+    return !!(st && st.quota && (st.quota - st.usage < 50 * 1048576 || st.usage / st.quota > 0.8));
+  }
+  async function protectStorage() {
+    if (!navigator.storage || !navigator.storage.persist) return;
+    try {
+      S.persisted = (await navigator.storage.persisted()) || (await navigator.storage.persist());
+    } catch {
+      S.persisted = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Sync
   // ---------------------------------------------------------------------------
   let syncTimer = null;
@@ -331,7 +449,7 @@
     renderPill();
     try {
       const statuses = S.outbox.filter((o) => o.kind === "status").map((o) => o.payload);
-      const pods = S.outbox.filter((o) => o.kind === "pod").slice(0, 2).map((o) => o.payload);
+      const pods = S.outbox.filter((o) => o.kind === "pod").slice(0, S.weak ? 1 : 2).map((o) => o.payload);
       const messages = S.outbox.filter((o) => o.kind === "message").map((o) => o.payload);
       const locKeys = [];
       const locations = [];
@@ -347,26 +465,45 @@
           };
         });
       });
+      S.storage = await storageEstimate();
+      const rev = S.settingsRev;
+      const changed = Object.keys(S.changed).length ? S.changed : undefined;
       const body = {
         device_id: S.deviceId, app_version: VERSION, device_time: new Date().toISOString(),
-        battery: S.battery, pending: S.outbox.length, tracking_paused: !S.tracking,
+        battery: S.battery, pending: S.outbox.length, tracking_paused: !S.tracking, power_saving: saving(),
+        storage_kb: S.storage ? Math.round(S.storage.usage / 1024) : null,
+        settings: changed,
         since: S.cursor, statuses, pods, locations, messages,
       };
-      const resp = await api("/driver/sync", { method: "POST", body, compress: true });
+      const started = Date.now();
+      // Long enough for photos over a slow connection; a stalled one ends.
+      const resp = await api("/driver/sync", { method: "POST", body, compress: true, timeout: pods.length ? 180000 : 60000 });
+      if (changed && rev === S.settingsRev) {
+        S.changed = {};
+        await kvSet("settingsChanged", {});
+      }
       await applySync(resp, locKeys);
       S.online = true;
       S.failures = 0;
+      // A round trip this slow means a weak signal (AC-015.1). Photos take
+      // longer anyway.
+      S.weak = Date.now() - started > (pods.length ? 60000 : 10000);
       S.lastSync = Date.now();
       await kvSet("lastSync", S.lastSync);
-      // More waiting (PODs go two at a time): carry on straight away.
-      scheduleSync(S.outbox.some((o) => o.kind === "pod") ? 500 : 60000);
+      // More waiting (PODs go two at a time): carry on straight away. Saving
+      // battery, the app syncs every five minutes unless the driver acts.
+      scheduleSync(S.outbox.some((o) => o.kind === "pod") ? 500 : saving() ? 300000 : 60000);
     } catch (err) {
       S.failures++;
       if (err instanceof ApiError && err.status === 401) {
         await signedOut();
         return;
       }
-      if (!(err instanceof ApiError)) S.online = false;
+      // The phone says it is online, but the server can't be reached.
+      if (!(err instanceof ApiError)) {
+        if (!navigator.onLine) S.online = false;
+        else if (S.failures >= 2) S.weak = true;
+      }
       scheduleSync(Math.min(300000, 15000 * 2 ** Math.min(S.failures, 4)));
     } finally {
       S.syncing = false;
@@ -415,6 +552,13 @@
       }
     }
 
+    // The driver's settings first: they say whether a new message vibrates.
+    if (resp.driver) {
+      S.driver = { ...S.driver, ...resp.driver };
+      await kvSet("driver", S.driver);
+      await adoptSettings(resp.driver.settings);
+    }
+
     // Messages from the office.
     let fresh = 0;
     const known = new Set(S.messages.map((m) => m.id));
@@ -429,12 +573,7 @@
     await kvSet("messages", S.messages);
     if (fresh) {
       toast(t("messages") + ": " + S.messages[0].text);
-      if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
-    }
-
-    if (resp.driver) {
-      S.driver = { ...S.driver, ...resp.driver };
-      await kvSet("driver", S.driver);
+      if (S.settings.vibrate && navigator.vibrate) navigator.vibrate([120, 80, 120]);
     }
     S.cursor = resp.cursor;
     await kvSet("cursor", S.cursor);
@@ -466,22 +605,96 @@
   }
 
   // ---------------------------------------------------------------------------
-  // GPS
+  // GPS (FR-019). A position a minute while moving, one every five minutes
+  // when parked. Battery saver, chosen or on by itself below 20% when not
+  // charging, uses the coarse location and keeps one every 15 minutes. After
+  // 10 minutes parked the GPS goes off, and a check every 5 minutes (15 when
+  // saving) notices when the truck moves again.
   // ---------------------------------------------------------------------------
-  let watchId = null;
+  const MOVED_M = 75;
+  const PARKED_MS = 10 * 60000;
+  let watchId = null, watchSaving = null, parkTimer = null;
+  function saving() {
+    return !!(S.settings.battery_saver || (S.battery != null && S.battery < 20 && !S.charging));
+  }
   function onRoadShipment() {
     const list = [...S.shipments.values()].map(effective);
     return list.find((s) => ON_ROAD.includes(s.status)) || list.find((s) => s.status === "assigned");
   }
+  function wantTracking() {
+    return !!(S.token && S.tracking && navigator.geolocation && onRoadShipment());
+  }
   function updateTracking() {
-    const want = S.token && S.tracking && navigator.geolocation && onRoadShipment();
-    if (want && watchId == null) {
-      watchId = navigator.geolocation.watchPosition(onFix, () => {}, { enableHighAccuracy: true, maximumAge: 30000, timeout: 60000 });
-    } else if (!want) stopTracking();
+    if (!wantTracking()) return stopTracking();
+    updateWakeLock();
+    if (S.parked) return; // the parked checks hold the GPS until the truck moves
+    const sv = saving();
+    if (watchId != null && watchSaving === sv) return;
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    watchSaving = sv;
+    watchId = navigator.geolocation.watchPosition(onFix, () => {}, sv
+      ? { enableHighAccuracy: false, maximumAge: 300000, timeout: 120000 }
+      : { enableHighAccuracy: true, maximumAge: 30000, timeout: 60000 });
   }
   function stopTracking() {
     if (watchId != null) navigator.geolocation.clearWatch(watchId);
     watchId = null;
+    clearTimeout(parkTimer);
+    S.parked = false;
+    updateWakeLock();
+  }
+  const checkEvery = () => (saving() ? 15 : 5) * 60000;
+  function park() {
+    if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    S.parked = true;
+    clearTimeout(parkTimer);
+    parkTimer = setTimeout(parkedCheck, checkEvery());
+  }
+  // The driver doing something, or the truck moving, brings the GPS back.
+  function unpark() {
+    if (!S.parked) return;
+    clearTimeout(parkTimer);
+    S.parked = false;
+    S.anchor = null;
+    updateTracking();
+  }
+  function parkedCheck() {
+    if (!wantTracking()) return stopTracking();
+    const again = () => (parkTimer = setTimeout(parkedCheck, checkEvery()));
+    navigator.geolocation.getCurrentPosition(async (p) => {
+      const fix = fixOf(p);
+      S.lastFix = fix;
+      if (fix.acc <= maxAccuracy()) await record(p, fix);
+      if (S.anchor && metres(S.anchor, fix) > Math.max(150, fix.acc)) return unpark();
+      again();
+    }, again, { enableHighAccuracy: !saving(), maximumAge: 60000, timeout: 60000 });
+  }
+  // Coarse positions are all battery saver gets on the open road.
+  const maxAccuracy = () => (saving() ? 3000 : 500);
+  const fixOf = (p) => ({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, time: Date.now() });
+
+  // Keep the screen on while charging, if the driver asked: the browser
+  // only tracks while the app is open.
+  let wakeLock = null, wakeLockBusy = false;
+  async function updateWakeLock() {
+    const want = S.keepAwake && S.charging && !document.hidden && wantTracking() && "wakeLock" in navigator;
+    if (wakeLockBusy || want === !!wakeLock) return;
+    wakeLockBusy = true;
+    try {
+      if (want) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => (wakeLock = null));
+      } else {
+        const w = wakeLock;
+        wakeLock = null;
+        await w.release();
+      }
+    } catch {
+      wakeLock = null;
+    } finally {
+      wakeLockBusy = false;
+    }
   }
   function metres(a, b) {
     const R = 6371000, rad = Math.PI / 180;
@@ -490,13 +703,24 @@
     return 2 * R * Math.asin(Math.sqrt(x));
   }
   async function onFix(p) {
-    const fix = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, time: Date.now() };
+    const fix = fixOf(p);
     S.lastFix = fix;
-    if (fix.acc > 500) return; // too vague to be useful
+    if (fix.acc > maxAccuracy()) return; // too vague to be useful
+    // Parked: no further than 75 m from where the truck stopped, for 10 minutes.
+    if (!S.anchor || metres(S.anchor, fix) > Math.max(MOVED_M, fix.acc)) S.anchor = fix;
+    else if (fix.time - S.anchor.time > PARKED_MS) {
+      await record(p, fix);
+      return park();
+    }
     const last = S.lastRecorded;
     const elapsed = last ? fix.time - last.time : Infinity;
-    // A point a minute when moving, one every five minutes when parked.
-    if (last && !(elapsed >= 60000 && metres(last, fix) > 75) && elapsed < 300000) return;
+    if (last) {
+      if (saving() && elapsed < 15 * 60000) return;
+      if (!saving() && !(elapsed >= 60000 && metres(last, fix) > MOVED_M) && elapsed < 300000) return;
+    }
+    await record(p, fix);
+  }
+  async function record(p, fix) {
     S.lastRecorded = fix;
     const sh = onRoadShipment();
     await tx("locations", "readwrite", (s) =>
@@ -560,10 +784,11 @@
     let cls = "ok", txt = t("allSent");
     if (S.syncing) (cls = "busy"), (txt = t("syncing"));
     else if (!S.online || !navigator.onLine) (cls = "off"), (txt = waiting ? t("waiting", { n: waiting }) : t("offline"));
+    else if (S.weak) (cls = "weak"), (txt = waiting ? t("waiting", { n: waiting }) : t("weak"));
     else if (waiting) (cls = "wait"), (txt = t("waiting", { n: waiting }));
     pill.className = "pill-sync " + cls;
     pill.textContent = txt;
-    pill.title = S.lastSync ? t("lastSync", { t: ago(S.lastSync) }) : t("neverSynced");
+    pill.title = (S.weak ? t("weak") + " · " : "") + (S.lastSync ? t("lastSync", { t: ago(S.lastSync) }) : t("neverSynced"));
   }
 
   // ---- sign in ------------------------------------------------------------
@@ -581,7 +806,7 @@
 
     const langSwitch = () =>
       h("div", { class: "lang" },
-        ["en", "am"].map((l) => h("button", { type: "button", class: S.lang === l ? "on" : "", onclick: async () => { S.lang = l; await kvSet("lang", l); draw(); } }, l === "en" ? "English" : "አማርኛ")));
+        ["en", "am"].map((l) => h("button", { type: "button", class: S.lang === l ? "on" : "", onclick: async () => { pickedAtLogin = true; await changeSetting("language", l); draw(); } }, l === "en" ? "English" : "አማርኛ")));
 
     function content() {
       err.textContent = "";
@@ -638,18 +863,26 @@
     return wrap;
   }
 
+  let pickedAtLogin = false; // the language was chosen on the sign-in screen
   async function signedIn(res) {
     const prev = await kvGet("driver");
     if (prev && prev.id !== res.driver.id) {
-      // A different driver on this phone: nothing of the last one carries over.
+      // A different driver on this phone: nothing of the last one carries
+      // over, except the language just chosen to sign in.
       await Promise.all([clear("shipments"), clear("outbox"), clear("locations")]);
       S.shipments.clear();
       S.outbox = [];
       S.messages = [];
       S.cursor = null;
+      S.settings = { ...DEFAULT_SETTINGS, language: S.lang };
+      S.changed = pickedAtLogin ? { language: S.lang } : {};
       await kvSet("cursor", null);
       await kvSet("messages", []);
+      await kvSet("settings", S.settings);
+      await kvSet("settingsChanged", S.changed);
     }
+    pickedAtLogin = false;
+    protectStorage();
     S.token = res.token;
     S.driver = { ...res.driver, must_change_pin: res.must_change_pin };
     await kvSet("token", S.token);
@@ -714,6 +947,7 @@
     return h("div", {},
       header(t("myShipments")),
       h("main", { class: "page" },
+        storageLow() ? h("div", { class: "notice caution" }, h("p", { text: t("storageLow") }), h("a", { class: "btn link", href: "#/menu", text: t("storage") })) : null,
         S.notices.map((n) => h("div", { class: "notice" }, h("span", {}, h("strong", { text: t("rejected") + ": " }), n.text),
           h("button", { type: "button", class: "btn link", text: t("dismiss"), onclick: () => { S.notices = S.notices.filter((x) => x !== n); render(); } }))),
         unseen.length ? h("section", { class: "msgs" }, h("h2", { text: t("messages") }),
@@ -738,9 +972,72 @@
     await enqueue("status", { shipment_id: sh.id, status, reason, note, lat: fix.lat, lng: fix.lng, recorded_at: new Date().toISOString() });
     if (navigator.vibrate) navigator.vibrate(40);
     toast(t("statusSaved"));
+    unpark();
     updateTracking();
     go("#/s/" + sh.id);
     render();
+  }
+
+  // Straight-line distance and compass direction to the drop-off from the
+  // phone's last position, so it works without signal (FR-017).
+  const DIRS = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
+  function bearing(a, b) {
+    const rad = Math.PI / 180;
+    const dLng = (b.lng - a.lng) * rad;
+    const y = Math.sin(dLng) * Math.cos(b.lat * rad);
+    const x = Math.cos(a.lat * rad) * Math.sin(b.lat * rad) - Math.sin(a.lat * rad) * Math.cos(b.lat * rad) * Math.cos(dLng);
+    return (Math.atan2(y, x) / rad + 360) % 360;
+  }
+  const dropOff = (sh) => (sh.destination_lat != null ? { lat: sh.destination_lat, lng: sh.destination_lng } : null);
+  function awayLine(sh) {
+    const line = h("p", { class: "away" });
+    const draw = () => {
+      const f = S.lastFix, to = dropOff(sh);
+      if (!f || !to) return line.replaceChildren();
+      const dir = t("dir_" + DIRS[Math.round(bearing(f, to) / 45) % 8]);
+      line.replaceChildren(h("strong", { text: t("awayFrom", { d: fmtDist(metres(f, to)), dir }) }), h("br"),
+        h("span", { class: "muted small", text: t("fixFrom", { t: ago(f.time) }) }));
+    };
+    draw();
+    if (!S.tracking) line.replaceChildren(h("span", { class: "muted small", text: t("locationOffHere") }));
+    else if (!S.lastFix || Date.now() - S.lastFix.time > 5 * 60000) freshFix(15000).then(() => line.isConnected && draw());
+    return line;
+  }
+
+  // Leaflet is loaded the first time a map is shown, and only with signal.
+  let leafletP = null;
+  function leaflet() {
+    if (window.L) return Promise.resolve(window.L);
+    if (!leafletP) {
+      leafletP = new Promise((resolve, reject) => {
+        document.head.append(h("link", { rel: "stylesheet", href: "/static/vendor/leaflet/leaflet.css" }));
+        document.head.append(h("script", { src: "/static/vendor/leaflet/leaflet.js", onload: () => resolve(window.L), onerror: reject }));
+      }).catch((e) => {
+        leafletP = null;
+        throw e;
+      });
+    }
+    return leafletP;
+  }
+  function miniMap(sh) {
+    const to = dropOff(sh);
+    if (!to || !navigator.onLine || !S.config.tile_url) return null;
+    const box = h("div", { class: "minimap" });
+    const wrap = h("section", { class: "card map-card" }, box,
+      h("p", { class: "map-key small muted" }, h("span", { class: "dot you" }), t("you"), h("span", { class: "dot drop" }), t("dropOff")));
+    leaflet().then((L) => {
+      if (!box.isConnected) return;
+      const map = L.map(box, { zoomControl: false, scrollWheelZoom: false });
+      L.tileLayer(S.config.tile_url, { attribution: S.config.tile_credit, maxZoom: 18 }).addTo(map);
+      const dot = (ll, color) => L.circleMarker(ll, { radius: 8, weight: 3, color: "#fff", fillColor: color, fillOpacity: 1 }).addTo(map);
+      dot([to.lat, to.lng], "#b42b2b");
+      const f = S.lastFix;
+      if (f) {
+        dot([f.lat, f.lng], "#256abf");
+        map.fitBounds([[to.lat, to.lng], [f.lat, f.lng]], { padding: [24, 24], maxZoom: 15 });
+      } else map.setView([to.lat, to.lng], 13);
+    }).catch(() => wrap.remove());
+    return wrap;
   }
 
   function screenDetail(sh) {
@@ -769,9 +1066,11 @@
         h("section", { class: "card" },
           h("div", { class: "leg" }, h("span", { class: "leg-label", text: t("from") }), h("strong", { text: sh.origin_city }), h("span", { text: sh.origin_address })),
           h("div", { class: "leg" }, h("span", { class: "leg-label", text: t("to") }), h("strong", { text: sh.destination_city }), h("span", { text: sh.destination_address }),
+            ACTIVE.includes(sh.status) ? awayLine(sh) : null,
             ACTIVE.includes(sh.status) ? h("a", { class: "btn small", href: directions(sh), target: "_blank", rel: "noopener", text: "➜ " + t("navigate") }) : null),
           sh.planned_pickup && sh.status === "assigned" ? h("p", {}, h("span", { class: "muted", text: t("pickup") + ": " }), fmtTime(sh.planned_pickup)) : null,
           sh.eta && ACTIVE.includes(sh.status) ? h("p", {}, h("span", { class: "muted", text: t("due") + ": " }), fmtTime(sh.eta)) : null),
+        ACTIVE.includes(sh.status) ? miniMap(sh) : null,
         h("section", { class: "card" },
           h("p", { class: "muted small", text: t("customer") }),
           h("p", {}, h("strong", { text: sh.customer_name })),
@@ -817,7 +1116,10 @@
       toast(t("messageSaved"));
       go("#/s/" + sh.id);
       render();
-    } }, text, h("button", { class: "btn primary big", type: "submit", text: t("send") }), h("a", { class: "btn link", href: "#/s/" + sh.id, text: t("cancel") }));
+    } }, text,
+      h("div", { class: "chips", role: "group", "aria-label": t("quickMessages") },
+        ["onway", "unloading", "callme", "roadclosed"].map((k) => h("button", { type: "button", class: "chip", text: t("quick_" + k), onclick: () => { text.value = t("quick_" + k); text.focus(); } }))),
+      h("button", { class: "btn primary big", type: "submit", text: t("send") }), h("a", { class: "btn link", href: "#/s/" + sh.id, text: t("cancel") }));
     return h("div", {}, header(t("messageBtn"), "#/s/" + sh.id), h("main", { class: "page" }, form));
   }
 
@@ -913,7 +1215,7 @@
         photos.push(await compress(f));
         drawThumbs();
       } catch {
-        toast("Photo could not be read.");
+        toast(t("photoUnreadable"));
       }
     } });
     const addBtn = h("button", { type: "button", class: "btn", onclick: () => fileInput.click() }, "📷 " + t("addPhoto"));
@@ -923,6 +1225,44 @@
       addBtn.hidden = photos.length >= MAX_PHOTOS;
     }
     const submit = h("button", { class: "btn primary big", type: "submit", text: t("confirmDelivery") });
+
+    // Who usually signs for this customer, to save typing (AC-020.4).
+    const taken = new Set();
+    const names = [sh.customer_name, ...(sh.recent_recipients || [])].filter((n) => {
+      const k = (n || "").trim().toLowerCase();
+      return k && !taken.has(k) && taken.add(k);
+    }).slice(0, 6);
+    const suggestions = names.length ? h("div", { class: "chips", role: "group", "aria-label": t("suggested") },
+      names.map((n) => h("button", { type: "button", class: "chip", text: n, onclick: () => { name.value = n; phone.focus(); } }))) : null;
+    const quickNotes = h("div", { class: "chips", role: "group", "aria-label": t("quickNotes") },
+      ["security", "reception", "partial", "damaged"].map((k) => h("button", { type: "button", class: "chip", text: t("note_" + k), onclick: () => {
+        const cur = notes.value.trim(), add = t("note_" + k);
+        if (!cur.split("\n").includes(add)) notes.value = (cur ? cur + "\n" + add : add).slice(0, 500);
+        err.textContent = "";
+      } })));
+
+    // Too far from the drop-off (AC-022.2): the driver says why, or goes
+    // closer. The phone checks as the screen opens, before anyone signs,
+    // and again with the position the delivery is saved with.
+    let why = "";
+    const far = h("div", { class: "far", hidden: true });
+    const distance = (fix) => (fix && dropOff(sh) && sh.tolerance_m ? metres(fix, dropOff(sh)) : 0);
+    function drawFar(d) {
+      far.hidden = false;
+      submit.textContent = t("deliverAnyway");
+      far.replaceChildren(
+        h("p", {}, h("strong", { text: t("farTitle", { d: fmtDist(d) }) })),
+        h("p", { class: "small", text: t("farHelp", { tol: fmtDist(sh.tolerance_m) }) }),
+        h("p", { class: "small" }, h("strong", { text: t("whyHere") })),
+        h("div", { class: "choices" }, (S.config.location_reasons || []).map((r) =>
+          h("label", { class: "choice" }, h("input", { type: "radio", name: "why", value: r.code, checked: why === r.code, onchange: () => ((why = r.code), (err.textContent = "")) }), h("span", { text: reasonLabel(r.code) })))),
+        h("a", { class: "btn", href: "#/s/" + sh.id, text: t("goBack") }));
+    }
+    freshFix(15000).then((fix) => {
+      const d = distance(fix);
+      if (far.isConnected && d > sh.tolerance_m) drawFar(d);
+    });
+
     const form = h("form", { class: "stack", onsubmit: async (e) => {
       e.preventDefault();
       err.textContent = "";
@@ -931,9 +1271,24 @@
       submit.disabled = true;
       submit.textContent = t("locating");
       const fix = (await freshFix(10000)) || null;
+      const d = distance(fix);
+      const stop = (msg) => {
+        submit.disabled = false;
+        submit.textContent = t("deliverAnyway");
+        err.textContent = msg;
+        far.scrollIntoView({ block: "start" });
+      };
+      if (d > sh.tolerance_m) {
+        if (far.hidden) {
+          drawFar(d);
+          return stop(t("needWhy"));
+        }
+        if (!why) return stop(t("needWhy"));
+        if (why === "other" && !notes.value.trim()) return stop(t("needWhyNote"));
+      } else why = ""; // close enough after all
       await enqueue("pod", {
         shipment_id: sh.id, recipient_name: name.value.trim(), recipient_phone: phone.value.trim(),
-        signature: pad.data(), photos: photos.slice(), notes: notes.value.trim(),
+        signature: pad.data(), photos: photos.slice(), notes: notes.value.trim(), location_reason: why,
         lat: fix ? fix.lat : null, lng: fix ? fix.lng : null, recorded_at: new Date().toISOString(),
       });
       if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
@@ -942,20 +1297,26 @@
       go("#/s/" + sh.id);
       render();
     } },
-      field(t("recipient"), name), field(t("recipientPhone"), phone),
+      far, field(t("recipient"), name), suggestions, field(t("recipientPhone"), phone),
       h("div", { class: "field" }, h("span", { text: t("signature") }), h("div", { class: "sig-wrap" }, pad.canvas, h("span", { class: "sig-hint", text: t("signHere") })),
         h("button", { type: "button", class: "btn link small", text: t("clear"), onclick: () => pad.clear() })),
       h("div", { class: "field" }, h("span", { text: t("photos") }), thumbs, addBtn, fileInput),
-      field(t("deliveryNotes"), notes), err, submit,
+      field(t("deliveryNotes"), notes), quickNotes, err, submit,
       h("a", { class: "btn link", href: "#/s/" + sh.id, text: t("cancel") }));
     return h("div", {}, header(t("deliverBtn") + " · #" + sh.ref, "#/s/" + sh.id),
       h("main", { class: "page" }, h("p", { class: "muted small" }, sh.customer_name + " · " + sh.destination_address), form));
   }
 
   // ---- menu -------------------------------------------------------------------
+  function toggle(label, checked, onchange, help) {
+    return h("div", { class: "setting" },
+      h("label", { class: "toggle" }, h("input", { type: "checkbox", checked, onchange: (e) => onchange(e.target.checked) }), h("span", { text: label })),
+      help ? h("p", { class: "muted small", text: help }) : null);
+  }
+
   function screenMenu() {
     const pending = S.outbox.length;
-    let confirmOut = false;
+    let confirmOut = false, confirmClear = false;
     const outBox = h("div", {});
     function drawOut() {
       outBox.replaceChildren(confirmOut
@@ -965,25 +1326,74 @@
         : h("button", { class: "btn block", type: "button", text: t("signOut"), onclick: () => (pending ? ((confirmOut = true), drawOut()) : signOut()) }));
     }
     drawOut();
+
+    const storage = h("section", { class: "card" });
+    function drawStorage() {
+      const st = S.storage;
+      storage.replaceChildren(...[
+        h("h2", { text: t("storage") }),
+        st && st.quota ? h("p", { text: t("storageUse", { used: fmtBytes(st.usage), free: fmtBytes(Math.max(0, st.quota - st.usage)) }) }) : null,
+        storageLow() ? h("p", { class: "caution-text", text: t("storageLow") }) : null,
+        navigator.storage && navigator.storage.persist ? h("p", { class: "muted small", text: S.persisted ? t("storageSafe") : t("storageUnsafe") }) : null,
+        confirmClear
+          ? h("div", { class: "notice caution" }, h("p", { text: t("clearDataConfirm") }), h("p", { class: "small", text: t("clearDataHelp") }),
+              h("button", { class: "btn warn", type: "button", text: t("clearData"), onclick: clearSaved }),
+              h("button", { class: "btn link", type: "button", text: t("cancel"), onclick: () => { confirmClear = false; drawStorage(); } }))
+          : h("button", { class: "btn block", type: "button", text: t("clearData"), onclick: () => {
+              if (!navigator.onLine) return toast(t("clearDataOffline"));
+              confirmClear = true;
+              drawStorage();
+            } }),
+      ].filter(Boolean));
+    }
+    drawStorage();
+    storageEstimate().then((st) => {
+      S.storage = st;
+      if (storage.isConnected) drawStorage();
+    });
+
     const d = S.driver || {};
+    const lowBattery = saving() && !S.settings.battery_saver;
     return h("div", {},
       header(t("menu"), "#/"),
       h("main", { class: "page" },
         h("section", { class: "card" }, h("p", {}, h("strong", { text: d.name })), h("p", { class: "muted", text: d.phone }), h("p", { class: "muted", text: d.company + (d.vehicle ? " · " + d.vehicle : "") })),
+        h("section", { class: "card stack" },
+          h("h2", { text: t("settings") }),
+          h("div", { class: "setting" },
+            h("p", { class: "muted small", text: t("language") }),
+            h("div", { class: "lang" }, ["en", "am"].map((l) => h("button", { type: "button", class: S.lang === l ? "on" : "", onclick: async () => { await changeSetting("language", l); render(); } }, l === "en" ? "English" : "አማርኛ")))),
+          toggle(t("batterySaver"), S.settings.battery_saver, async (on) => { await changeSetting("battery_saver", on); render(); }, t("batterySaverHelp")),
+          lowBattery ? h("p", { class: "caution-text small", text: t("savingNow") }) : null,
+          toggle(t("vibrate"), S.settings.vibrate, (on) => changeSetting("vibrate", on)),
+          "wakeLock" in navigator ? toggle(t("keepAwake"), S.keepAwake, async (on) => { S.keepAwake = on; await kvSet("keepAwake", on); updateWakeLock(); }, t("keepAwakeHelp")) : null),
         h("section", { class: "card" },
-          h("p", { class: "muted small", text: t("language") }),
-          h("div", { class: "lang" }, ["en", "am"].map((l) => h("button", { type: "button", class: S.lang === l ? "on" : "", onclick: async () => { S.lang = l; await kvSet("lang", l); document.documentElement.lang = l; render(); } }, l === "en" ? "English" : "አማርኛ")))),
-        h("section", { class: "card" },
-          h("label", { class: "toggle" }, h("input", { type: "checkbox", checked: S.tracking, onchange: async (e) => { S.tracking = e.target.checked; await kvSet("tracking", S.tracking); updateTracking(); scheduleSync(500); } }), h("span", { text: t("location") })),
-          h("p", { class: "muted small", text: t("locationHelp") })),
+          toggle(t("location"), S.tracking, async (on) => { S.tracking = on; await kvSet("tracking", on); updateTracking(); scheduleSync(500); }, t("locationHelp"))),
         h("section", { class: "card" },
           h("button", { class: "btn block", type: "button", text: t("syncNow"), onclick: () => sync() }),
-          h("p", { class: "muted small", text: (S.lastSync ? t("lastSync", { t: ago(S.lastSync) }) : t("neverSynced")) + (pending ? " · " + t("waiting", { n: pending }) : "") })),
+          h("p", { class: "muted small", text: [!navigator.onLine ? t("offline") : S.weak ? t("weak") : "", S.lastSync ? t("lastSync", { t: ago(S.lastSync) }) : t("neverSynced"), pending ? t("waiting", { n: pending }) : ""].filter(Boolean).join(" · ") })),
+        storage,
         h("a", { class: "btn block", href: "#/pin", text: t("changePin") }),
         outBox,
-        d.sms_number ? h("p", { class: "muted small", text: t("smsHelpGeneric", { num: d.sms_number }) }) : null,
+        h("section", { class: "card" },
+          h("h2", { text: t("help") }),
+          d.office_phone ? h("a", { class: "btn big call", href: "tel:" + d.office_phone, text: "📞 " + t("callOffice") + " " + d.office_phone }) : null,
+          d.sms_number ? h("p", { class: "muted small", text: t("smsHelpGeneric", { num: d.sms_number }) }) : null),
         h("p", { class: "muted small center", text: t("version") + " " + VERSION + (S.config ? " · " + S.config.version : "") }),
       ));
+  }
+
+  // Clear saved data: the shipments and messages on the phone go, and the
+  // current work downloads again. Nothing the driver recorded is lost.
+  async function clearSaved() {
+    if (!navigator.onLine) return toast(t("clearDataOffline"));
+    await forgetShipments();
+    S.notices = [];
+    toast(t("clearDataDone"));
+    go("#/");
+    render();
+    await sync();
+    S.storage = await storageEstimate();
   }
 
   async function signOut() {
@@ -1022,9 +1432,11 @@
       S.deviceId = uuid();
       await kvSet("deviceId", S.deviceId);
     }
-    const savedLang = await kvGet("lang");
-    S.lang = savedLang || ((navigator.language || "").startsWith("am") ? "am" : "en");
+    S.settings = { ...DEFAULT_SETTINGS, ...((await kvGet("settings")) || {}) };
+    S.changed = (await kvGet("settingsChanged")) || {};
+    S.lang = S.settings.language || ((navigator.language || "").startsWith("am") ? "am" : "en");
     document.documentElement.lang = S.lang;
+    S.keepAwake = (await kvGet("keepAwake")) === true;
     S.token = await kvGet("token");
     S.driver = await kvGet("driver");
     S.cursor = await kvGet("cursor");
@@ -1037,18 +1449,37 @@
     S.outbox = await all("outbox");
     S.pendingLocations = await tx("locations", "readonly", (s) => req2p(s.count()));
     S.config = await loadConfig();
+    // A new version may send fields the stored shipments don't have yet:
+    // download them again.
+    const was = await kvGet("version");
+    if (was !== VERSION) {
+      if (was && S.token) toast(t("appUpdated"));
+      S.cursor = null;
+      await kvSet("cursor", null);
+      await kvSet("version", VERSION);
+    }
+    S.storage = await storageEstimate();
+    if (S.token) protectStorage();
 
     if (navigator.getBattery) {
       navigator.getBattery().then((b) => {
-        const upd = () => (S.battery = Math.round(b.level * 100));
+        const upd = () => {
+          S.battery = Math.round(b.level * 100);
+          S.charging = b.charging;
+          updateTracking(); // battery saver may turn on or off
+        };
         upd();
         b.addEventListener("levelchange", upd);
+        b.addEventListener("chargingchange", upd);
       }).catch(() => {});
     }
     window.addEventListener("hashchange", render);
     window.addEventListener("online", () => { S.online = true; renderPill(); scheduleSync(500); });
     window.addEventListener("offline", () => { S.online = false; renderPill(); });
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleSync(300); });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) scheduleSync(300);
+      updateWakeLock(); // the browser lets go of it while the app is hidden
+    });
     window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); S.installPrompt = e; rerender(); });
     setInterval(renderPill, 30000);
 

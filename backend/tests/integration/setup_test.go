@@ -342,10 +342,16 @@ func (b *browser) addDriver(name string) (id, phone, pin string) {
 // book creates a shipment and returns its id and tracking number.
 func (b *browser) book(from, to, driverID string) (id, tracking string) {
 	b.e.t.Helper()
+	return b.bookFor(from, to, driverID, phoneNumber())
+}
+
+// bookFor books a shipment for the customer with this phone number.
+func (b *browser) bookFor(from, to, driverID, customerPhone string) (id, tracking string) {
+	b.e.t.Helper()
 	p := b.mustPost("/app/shipments", url.Values{
 		"priority": {"normal"}, "origin_city": {from}, "origin_address": {"Main depot"},
 		"destination_city": {to}, "destination_address": {"Customer warehouse"},
-		"customer_name": {"Abyssinia Traders"}, "customer_phone": {phoneNumber()},
+		"customer_name": {"Abyssinia Traders"}, "customer_phone": {customerPhone},
 		"cargo_description": {"Cement, 200 bags"}, "cargo_weight": {"10000"}, "driver_id": {driverID},
 	})
 	id = strings.TrimPrefix(p.Location, "/app/shipments/")

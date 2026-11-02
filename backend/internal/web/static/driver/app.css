@@ -8,6 +8,7 @@
   --st-assigned: #1c5cab; --st-in_transit: #4a3aa7; --st-delayed: #8a5a00; --st-arrived: #0d6b4b;
   --st-delivered: #0a6a0a; --st-issue: #a52626; --st-cancelled: #6b6a65; --st-pending: #4a4945;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Ethiopic", "Nyala", sans-serif;
+  --map-tiles: none;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -17,6 +18,7 @@
     --good: #4cc24c; --warn: #f2b84b; --warn-bg: #33270f; --bad: #f07373; --bad-bg: #3a1c1c;
     --st-assigned: #86b6ef; --st-in_transit: #aea6f0; --st-delayed: #f2c063; --st-arrived: #5fd3a8;
     --st-delivered: #6fd36f; --st-issue: #f39a9a; --st-cancelled: #a09e97; --st-pending: #d6d5cf;
+    --map-tiles: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85);
   }
 }
 :root[data-theme="dark"] {
@@ -26,6 +28,7 @@
   --good: #4cc24c; --warn: #f2b84b; --warn-bg: #33270f; --bad: #f07373; --bad-bg: #3a1c1c;
   --st-assigned: #86b6ef; --st-in_transit: #aea6f0; --st-delayed: #f2c063; --st-arrived: #5fd3a8;
   --st-delivered: #6fd36f; --st-issue: #f39a9a; --st-cancelled: #a09e97; --st-pending: #d6d5cf;
+  --map-tiles: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85);
 }
 
 * { box-sizing: border-box; }
@@ -67,6 +70,8 @@ a { color: var(--accent-2); }
 .pill-sync.ok { color: var(--good); }
 .pill-sync.wait { color: var(--warn); background: var(--warn-bg); }
 .pill-sync.off { color: var(--bad); background: var(--bad-bg); }
+.pill-sync.weak { color: var(--warn); background: var(--warn-bg); }
+.pill-sync.weak::before { background: none; border: 2px solid currentColor; width: 6px; height: 6px; }
 .pill-sync.busy::before { animation: pulse 0.8s ease-in-out infinite alternate; }
 @keyframes pulse { to { opacity: 0.2; } }
 
@@ -116,6 +121,16 @@ input.code { font-size: 1.6rem; letter-spacing: 0.4em; text-align: center; }
 .choice:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .toggle { display: flex; align-items: center; gap: 12px; font-weight: 600; }
 .toggle input { width: 24px; height: 24px; min-height: 0; accent-color: var(--accent); flex: none; }
+.setting { display: flex; flex-direction: column; gap: 4px; }
+.setting .muted.small { margin: 0; }
+.card > h2 { margin-bottom: 10px; }
+.card.stack > h2 { margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -6px; }
+.chip {
+  min-height: 40px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer;
+}
+.chip:active { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
 
 /* shipments */
 .ship { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; color: var(--text); text-decoration: none; border-left: 5px solid var(--st-assigned); }
@@ -148,6 +163,20 @@ input.code { font-size: 1.6rem; letter-spacing: 0.4em; text-align: center; }
 .msg:last-of-type { border-bottom: 0; }
 .notice { background: var(--bad-bg); color: var(--bad); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .notice .btn.link { align-self: flex-start; min-height: 32px; padding: 0; }
+.notice.caution { background: var(--warn-bg); color: var(--text); border-left: 4px solid var(--warn); }
+.notice.caution p { margin: 0; }
+.caution-text { color: var(--warn); font-weight: 600; }
+.far { background: var(--warn-bg); border-left: 4px solid var(--warn); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.far p { margin: 0; }
+.far .btn { align-self: flex-start; }
+.away { margin: 6px 0 0; }
+.map-card { padding: 0; overflow: hidden; }
+.minimap { height: 190px; background: var(--surface-2); }
+.minimap .leaflet-tile-pane { filter: var(--map-tiles); }
+.map-key { display: flex; align-items: center; gap: 6px; padding: 8px 14px; margin: 0; }
+.map-key .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border); }
+.map-key .dot.drop { background: #b42b2b; margin-left: 10px; }
+.map-key .dot.you { background: #256abf; }
 .install { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 14px; }
 .sms-help { padding: 0 4px; }
 

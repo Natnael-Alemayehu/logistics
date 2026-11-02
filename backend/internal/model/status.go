@@ -223,6 +223,9 @@ var (
 		"recipient_refused", "returned_to_origin", "cargo_lost_damaged",
 		"customer_request", "address_problem", "payment_problem", "other",
 	}
+	// Why a delivery was recorded away from its destination, chosen by the
+	// driver when the app warns them (FR-022 AC-022.2).
+	LocationReasons = []string{"met_elsewhere", "address_wrong", "gps_inaccurate", "other"}
 )
 
 // CancelReasonsFor returns the cancellation reasons that make sense for a
@@ -253,6 +256,9 @@ var reasonLabels = map[string]string{
 	"payment_problem":       "Payment problem",
 	"returned_to_origin":    "Returned to origin",
 	"cargo_lost_damaged":    "Cargo lost or damaged",
+	"met_elsewhere":         "Recipient met the truck elsewhere",
+	"address_wrong":         "Destination on the shipment is wrong",
+	"gps_inaccurate":        "Phone location inaccurate here",
 	"other":                 "Other",
 }
 

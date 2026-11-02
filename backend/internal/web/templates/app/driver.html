@@ -76,9 +76,10 @@
     <dl class="facts">
       <div><dt>Last sync</dt><dd>{{template "conn" (connState .LastSyncAt)}} {{ago .LastSyncAt}}</dd></div>
       {{with .BatteryLevel}}<div><dt>Battery</dt><dd>{{.}}%</dd></div>{{end}}
-      <div><dt>Location sharing</dt><dd>{{if .TrackingPaused}}<span class="text-warn">Turned off on the phone</span>{{else}}On{{end}}</dd></div>
+      <div><dt>Location sharing</dt><dd>{{if .TrackingPaused}}<span class="text-warn">Turned off on the phone</span>{{else if .PowerSaving}}Saving battery: a position every 15 minutes{{else}}On{{end}}</dd></div>
       {{if gt (i32 .PendingSyncCount) 0}}<div><dt>Waiting to upload</dt><dd>{{i32 .PendingSyncCount}} updates</dd></div>{{end}}
       {{with .AppVersion}}<div><dt>App version</dt><dd class="mono small">{{.}}</dd></div>{{end}}
+      {{with $u.Language}}<div><dt>App language</dt><dd>{{if eq (str .) "am"}}Amharic{{else}}English{{end}}</dd></div>{{end}}
       {{with .StorageUsedKb}}<div><dt>Storage on the phone</dt><dd>{{storage .}}</dd></div>{{end}}
       {{$off := i32 .ClockOffsetSeconds}}{{if or (gt $off 120) (lt $off -120)}}<div><dt>Phone clock</dt><dd class="text-warn">Off by {{$off}} s (corrected automatically)</dd></div>{{end}}
     </dl>
