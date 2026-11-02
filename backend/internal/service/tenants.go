@@ -326,6 +326,8 @@ type SettingsInput struct {
 	SMSOnCancelled     bool
 	SMSOnDelayed       bool
 	SMSDriverOnAssign  bool
+	// AlertOnDelivery raises an alert for every delivery.
+	AlertOnDelivery bool
 }
 
 // UpdateSettings saves the company profile and notification preferences.
@@ -371,7 +373,7 @@ func (s *TenantService) UpdateSettings(ctx context.Context, p *Principal, in Set
 		RegionCity: city.Name, MaxActivePerDriver: int32(in.MaxActivePerDriver),
 		SmsOnCreated: in.SMSOnCreated, SmsOnDispatched: in.SMSOnDispatched, SmsOnArrived: in.SMSOnArrived,
 		SmsOnDelivered: in.SMSOnDelivered, SmsOnCancelled: in.SMSOnCancelled, SmsOnDelayed: in.SMSOnDelayed,
-		SmsDriverOnAssign: in.SMSDriverOnAssign, Tin: toText(tin),
+		SmsDriverOnAssign: in.SMSDriverOnAssign, Tin: toText(tin), AlertOnDelivery: in.AlertOnDelivery,
 	})
 	if err != nil {
 		return t, err

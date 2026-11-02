@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -46,8 +47,9 @@ type chart struct {
 	Ticks  []chartTick
 	Width  float64
 	Height float64
-	Weekly bool
-	Empty  bool
+	// Group is what one column covers: groupDay, groupWeek or groupMonth.
+	Group string
+	Empty bool
 }
 
 type chartTick struct {
@@ -57,18 +59,66 @@ type chartTick struct {
 
 const chartW, chartH = 720.0, 200.0
 
-// weekly folds a long range into weeks so columns stay readable.
-func weekly(days []service.DailyDeliveries) []service.DailyDeliveries {
-	var out []service.DailyDeliveries
-	for i, d := range days {
-		if i%7 == 0 {
-			out = append(out, service.DailyDeliveries{Day: d.Day})
+// What one column of the deliveries chart covers (AC-034.1).
+const (
+	groupDay   = "day"
+	groupWeek  = "week"
+	groupMonth = "month"
+)
+
+// maxDayBars is the most days drawn one column each; beyond, columns get
+// too thin to read and the chart shows weeks.
+const maxDayBars = 92
+
+// chartGroup is the grouping asked for, or the readable one for the range.
+func chartGroup(asked string, days int) string {
+	switch {
+	case asked == groupWeek, asked == groupMonth:
+		return asked
+	case days <= maxDayBars:
+		return groupDay
+	default:
+		return groupWeek
+	}
+}
+
+// group folds days into calendar weeks, from Monday, or calendar months. A
+// group starts at its first day in the range, so the first and the last
+// can be partial.
+func group(days []service.DailyDeliveries, by string) []service.DailyDeliveries {
+	if by == groupDay {
+		return days
+	}
+	key := func(t time.Time) int {
+		if by == groupMonth {
+			return t.Year()*100 + int(t.Month())
 		}
-		w := &out[len(out)-1]
-		w.Delivered += d.Delivered
-		w.OnTime += d.OnTime
+		y, w := t.ISOWeek()
+		return y*100 + w
+	}
+	var out []service.DailyDeliveries
+	last := -1
+	for _, d := range days {
+		if k := key(d.Day); k != last {
+			out = append(out, service.DailyDeliveries{Day: d.Day})
+			last = k
+		}
+		g := &out[len(out)-1]
+		g.Delivered += d.Delivered
+		g.OnTime += d.OnTime
 	}
 	return out
+}
+
+// groupLabel names the period a column covers, for the tooltip and table.
+func groupLabel(day time.Time, by string) string {
+	switch by {
+	case groupMonth:
+		return day.Format("January 2006")
+	case groupWeek:
+		return "Week of " + day.Format("Mon 2 Jan 2006")
+	}
+	return day.Format("Mon 2 Jan 2006")
 }
 
 // barPath draws a column with a rounded data end and a square baseline.
@@ -84,12 +134,9 @@ func barPath(x, y, w, h float64, round bool) string {
 		x, y+h, y+r, x, y, x+r, y, x+w-r, x+w, y, x+w, y+r, y+h)
 }
 
-func buildChart(days []service.DailyDeliveries) chart {
-	c := chart{Width: chartW, Height: chartH}
-	if len(days) > 92 {
-		days = weekly(days)
-		c.Weekly = true
-	}
+func buildChart(days []service.DailyDeliveries, by string) chart {
+	c := chart{Width: chartW, Height: chartH, Group: chartGroup(by, len(days))}
+	days = group(days, c.Group)
 	var peak int64
 	peakAt := -1
 	for i, d := range days {
@@ -99,8 +146,13 @@ func buildChart(days []service.DailyDeliveries) chart {
 	}
 	c.Empty = peak == 0
 	top := niceCeil(peak)
-	for i := int64(0); i <= 4; i++ {
-		v := top * i / 4
+	// Whole-number ticks at even steps: 10 is 0, 2, 4…, not 0, 2, 5, 7.
+	steps := int64(4)
+	if top%4 != 0 {
+		steps = 5
+	}
+	for i := int64(0); i <= steps; i++ {
+		v := top * i / steps
 		c.Ticks = append(c.Ticks, chartTick{Y: chartH - float64(v)/float64(top)*chartH, Value: v})
 	}
 	if len(days) == 0 {
@@ -128,13 +180,12 @@ func buildChart(days []service.DailyDeliveries) chart {
 		default:
 			b.OtherPath = barPath(x, chartH-hAll, bw, hAll, true)
 		}
-		label := d.Day.Format("Mon 2 Jan")
-		if c.Weekly {
-			label = "Week of " + d.Day.Format("2 Jan")
-		}
-		b.Tip = fmt.Sprintf("%s|%d delivered|%d on time", label, d.Delivered, d.OnTime)
+		b.Tip = fmt.Sprintf("%s|%d delivered|%d on time", groupLabel(d.Day, c.Group), d.Delivered, d.OnTime)
 		if i%every == 0 {
 			b.Label = d.Day.Format("2 Jan")
+			if c.Group == groupMonth {
+				b.Label = d.Day.Format("Jan 2006")
+			}
 		}
 		c.Bars = append(c.Bars, b)
 	}
@@ -162,21 +213,74 @@ func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
 	q := r.URL.Query()
 	from, to := s.svc.Reports.Range(q.Get("from"), q.Get("to"))
-	rep, err := s.svc.Reports.Build(r.Context(), p.TenantID, from, to)
+	rf := service.ReportFilter{From: from, To: to, Origin: service.Town(q.Get("origin")), Destination: service.Town(q.Get("destination"))}
+	drivers, err := s.svc.Users.Drivers(r.Context(), p.TenantID, false, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
+	driverName := ""
+	if id, err := parseID(q.Get("driver")); err == nil {
+		for _, d := range drivers {
+			if d.ID == id {
+				rf.DriverID, driverName = id, d.FullName
+			}
+		}
+	}
+	rep, err := s.svc.Reports.Build(r.Context(), p.TenantID, rf)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	by := chartGroup(q.Get("group"), len(rep.Daily))
 	if q.Get("format") == "csv" {
-		s.reportCSV(w, rep, q.Get("section"))
+		s.reportCSV(w, rep, q.Get("section"), by)
 		return
 	}
 	last := to.AddDate(0, 0, -1)
+
+	// Links keep the filters: the date presets change only the dates, and
+	// each CSV covers what the page shows.
+	keep := url.Values{}
+	keep.Set("from", from.Format("2006-01-02"))
+	keep.Set("to", last.Format("2006-01-02"))
+	if rf.DriverID.Valid {
+		keep.Set("driver", rf.DriverID.String())
+	}
+	if rf.Origin != "" {
+		keep.Set("origin", rf.Origin)
+	}
+	if rf.Destination != "" {
+		keep.Set("destination", rf.Destination)
+	}
+	if g := q.Get("group"); g == groupDay || g == groupWeek || g == groupMonth {
+		keep.Set("group", g)
+	}
+	link := func(set ...string) string {
+		v := url.Values{}
+		for k, vs := range keep {
+			v[k] = vs
+		}
+		for i := 0; i+1 < len(set); i += 2 {
+			v.Set(set[i], set[i+1])
+		}
+		return "/app/reports?" + v.Encode()
+	}
+	csvLinks := map[string]string{}
+	for _, section := range []string{"daily", "drivers", "routes", "customers", "cancellations"} {
+		csvLinks[section] = link("format", "csv", "section", section)
+	}
+	presets := reportPresets(s.cfg.Timezone)
+	for i := range presets {
+		presets[i].Href = link("from", presets[i].From, "to", presets[i].To)
+	}
 	v := s.view(w, r, "Reports", "reports", map[string]any{
-		"R": rep, "Chart": buildChart(rep.Daily), "FromInput": from.Format("2006-01-02"), "ToInput": last.Format("2006-01-02"),
+		"R": rep, "Chart": buildChart(rep.Daily, by), "FromInput": from.Format("2006-01-02"), "ToInput": last.Format("2006-01-02"),
 		"Last": last, "OnTime": service.OnTimeRate(rep.Summary.OnTime, rep.Summary.WithEta),
 		"PODRate": ratio(rep.Summary.WithPod, rep.Summary.Delivered),
-		"Presets": reportPresets(s.cfg.Timezone),
+		"Presets": presets, "CSV": csvLinks, "Drivers": drivers, "DriverName": driverName,
+		"Group": q.Get("group"), "Towns": geo.Places(),
+		"Clear": "/app/reports?" + url.Values{"from": {keep.Get("from")}, "to": {keep.Get("to")}}.Encode(),
 	})
 	s.render(w, r, http.StatusOK, "app/reports", v)
 }
@@ -188,7 +292,7 @@ func ratio(a, b int64) float64 {
 	return float64(a) / float64(b)
 }
 
-type preset struct{ Label, From, To string }
+type preset struct{ Label, From, To, Href string }
 
 func reportPresets(loc *time.Location) []preset {
 	now := time.Now().In(loc)
@@ -197,22 +301,27 @@ func reportPresets(loc *time.Location) []preset {
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 	prevStart := monthStart.AddDate(0, -1, 0)
 	return []preset{
-		{"Last 7 days", f(today.AddDate(0, 0, -6)), f(today)},
-		{"Last 30 days", f(today.AddDate(0, 0, -29)), f(today)},
-		{"This month", f(monthStart), f(today)},
-		{"Last month", f(prevStart), f(monthStart.AddDate(0, 0, -1))},
-		{"Last 90 days", f(today.AddDate(0, 0, -89)), f(today)},
+		{"Last 7 days", f(today.AddDate(0, 0, -6)), f(today), ""},
+		{"Last 30 days", f(today.AddDate(0, 0, -29)), f(today), ""},
+		{"This month", f(monthStart), f(today), ""},
+		{"Last month", f(prevStart), f(monthStart.AddDate(0, 0, -1)), ""},
+		{"Last 90 days", f(today.AddDate(0, 0, -89)), f(today), ""},
+		{"Last 12 months", f(today.AddDate(-1, 0, 1)), f(today), ""},
 	}
 }
 
-func (s *Server) reportCSV(w http.ResponseWriter, rep *service.Report, section string) {
+func (s *Server) reportCSV(w http.ResponseWriter, rep *service.Report, section, by string) {
 	name := map[string]string{"routes": "routes", "customers": "customers", "daily": "daily", "cancellations": "cancellations"}[section]
 	if name == "" {
 		name = "drivers"
 	}
+	file := name
+	if name == "daily" {
+		file = "deliveries-per-" + by
+	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="report-%s-%s-to-%s.csv"`,
-		name, rep.From.Format("2006-01-02"), rep.To.AddDate(0, 0, -1).Format("2006-01-02")))
+		file, rep.From.Format("2006-01-02"), rep.To.AddDate(0, 0, -1).Format("2006-01-02")))
 	_, _ = w.Write([]byte("\xEF\xBB\xBF"))
 	cw := csv.NewWriter(w)
 	rate := func(a, b int64) string {
@@ -245,9 +354,15 @@ func (s *Server) reportCSV(w http.ResponseWriter, rep *service.Report, section s
 			_ = cw.Write([]string{csvSafe(model.ReasonLabel(x.Reason)), strconv.FormatInt(x.Total, 10), strconv.FormatInt(x.OnRoad, 10)})
 		}
 	case "daily":
-		_ = cw.Write([]string{"Day", "Delivered", "On time"})
-		for _, x := range rep.Daily {
-			_ = cw.Write([]string{x.Day.Format("2006-01-02"), strconv.FormatInt(x.Delivered, 10), strconv.FormatInt(x.OnTime, 10)})
+		// The deliveries as the chart groups them: by day, week or month.
+		head := map[string]string{groupDay: "Day", groupWeek: "Week starting", groupMonth: "Month"}[by]
+		_ = cw.Write([]string{head, "Delivered", "On time"})
+		for _, x := range group(rep.Daily, by) {
+			period := x.Day.Format("2006-01-02")
+			if by == groupMonth {
+				period = x.Day.Format("2006-01")
+			}
+			_ = cw.Write([]string{period, strconv.FormatInt(x.Delivered, 10), strconv.FormatInt(x.OnTime, 10)})
 		}
 	default:
 		_ = cw.Write([]string{"Driver", "Delivered", "On time %", "Average transit (h)", "Issues"})
@@ -347,7 +462,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		"sms_on_created": tenant.SmsOnCreated, "sms_on_dispatched": tenant.SmsOnDispatched,
 		"sms_on_arrived": tenant.SmsOnArrived, "sms_on_delivered": tenant.SmsOnDelivered,
 		"sms_on_cancelled": tenant.SmsOnCancelled, "sms_on_delayed": tenant.SmsOnDelayed,
-		"sms_driver_on_assign": tenant.SmsDriverOnAssign,
+		"sms_driver_on_assign": tenant.SmsDriverOnAssign, "alert_on_delivery": tenant.AlertOnDelivery,
 	} {
 		if on {
 			v.Form.Set(name, "on")
@@ -366,7 +481,7 @@ func (s *Server) settingsUpdate(w http.ResponseWriter, r *http.Request) {
 		SMSOnCreated:       on("sms_on_created"), SMSOnDispatched: on("sms_on_dispatched"),
 		SMSOnArrived: on("sms_on_arrived"), SMSOnDelivered: on("sms_on_delivered"),
 		SMSOnCancelled: on("sms_on_cancelled"), SMSOnDelayed: on("sms_on_delayed"),
-		SMSDriverOnAssign: on("sms_driver_on_assign"),
+		SMSDriverOnAssign: on("sms_driver_on_assign"), AlertOnDelivery: on("alert_on_delivery"),
 	}, clientInfo(r))
 	if err != nil {
 		data, derr := s.settingsData(r)
@@ -436,13 +551,42 @@ func (s *Server) smsSimulate(w http.ResponseWriter, r *http.Request) {
 // The signed-in user's account
 // ---------------------------------------------------------------------------
 
+// alertChoice is one alert type on the account page's email preferences.
+type alertChoice struct {
+	Type, Label string
+	On          bool
+}
+
 func (s *Server) accountData(r *http.Request) (map[string]any, error) {
 	p := principal(r)
 	sessions, err := s.svc.Auth.Sessions(r.Context(), p)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"Sessions": sessions, "Current": p.SessionID}, nil
+	data := map[string]any{"Sessions": sessions, "Current": p.SessionID}
+	if !p.IsPlatformAdmin() {
+		u, err := s.svc.Users.Get(r.Context(), p.TenantID, p.UserID)
+		if err != nil {
+			return nil, err
+		}
+		choices := make([]alertChoice, 0, len(service.AlertTypes))
+		for _, t := range service.AlertTypes {
+			choices = append(choices, alertChoice{Type: t, Label: service.AlertLabel(t), On: slices.Contains(u.AlertEmails, t)})
+		}
+		data["Alerts"] = choices
+	}
+	return data, nil
+}
+
+// accountAlertEmails saves which alerts are emailed to the caller.
+func (s *Server) accountAlertEmails(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	err := s.svc.Alerts.SetAlertEmails(r.Context(), principal(r), r.PostForm["alert"])
+	msg := "Alert emails saved."
+	if len(r.PostForm["alert"]) == 0 {
+		msg = "No alerts will be emailed to you."
+	}
+	s.actionResult(w, r, "/app/account", err, msg)
 }
 
 func (s *Server) accountPage(w http.ResponseWriter, r *http.Request) {
@@ -554,6 +698,7 @@ var auditActions = map[string]string{
 	"trial_extended":             "Extended a free trial",
 	"enterprise_offer_set":       "Set Enterprise terms",
 	"enterprise_offer_withdrawn": "Withdrew Enterprise terms",
+	"drivers_messaged":           "Messaged every driver on the road",
 }
 
 func (s *Server) userNames(ctx context.Context, tenantID pgtype.UUID) map[pgtype.UUID]string {

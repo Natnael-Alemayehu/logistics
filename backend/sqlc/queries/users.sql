@@ -83,7 +83,15 @@ WHERE id = $1;
 -- are, and when their device last talked to the server.
 SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at,
        v.plate_number AS vehicle_plate,
-       sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version,
+       sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version, sm.storage_used_kb,
+       -- On duty (FR-031): carrying a load that has left, or with the app
+       -- open and sharing location in the last half hour.
+       -- A driver who never synced has no sync row, hence the COALESCEs.
+       COALESCE(u.is_active AND (
+           EXISTS (SELECT 1 FROM shipments s
+                   WHERE s.driver_id = u.id AND s.status IN ('in_transit', 'delayed', 'arrived', 'issue'))
+           OR (COALESCE(sm.last_sync_at > NOW() - INTERVAL '30 minutes', false) AND NOT COALESCE(sm.tracking_paused, false))
+       ), false)::bool AS on_duty,
        (SELECT COUNT(*) FROM shipments s
         WHERE s.driver_id = u.id
           AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active_shipments,
@@ -96,6 +104,7 @@ LEFT JOIN sync_metadata sm ON sm.driver_id = u.id
 WHERE u.tenant_id = sqlc.arg(tenant_id)
   AND u.role = 'driver'
   AND (NOT sqlc.arg(active_only)::bool OR u.is_active)
+  AND (sqlc.narg(driver_id)::uuid IS NULL OR u.id = sqlc.narg(driver_id)::uuid)
   AND (sqlc.narg(query)::text IS NULL
        OR u.full_name ILIKE '%' || sqlc.narg(query)::text || '%'
        OR u.phone ILIKE '%' || sqlc.narg(query)::text || '%')

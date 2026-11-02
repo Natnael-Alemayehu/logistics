@@ -161,12 +161,17 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 		who = "The driver"
 	}
 	switch ch.Status {
+	// A report replaces an open alert about an earlier problem or delay on
+	// the load, which would otherwise hide it: a breakdown, then a delay,
+	// then an accident is news three times.
 	case model.StatusIssue:
+		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: out.ID, AlertTypes: []string{AlertIssueReported}})
 		s.raise(ctx, q, after, newAlert{
 			TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: AlertIssueReported, Severity: SeverityCritical,
 			Message: fmt.Sprintf("%s reported a problem on %s: %s%s", who, out.TrackingNumber, model.ReasonLabel(reason), noteSuffix(note)),
 		})
 	case model.StatusDelayed:
+		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: out.ID, AlertTypes: []string{AlertDelayReported}})
 		s.raise(ctx, q, after, newAlert{
 			TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: AlertDelayReported, Severity: SeverityWarning,
 			Message: fmt.Sprintf("%s reported a delay on %s: %s%s", who, out.TrackingNumber, model.ReasonLabel(reason), noteSuffix(note)),
@@ -194,6 +199,16 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 	tenant, err := q.GetTenantByID(ctx, out.TenantID)
 	if err != nil {
 		return out, err
+	}
+	if ch.Status == model.StatusDelivered && tenant.AlertOnDelivery {
+		to := ""
+		if ch.recipient != "" {
+			to = " to " + ch.recipient
+		}
+		s.raise(ctx, q, after, newAlert{
+			TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: AlertDelivered, Severity: SeverityInfo,
+			Message: fmt.Sprintf("%s was delivered%s in %s.", out.TrackingNumber, to, place(out.DestinationCity, out.DestinationAddress)),
+		})
 	}
 	if text, send := s.customerStatusText(tenant, out, ch.Status, firstDeparture, reason, ch.recipient); send {
 		s.notifyCustomer(ctx, q, after, tenant, out, text)

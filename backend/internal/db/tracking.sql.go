@@ -243,21 +243,24 @@ func (q *Queries) GetLatestShipmentPosition(ctx context.Context, arg GetLatestSh
 }
 
 const listShipmentRoute = `-- name: ListShipmentRoute :many
-SELECT id, shipment_id, event_type, note,
-       ST_Y(coordinates)::float8 AS latitude,
-       ST_X(coordinates)::float8 AS longitude,
-       accuracy_meters, speed_kph, battery_level, recorded_at
-FROM tracking_events
-WHERE tenant_id = $1
-  AND (
-    shipment_id = $2
-    OR ($3::uuid IS NOT NULL
-        AND driver_id = $3::uuid
-        AND recorded_at >= $4
-        AND recorded_at <= $5)
-  )
-ORDER BY recorded_at ASC
-LIMIT 2000
+SELECT latest.id, latest.shipment_id, latest.event_type, latest.note, latest.latitude, latest.longitude, latest.accuracy_meters, latest.speed_kph, latest.battery_level, latest.recorded_at FROM (
+    SELECT id, shipment_id, event_type, note,
+           ST_Y(coordinates)::float8 AS latitude,
+           ST_X(coordinates)::float8 AS longitude,
+           accuracy_meters, speed_kph, battery_level, recorded_at
+    FROM tracking_events
+    WHERE tenant_id = $1
+      AND (
+        shipment_id = $2
+        OR ($3::uuid IS NOT NULL
+            AND driver_id = $3::uuid
+            AND recorded_at >= $4
+            AND recorded_at <= $5)
+      )
+    ORDER BY recorded_at DESC
+    LIMIT $6
+) latest
+ORDER BY latest.recorded_at ASC
 `
 
 type ListShipmentRouteParams struct {
@@ -266,6 +269,7 @@ type ListShipmentRouteParams struct {
 	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
 	WindowStart pgtype.Timestamptz `db:"window_start" json:"window_start"`
 	WindowEnd   pgtype.Timestamptz `db:"window_end" json:"window_end"`
+	MaxPoints   int32              `db:"max_points" json:"max_points"`
 }
 
 type ListShipmentRouteRow struct {
@@ -284,6 +288,8 @@ type ListShipmentRouteRow struct {
 // A truck carries several shipments at once and its pings are attributed to
 // only one of them, so a shipment's route is the driver's track over the time
 // the shipment was on board, plus anything explicitly tagged to it.
+// The newest max_points positions, oldest first, so a long trip still ends
+// where the truck is now.
 func (q *Queries) ListShipmentRoute(ctx context.Context, arg ListShipmentRouteParams) ([]ListShipmentRouteRow, error) {
 	rows, err := q.db.Query(ctx, listShipmentRoute,
 		arg.TenantID,
@@ -291,6 +297,7 @@ func (q *Queries) ListShipmentRoute(ctx context.Context, arg ListShipmentRoutePa
 		arg.DriverID,
 		arg.WindowStart,
 		arg.WindowEnd,
+		arg.MaxPoints,
 	)
 	if err != nil {
 		return nil, err

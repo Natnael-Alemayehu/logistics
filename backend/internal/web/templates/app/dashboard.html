@@ -23,8 +23,9 @@
 </section>
 {{end}}
 
-<section class="kpis">
+<section class="kpis kpis-5" data-live-region id="dash-kpis" aria-label="Today at a glance">
   <a class="kpi" href="/app/shipments?tab=active"><span class="kpi-n">{{$d.Active}}</span><span class="kpi-l">Active shipments</span></a>
+  <a class="kpi" href="/app/drivers"><span class="kpi-n">{{$d.OnDuty}}<span class="kpi-of"> of {{$d.ActiveDrivers}}</span></span><span class="kpi-l">Drivers on duty</span></a>
   <a class="kpi {{if $d.Attention}}kpi-warn{{end}}" href="/app/shipments?tab=attention"><span class="kpi-n">{{$d.Attention}}</span><span class="kpi-l">Delayed or with a problem</span></a>
   <a class="kpi {{if index $d.Counts "pending"}}kpi-info{{end}}" href="/app/shipments?tab=pending"><span class="kpi-n">{{index $d.Counts "pending"}}</span><span class="kpi-l">Waiting for a driver</span></a>
   <a class="kpi kpi-good" href="/app/shipments?tab=delivered&amp;sort=updated_desc"><span class="kpi-n">{{$d.DeliveredToday}}</span><span class="kpi-l">Delivered today</span></a>
@@ -36,15 +37,42 @@
       <h2>Live map</h2>
       <div class="legend small">
         <span>{{template "conn" "live"}} Online</span><span>{{template "conn" "stale"}} Quiet</span><span>{{template "conn" "offline"}} Offline</span>
+        <span><span class="pin-ring"></span> Load delayed or with a problem</span>
         <span><span class="dest-dot"></span> Destination</span>
       </div>
     </div>
-    <div class="map map-tall" data-map="fleet" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-source="map-data"></div>
+    <div class="map-filters" data-map-filters hidden>
+      <label><span class="sr-only">Shipments</span>
+        <select data-filter="status">
+          <option value="">Every active shipment</option>
+          <option value="road">On the road</option>
+          <option value="attention">Delayed or with a problem</option>
+          <option value="assigned">Waiting for pickup</option>
+        </select>
+      </label>
+      <label><span class="sr-only">Driver</span>
+        <select data-filter="driver">
+          <option value="">Every driver</option>
+          {{range $d.Drivers}}{{if .IsActive}}<option value="{{uuid .ID}}">{{.FullName}}</option>{{end}}{{end}}
+        </select>
+      </label>
+      <label><span class="sr-only">Region</span>
+        <select data-filter="region">
+          <option value="">Every region</option>
+          {{range $d.MapMeta.Regions}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+        </select>
+      </label>
+      <span class="small muted" data-map-count aria-live="polite"></span>
+    </div>
+    <div class="map map-tall" data-map="fleet" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}"
+      {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}}
+      data-source="map-data" data-meta="map-meta"></div>
     <script type="application/json" id="map-data">{{$d.Map}}</script>
+    <script type="application/json" id="map-meta">{{$d.MapMeta}}</script>
     {{if not $d.Map.Drivers}}<p class="card-foot muted small">Drivers appear on the map once their app has sent a GPS position.</p>{{end}}
   </section>
 
-  <section class="card">
+  <section class="card" data-live-region id="dash-alerts">
     <div class="card-head">
       <h2>Needs attention</h2>
       <a class="small" href="/app/alerts">All alerts{{if $d.OpenAlerts}} ({{$d.OpenAlerts}}){{end}}</a>
@@ -53,7 +81,7 @@
   </section>
 </div>
 
-<section class="card">
+<section class="card" data-live-region id="dash-activity">
   <div class="card-head"><h2>Recent activity</h2><a class="small" href="/app/shipments">All shipments</a></div>
   {{template "timeline" (dict "Items" $d.Activity "Links" true)}}
 </section>

@@ -96,7 +96,7 @@
         {{else}}<strong>—</strong>{{end}}
       </div>
     </div>
-    <div class="map map-mid" data-map="shipment" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-source="shipment-map" data-shipment-id="{{$id}}" data-driver-id="{{uuid $s.DriverID}}"></div>
+    <div class="map map-mid" data-map="shipment" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}} data-source="shipment-map" data-shipment-id="{{$id}}" data-driver-id="{{uuid $s.DriverID}}"></div>
     <script type="application/json" id="shipment-map">{{$d.Map}}</script>
   </section>
 
@@ -160,6 +160,26 @@
       <div class="span-2"><dt>Customer tracking link</dt><dd><a href="{{$d.TrackURL}}" target="_blank" rel="noopener" class="mono small">{{$d.TrackURL}}</a> <button type="button" class="btn btn-sm btn-ghost" data-copy="{{$d.TrackURL}}">Copy</button></dd></div>
     </dl>
   </section>
+
+  {{with $d.D.Route}}{{$listed := 200}}
+  <section class="card card-flush">
+    <details class="locations">
+      <summary class="card-head"><h2>Location history</h2><span class="small muted">{{if $d.D.RouteCapped}}the newest {{end}}{{grouped (len .)}} {{if eq (len .) 1}}position{{else}}positions{{end}}</span></summary>
+      <p class="card-pad small">{{if gt (len .) $listed}}The newest {{$listed}} are listed here. {{end}}<a href="/app/shipments/{{$id}}/locations.csv" download>{{template "icon" "download"}} Download every position as CSV</a></p>
+      <div class="table-wrap">
+      <table class="table table-compact">
+        <thead><tr><th>Recorded</th><th>Latitude, longitude</th><th class="num">Accuracy</th><th class="num">Speed</th><th class="num">Battery</th></tr></thead>
+        <tbody>{{range newestFirst $listed .}}
+          <tr><td>{{when .RecordedAt}}</td><td class="mono small">{{printf "%.5f" .Latitude}}, {{printf "%.5f" .Longitude}}</td>
+            <td class="num">{{if hasNum .AccuracyMeters}}{{printf "%.0f" (num .AccuracyMeters)}} m{{else}}—{{end}}</td>
+            <td class="num">{{if hasNum .SpeedKph}}{{printf "%.0f" (num .SpeedKph)}} km/h{{else}}—{{end}}</td>
+            <td class="num">{{with .BatteryLevel}}{{.}}%{{else}}—{{end}}</td></tr>
+        {{end}}</tbody>
+      </table>
+      </div>
+    </details>
+  </section>
+  {{end}}
 </div>
 
 <div class="col-side">
@@ -206,7 +226,8 @@
   <section class="card">
     <div class="card-head"><h2>Message or note</h2></div>
     <form method="post" action="/app/shipments/{{$id}}/note" class="stack">
-      <textarea name="note" rows="3" required maxlength="1000" placeholder="{{if $s.DriverID.Valid}}Write to the driver, or add a note for the office{{else}}Add a note for the office{{end}}"></textarea>
+      <textarea name="note" rows="3" required maxlength="1000" data-quick-target placeholder="{{if $s.DriverID.Valid}}Write to the driver, or add a note for the office{{else}}Add a note for the office{{end}}"></textarea>
+      {{if $s.DriverID.Valid}}<div class="quick" role="group" aria-label="Quick messages">{{range $d.Quick}}<button class="chip" type="button" data-quick="{{.}}">{{.}}</button>{{end}}</div>{{end}}
       <div class="row-wrap">
         {{if $s.DriverID.Valid}}
         <label class="radio"><input type="radio" name="to" value="driver" checked> To the driver</label>

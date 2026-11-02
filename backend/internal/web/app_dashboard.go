@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/internal/geo"
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
@@ -36,12 +37,27 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	activity, err := s.svc.Shipments.Activity(ctx, p.TenantID, 15)
+	activity, err := s.svc.Shipments.Activity(ctx, p.TenantID, 20)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	names := s.driverNames(ctx, p.TenantID)
+	drivers, err := s.svc.Users.Drivers(ctx, p.TenantID, false, "")
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	names := make(map[pgtype.UUID]string, len(drivers))
+	var onDuty, activeDrivers int
+	for _, d := range drivers {
+		names[d.ID] = d.FullName
+		if d.IsActive {
+			activeDrivers++
+		}
+		if d.OnDuty {
+			onDuty++
+		}
+	}
 	items := make([]timelineItem, 0, len(activity))
 	for _, a := range activity {
 		it := timelineFrom(db.ShipmentEvent{
@@ -63,6 +79,11 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	tenant, err := s.svc.Tenants.Get(ctx, p.TenantID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 
 	active := int64(0)
 	for _, st := range model.ActiveStatuses {
@@ -77,10 +98,46 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		"OpenAlerts":     openAlerts,
 		"Activity":       items,
 		"Map":            mapData,
+		"MapMeta":        fleetMapMeta(tenant.RegionCity),
+		"Drivers":        drivers,
+		"OnDuty":         onDuty,
+		"ActiveDrivers":  activeDrivers,
 		"Usage":          usage,
 		"GettingStarted": usage.ActiveDrivers == 0 || usage.Vehicles == 0 || len(counts) == 0,
 	})
 	s.render(w, r, http.StatusOK, "app/dashboard", v)
+}
+
+// mapMeta frames the fleet map: where it opens when there is nothing on it
+// (AC-028.8), and the regions its filter offers (AC-028.5).
+type mapMeta struct {
+	Center  mapCenter   `json:"center"`
+	Regions []mapRegion `json:"regions"`
+}
+
+type mapCenter struct {
+	Lat  float64 `json:"lat"`
+	Lng  float64 `json:"lng"`
+	Zoom int     `json:"zoom"`
+}
+
+type mapRegion struct {
+	Name string `json:"name"`
+	// Bounds are the south-west and north-east corners.
+	Bounds [2][2]float64 `json:"bounds"`
+}
+
+// fleetMapMeta centres the map on the company's home town, or on the whole
+// country when the town is unknown.
+func fleetMapMeta(homeTown string) mapMeta {
+	m := mapMeta{Center: mapCenter{Lat: 9.0, Lng: 39.5, Zoom: 6}}
+	if p, ok := geo.Lookup(homeTown); ok {
+		m.Center = mapCenter{Lat: p.Lat, Lng: p.Lng, Zoom: 8}
+	}
+	for _, r := range geo.Regions() {
+		m.Regions = append(m.Regions, mapRegion{Name: r.Name, Bounds: [2][2]float64{{r.South, r.West}, {r.North, r.East}}})
+	}
+	return m
 }
 
 // driverNames maps driver IDs to names, for rendering history.

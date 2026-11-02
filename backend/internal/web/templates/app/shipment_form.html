@@ -42,7 +42,7 @@
     </div>
     <details class="pin-picker" {{if field $f "destination_lat" ""}}open{{end}}>
       <summary>Pin the exact drop-off on a map <span class="muted">(optional — tightens the delivery location check from the town to 500 m)</span></summary>
-      <div class="map map-picker" data-map="picker" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-lat="destination_lat" data-lng="destination_lng" data-town-input="destination"></div>
+      <div class="map map-picker" data-map="picker" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}} data-lat="destination_lat" data-lng="destination_lng" data-town-input="destination"></div>
       <p class="small muted">Click the map to place the pin; drag it to adjust. <button type="button" class="link" data-clear-pin>Remove pin</button></p>
       {{template "field-error" (index $e "destination_lat")}}
     </details>

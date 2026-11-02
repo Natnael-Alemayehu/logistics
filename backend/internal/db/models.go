@@ -44,6 +44,21 @@ type BillingNotice struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type Broadcast struct {
+	ID         pgtype.UUID        `db:"id" json:"id"`
+	TenantID   pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Body       string             `db:"body" json:"body"`
+	SentBy     pgtype.UUID        `db:"sent_by" json:"sent_by"`
+	SenderName string             `db:"sender_name" json:"sender_name"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type BroadcastRecipient struct {
+	BroadcastID pgtype.UUID `db:"broadcast_id" json:"broadcast_id"`
+	DriverID    pgtype.UUID `db:"driver_id" json:"driver_id"`
+	BySms       bool        `db:"by_sms" json:"by_sms"`
+}
+
 type Email struct {
 	ID            pgtype.UUID        `db:"id" json:"id"`
 	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
@@ -160,6 +175,15 @@ type ProofOfDelivery struct {
 	HeldReason             *string            `db:"held_reason" json:"held_reason"`
 	ReviewedAt             pgtype.Timestamptz `db:"reviewed_at" json:"reviewed_at"`
 	ReviewedBy             pgtype.UUID        `db:"reviewed_by" json:"reviewed_by"`
+}
+
+type SavedFilter struct {
+	ID        pgtype.UUID        `db:"id" json:"id"`
+	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
+	Name      string             `db:"name" json:"name"`
+	Query     string             `db:"query" json:"query"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type Session struct {
@@ -313,6 +337,7 @@ type Tenant struct {
 	SmsMonthQuota         int32              `db:"sms_month_quota" json:"sms_month_quota"`
 	SmsBilledMonth        pgtype.Date        `db:"sms_billed_month" json:"sms_billed_month"`
 	Tin                   *string            `db:"tin" json:"tin"`
+	AlertOnDelivery       bool               `db:"alert_on_delivery" json:"alert_on_delivery"`
 }
 
 type TrackingEvent struct {
@@ -352,6 +377,7 @@ type User struct {
 	VehicleID             pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
 	LastLoginAt           pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
 	EmailVerifiedAt       pgtype.Timestamptz `db:"email_verified_at" json:"email_verified_at"`
+	AlertEmails           []string           `db:"alert_emails" json:"alert_emails"`
 }
 
 type Vehicle struct {

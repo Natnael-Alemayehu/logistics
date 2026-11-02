@@ -21,21 +21,26 @@ RETURNING id;
 -- A truck carries several shipments at once and its pings are attributed to
 -- only one of them, so a shipment's route is the driver's track over the time
 -- the shipment was on board, plus anything explicitly tagged to it.
-SELECT id, shipment_id, event_type, note,
-       ST_Y(coordinates)::float8 AS latitude,
-       ST_X(coordinates)::float8 AS longitude,
-       accuracy_meters, speed_kph, battery_level, recorded_at
-FROM tracking_events
-WHERE tenant_id = sqlc.arg(tenant_id)
-  AND (
-    shipment_id = sqlc.arg(shipment_id)
-    OR (sqlc.narg(driver_id)::uuid IS NOT NULL
-        AND driver_id = sqlc.narg(driver_id)::uuid
-        AND recorded_at >= sqlc.arg(window_start)
-        AND recorded_at <= sqlc.arg(window_end))
-  )
-ORDER BY recorded_at ASC
-LIMIT 2000;
+-- The newest max_points positions, oldest first, so a long trip still ends
+-- where the truck is now.
+SELECT latest.* FROM (
+    SELECT id, shipment_id, event_type, note,
+           ST_Y(coordinates)::float8 AS latitude,
+           ST_X(coordinates)::float8 AS longitude,
+           accuracy_meters, speed_kph, battery_level, recorded_at
+    FROM tracking_events
+    WHERE tenant_id = sqlc.arg(tenant_id)
+      AND (
+        shipment_id = sqlc.arg(shipment_id)
+        OR (sqlc.narg(driver_id)::uuid IS NOT NULL
+            AND driver_id = sqlc.narg(driver_id)::uuid
+            AND recorded_at >= sqlc.arg(window_start)
+            AND recorded_at <= sqlc.arg(window_end))
+      )
+    ORDER BY recorded_at DESC
+    LIMIT sqlc.arg(max_points)
+) latest
+ORDER BY latest.recorded_at ASC;
 
 -- name: GetLatestDriverLocations :many
 SELECT DISTINCT ON (t.driver_id)

@@ -46,3 +46,9 @@ make vet
 - Every query is scoped by tenant. Keep it that way in new queries.
 - The driver app's status rules come from `/api/v1/driver/config`, which is
   derived from `model.AllowedTransitions`. Change the rules there, not in JS.
+- Live updates: an element with `data-live-region` and an `id` is fetched
+  again and swapped in when a WebSocket message says something changed
+  (`static/app.js`). Mark new live parts of a page that way instead of
+  rendering them in JS.
+- Page stylesheets (the `head` block, e.g. Leaflet's) load before `app.css`,
+  so `app.css` can restyle vendor widgets.

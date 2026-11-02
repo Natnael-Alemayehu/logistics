@@ -44,8 +44,8 @@
     return "offline";
   }
 
-  function readJSON(el) {
-    const src = el.dataset.source && document.getElementById(el.dataset.source);
+  function readJSON(el, key = "source") {
+    const src = el.dataset[key] && document.getElementById(el.dataset[key]);
     if (!src) return null;
     try {
       return JSON.parse(src.textContent);
@@ -56,10 +56,16 @@
 
   function base(el, opts = {}) {
     const map = L.map(el, { scrollWheelZoom: false, zoomControl: true, ...opts }).setView(ETHIOPIA, 6);
-    L.tileLayer(el.dataset.tiles || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    const streets = L.tileLayer(el.dataset.tiles || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18,
+      className: "tiles-street",
       attribution: el.dataset.credit || "&copy; OpenStreetMap contributors",
     }).addTo(map);
+    // A satellite view when the deployment offers one (AC-028.7).
+    if (el.dataset.satellite) {
+      const satellite = L.tileLayer(el.dataset.satellite, { maxZoom: 18, attribution: el.dataset.satelliteCredit || "" });
+      map.layersControl = L.control.layers({ Map: streets, Satellite: satellite }, {}, { position: "topright" }).addTo(map);
+    }
     // Wheel zoom only once the map has been clicked, so scrolling the page
     // doesn't get trapped.
     map.once("focus", () => map.scrollWheelZoom.enable());
@@ -90,12 +96,76 @@
   }
 
   // ---- fleet map --------------------------------------------------------------
+  // Drivers at their last position, the destinations of active shipments and
+  // a line from where each was collected, filtered by status, driver and
+  // region (FR-028).
+  const ROAD = ["in_transit", "delayed", "arrived", "issue"];
+  const ATTENTION = ["delayed", "issue"];
+  const ROUTE = { color: "#898781", weight: 1.5, opacity: 0.7, dashArray: "5 6" };
+  const ROUTE_ON = { color: "#2a78d6", weight: 3, opacity: 0.95, dashArray: null };
+
   function fleet(el) {
     const map = base(el);
+    const meta = readJSON(el, "meta") || {};
     const drivers = new Map();
+    const routes = L.layerGroup().addTo(map);
     const dests = L.layerGroup().addTo(map);
+    map.layersControl?.addOverlay(routes, "Routes");
+    const controls = document.querySelector("[data-map-filters]");
+    const count = controls?.querySelector("[data-map-count]");
+    const filter = { status: "", driver: "", region: "" };
+    let data = readJSON(el) || {};
+
+    // Not animated: a fit that follows must not be undone when a zoom
+    // animation ends.
+    function home() {
+      const c = meta.center;
+      if (c) map.setView([c.lat, c.lng], c.zoom, { animate: false });
+    }
+
+    function statusMatch(s) {
+      switch (filter.status) {
+        case "road":
+          return ROAD.includes(s.status);
+        case "attention":
+          return ATTENTION.includes(s.status);
+        case "assigned":
+          return s.status === "assigned";
+        default:
+          return true;
+      }
+    }
+
+    function shipmentShown(s) {
+      return statusMatch(s) && (!filter.driver || s.driver_id === filter.driver) && (!filter.region || (s.regions || []).includes(filter.region));
+    }
+
+    function loads(driverID) {
+      return (data.shipments || []).filter((s) => s.driver_id === driverID);
+    }
+
+    // A driver shows when the filters leave one of their loads on the map;
+    // with no shipment filter, every driver shows, loaded or not.
+    function driverShown(d) {
+      if (filter.driver && d.id !== filter.driver) return false;
+      const own = loads(d.id);
+      if (filter.status && !own.some(statusMatch)) return false;
+      if (filter.region && d.region !== filter.region && !own.some(shipmentShown)) return false;
+      return true;
+    }
 
     function driverPopup(d) {
+      const own = loads(d.id);
+      let list = null;
+      if (own.length) {
+        list = document.createElement("ul");
+        list.className = "map-popup-list";
+        own.forEach((s) => {
+          const li = document.createElement("li");
+          li.append(link("/app/shipments/" + s.id, s.tracking_number), " ", text("span", (s.destination ? "to " + s.destination + " · " : "") + s.status_label, "muted"));
+          list.append(li);
+        });
+      }
       return popup(
         text("strong", d.name),
         document.createElement("br"),
@@ -103,55 +173,115 @@
         text("div", "Position " + ago(d.at) + (d.speed_kph > 3 ? " · " + Math.round(d.speed_kph) + " km/h" : ""), "muted"),
         d.battery != null ? text("div", "Battery " + d.battery + "%", "muted") : null,
         d.paused ? text("div", "Location sharing is off", "text-warn") : null,
+        list || text("div", "No shipment assigned", "muted"),
         link("/app/drivers/" + d.id, "Driver page →"),
       );
     }
 
+    function driverClass(d) {
+      return state(d.at) + (loads(d.id).some((s) => ATTENTION.includes(s.status)) ? " attention" : "");
+    }
+
     function upsertDriver(d) {
-      const st = state(d.at);
       let m = drivers.get(d.id);
       if (!m) {
-        m = L.marker([d.lat, d.lng], { icon: driverIcon(st), riseOnHover: true }).addTo(map);
-        m.bindTooltip(d.name, { direction: "top", offset: [0, -8], className: "map-label" });
+        m = L.marker([d.lat, d.lng], { icon: driverIcon(driverClass(d)), riseOnHover: true });
+        m.bindTooltip(() => m.data.name + " · " + ago(m.data.at), { direction: "top", offset: [0, -8], className: "map-label" });
+        m.bindPopup(() => driverPopup(m.data));
         drivers.set(d.id, m);
       } else {
         m.setLatLng([d.lat, d.lng]);
-        m.setIcon(driverIcon(st));
       }
       m.data = { ...(m.data || {}), ...d };
-      m.bindPopup(() => driverPopup(m.data));
+      m.setIcon(driverIcon(driverClass(m.data)));
+      if (driverShown(m.data)) m.addTo(map);
+      else m.remove();
     }
 
-    function draw(data, refit) {
+    function draw(refit) {
       (data.drivers || []).forEach(upsertDriver);
+      routes.clearLayers();
       dests.clearLayers();
+      let shown = 0;
       (data.shipments || []).forEach((s) => {
+        if (!shipmentShown(s)) return;
+        shown++;
         if (s.lat == null) return;
-        L.marker([s.lat, s.lng], { icon: destIcon(s.priority) })
+        let line = null;
+        if (s.origin_lat != null) {
+          line = L.polyline([[s.origin_lat, s.origin_lng], [s.lat, s.lng]], { ...ROUTE, interactive: false }).addTo(routes);
+        }
+        const pin = L.marker([s.lat, s.lng], { icon: destIcon(s.priority) })
+          .bindTooltip(s.tracking_number + (s.destination ? " · " + s.destination : ""), { direction: "top", offset: [0, -6], className: "map-label" })
           .bindPopup(() =>
             popup(
               link("/app/shipments/" + s.id, s.tracking_number),
-              text("div", s.destination),
-              text("div", (s.driver_name || "Unassigned") + " · " + s.status.replace("_", " "), "muted"),
+              text("div", s.customer),
+              text("div", (s.origin || "?") + " → " + (s.destination || "?")),
+              text("div", (s.driver_name || "Unassigned") + " · " + s.status_label, "muted"),
+              s.eta ? text("div", "Due " + new Date(s.eta).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }), "muted") : null,
             ),
           )
           .addTo(dests);
+        // The selected shipment's route stands out.
+        if (line) {
+          pin.on("popupopen", () => line.setStyle(ROUTE_ON).bringToFront());
+          pin.on("popupclose", () => line.setStyle(ROUTE));
+        }
       });
-      if (refit) {
-        const pts = (data.drivers || []).map((d) => [d.lat, d.lng]);
-        (data.shipments || []).forEach((s) => s.lat != null && pts.push([s.lat, s.lng]));
-        fit(map, pts, 10);
+      if (count) {
+        const on = filter.status || filter.driver || filter.region;
+        count.textContent = on ? shown + (shown === 1 ? " shipment" : " shipments") : "";
       }
+      if (refit) frame();
     }
 
-    draw(readJSON(el) || {}, true);
-    onLive((d) => upsertDriver({ id: d.driver_id, name: d.name, lat: d.lat, lng: d.lng, at: d.at, speed_kph: d.speed_kph, battery: d.battery }));
-    // Connection states age even when nothing arrives; refresh them.
+    function frame() {
+      const pts = [];
+      drivers.forEach((m) => map.hasLayer(m) && pts.push([m.data.lat, m.data.lng]));
+      dests.eachLayer((l) => pts.push(l.getLatLng()));
+      routes.eachLayer((l) => l.getLatLngs().forEach((p) => pts.push(p)));
+      const region = filter.region && (meta.regions || []).find((r) => r.name === filter.region);
+      if (pts.length) fit(map, pts.map((p) => (Array.isArray(p) ? p : [p.lat, p.lng])), 10);
+      else if (region) map.fitBounds(region.bounds);
+      else home();
+    }
+
+    // A refresh redraws the pins, which would close an open popup; it waits.
+    let reading = false;
+    map.on("popupopen", () => (reading = true));
+    map.on("popupclose", () => (reading = false));
+
+    draw(true);
+
+    if (controls) {
+      controls.hidden = false;
+      controls.addEventListener("change", (e) => {
+        const key = e.target.dataset.filter;
+        if (!key) return;
+        filter[key] = e.target.value;
+        draw(true);
+      });
+    }
+
+    onLive((d) => {
+      const known = (data.drivers || []).find((x) => x.id === d.driver_id);
+      const fix = { id: d.driver_id, name: d.name, lat: d.lat, lng: d.lng, at: d.at, speed_kph: d.speed_kph, battery: d.battery };
+      if (known) Object.assign(known, fix);
+      else (data.drivers = data.drivers || []).push(fix);
+      upsertDriver(fix);
+    });
+    // Connection states age even when nothing arrives, and shipments change
+    // hands; refresh both.
     setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || reading) return;
       fetch("/app/api/map", { headers: { Accept: "application/json" } })
         .then((r) => (r.ok ? r.json() : null))
-        .then((data) => data && draw(data, false))
+        .then((fresh) => {
+          if (!fresh || reading) return;
+          data = fresh;
+          draw(false);
+        })
         .catch(() => {});
     }, 60000);
   }

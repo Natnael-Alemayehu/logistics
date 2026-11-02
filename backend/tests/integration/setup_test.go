@@ -166,6 +166,9 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	log := zerolog.Nop()
+	if os.Getenv("TEST_LOG") != "" { // the server's log, to see why a request failed
+		log = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
+	}
 	hub := websocket.NewHub(log)
 	go hub.Run()
 	inbox := console.New(nil)

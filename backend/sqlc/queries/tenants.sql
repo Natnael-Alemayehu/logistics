@@ -27,6 +27,7 @@ SET name = $2,
     sms_on_delayed = $12,
     sms_driver_on_assign = $13,
     tin = $14,
+    alert_on_delivery = $15,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;

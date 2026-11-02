@@ -61,6 +61,19 @@
 
     if (t.closest("[data-print]")) window.print();
 
+    // A quick message goes into the form's message box (FR-035).
+    const quick = t.closest("[data-quick]");
+    if (quick) {
+      const box = quick.closest("form")?.querySelector("[data-quick-target]");
+      if (box) {
+        box.value = box.value.trim() ? box.value.trimEnd() + " " + quick.dataset.quick : quick.dataset.quick;
+        box.focus();
+        box.setSelectionRange(box.value.length, box.value.length);
+      }
+    }
+
+    if (t.closest("[data-notify-toggle]")) toggleNotify();
+
     const back = t.closest("[data-back]");
     if (back && history.length > 1) {
       e.preventDefault();
@@ -97,6 +110,176 @@
       const vehicles = e.target.form?.querySelector("[data-vehicle-select]");
       if (opt && vehicles && opt.dataset.vehicle) vehicles.value = opt.dataset.vehicle;
     }
+
+    if (e.target.matches("[data-pick], [data-pick-all]")) updateBulk(e.target);
+
+    const columns = e.target.closest("[data-columns]");
+    if (columns && e.target.type === "checkbox") {
+      const hidden = $$("input[type='checkbox']", columns).filter((c) => !c.checked).map((c) => c.value);
+      store.set(COLUMNS_KEY, JSON.stringify(hidden));
+      $$("table[data-hideable]").forEach((tb) => (tb.dataset.hide = hidden.join(" ")));
+    }
+  });
+
+  // ---- per-browser preferences -------------------------------------------------
+  // Conveniences only: a private window or blocked storage just forgets them.
+  const store = {
+    get(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    set(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        /* not kept */
+      }
+    },
+  };
+
+  // ---- bulk assignment ------------------------------------------------------------
+  // Ticked rows go to the assign form above the list (FR-007).
+  function updateBulk(changed) {
+    const form = $("[data-bulk]");
+    if (!form) return;
+    const picks = $$("[data-pick]");
+    const all = $("[data-pick-all]");
+    if (changed && changed.matches("[data-pick-all]")) picks.forEach((p) => (p.checked = changed.checked));
+    const n = picks.filter((p) => p.checked).length;
+    if (all) {
+      all.hidden = picks.length === 0;
+      all.checked = n > 0 && n === picks.length;
+      all.indeterminate = n > 0 && n < picks.length;
+    }
+    const label = $("[data-bulk-count]", form);
+    if (label) {
+      label.dataset.empty = label.dataset.empty || label.textContent;
+      label.textContent = n ? n + (n === 1 ? " shipment ticked" : " shipments ticked") : label.dataset.empty;
+    }
+    form.classList.toggle("is-active", n > 0);
+  }
+
+  // ---- column choice ----------------------------------------------------------------
+  // Which columns of the shipment list show (FR-029), kept per browser.
+  const COLUMNS_KEY = "menged.shipments.hidden";
+
+  function initColumns(root) {
+    const table = $("table[data-hideable]", root);
+    const tools = $("[data-columns]", root);
+    if (!table || !tools) return;
+    let hidden = [];
+    try {
+      hidden = JSON.parse(store.get(COLUMNS_KEY) || "[]");
+    } catch {
+      hidden = [];
+    }
+    if (!Array.isArray(hidden)) hidden = [];
+    table.dataset.hide = hidden.join(" ");
+    $$("input[type='checkbox']", tools).forEach((c) => (c.checked = !hidden.includes(c.value)));
+    tools.hidden = false;
+  }
+
+  // ---- browser notifications --------------------------------------------------------
+  // Opt-in, per browser: a critical alert pops up when the dashboard is in
+  // a background tab (FR-033).
+  const NOTIFY_KEY = "menged.notify";
+
+  function notifyOn() {
+    return "Notification" in window && Notification.permission === "granted" && store.get(NOTIFY_KEY) === "1";
+  }
+
+  function showNotify() {
+    const box = $("[data-notify]");
+    if (!box || !("Notification" in window)) return;
+    box.hidden = false;
+    const state = $("[data-notify-state]", box);
+    const btn = $("[data-notify-toggle]", box);
+    if (Notification.permission === "denied") {
+      state.textContent = "This browser blocks notifications from this site. Allow them in the browser's site settings first.";
+      btn.hidden = true;
+    } else if (notifyOn()) {
+      state.textContent = "On in this browser.";
+      btn.textContent = "Turn off notifications in this browser";
+    } else {
+      state.textContent = "Off in this browser.";
+      btn.textContent = "Turn on notifications in this browser";
+    }
+  }
+
+  async function toggleNotify() {
+    if (!("Notification" in window)) return;
+    if (notifyOn()) store.set(NOTIFY_KEY, "0");
+    else if ((await Notification.requestPermission()) === "granted") {
+      store.set(NOTIFY_KEY, "1");
+      toast("Critical alerts will pop up while this tab is in the background.", { ttl: 4000 });
+    }
+    showNotify();
+  }
+
+  function notify(d) {
+    if (d.severity !== "critical" || !document.hidden || !notifyOn()) return;
+    try {
+      // The tag keeps one pop-up per alert when several tabs are open.
+      const n = new Notification(d.label || "Alert", { body: d.message, tag: "menged-" + d.id, icon: $("link[rel~='icon']")?.href });
+      n.addEventListener("click", () => {
+        window.focus();
+        location.href = d.shipment_id ? "/app/shipments/" + d.shipment_id : "/app/alerts";
+        n.close();
+      });
+    } catch {
+      /* some browsers allow notifications only from a service worker */
+    }
+  }
+
+  // ---- live regions ---------------------------------------------------------------
+  // Parts of a page marked data-live-region are fetched again when a
+  // shipment or an alert changes, so the counts and lists stay current
+  // (AC-027.5). A region someone is using is left alone until they're done.
+  let refreshTimer = null;
+  let refreshMissed = false;
+
+  function inUse(region) {
+    const a = document.activeElement;
+    return (a && a !== document.body && region.contains(a)) || !!$("[data-pick]:checked, details[open]", region);
+  }
+
+  function scheduleRefresh(wait = 2000) {
+    if (!$("[data-live-region][id]")) return;
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshRegions, wait);
+  }
+
+  async function refreshRegions() {
+    if (document.hidden) {
+      refreshMissed = true;
+      return;
+    }
+    const regions = $$("[data-live-region][id]");
+    if (regions.some(inUse)) {
+      scheduleRefresh(5000);
+      return;
+    }
+    let doc;
+    try {
+      const r = await fetch(location.href, { headers: { Accept: "text/html" } });
+      if (!r.ok || r.redirected) return;
+      doc = new DOMParser().parseFromString(await r.text(), "text/html");
+    } catch {
+      return;
+    }
+    regions.forEach((old) => {
+      const fresh = doc.getElementById(old.id);
+      if (fresh && !inUse(old)) old.replaceWith(document.importNode(fresh, true));
+    });
+    refreshMissed = false;
+    enhance(document);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && refreshMissed) scheduleRefresh(200);
   });
 
   // A form submits once: a second click while the first is in flight is
@@ -116,7 +299,8 @@
   // ---- chart tooltip -------------------------------------------------------------
   function initChart(chart) {
     const tip = $(".viz-tip", chart);
-    if (!tip) return;
+    if (!tip || chart.dataset.ready) return;
+    chart.dataset.ready = "1";
     function show(bar) {
       const [title, ...rows] = bar.dataset.tip.split("|");
       tip.replaceChildren(el("p", { class: "tip-title", text: title }));
@@ -210,6 +394,8 @@
         href: d.shipment_id ? "/app/shipments/" + d.shipment_id : "/app/alerts",
         ttl: d.severity === "critical" ? 12000 : 7000,
       });
+      notify(d);
+      scheduleRefresh();
     } else if (msg.type === "payment" && $("[data-payment]")?.dataset.payment === d.id) {
       // The provider answered: show the outcome.
       location.reload();
@@ -221,11 +407,21 @@
         linkText: "Reload",
         ttl: 15000,
       });
+    } else if (msg.type === "shipment") {
+      scheduleRefresh();
     }
   }
 
+  // Set-up for elements that a live refresh can replace.
+  function enhance(root) {
+    $$("[data-chart]", root).forEach(initChart);
+    initColumns(root);
+    updateBulk();
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
-    $$("[data-chart]").forEach(initChart);
+    enhance(document);
+    showNotify();
     const live = document.body.dataset.live;
     if (live && "WebSocket" in window) connectLive(live);
     // Flash messages fade after a while; errors stay until dismissed.

@@ -86,6 +86,9 @@ func (j *Jobs) once(ctx context.Context, retention, usage bool) error {
 	if err := j.CheckPickups(ctx); err != nil {
 		return fmt.Errorf("pickup check: %w", err)
 	}
+	if err := j.CheckRoutes(ctx); err != nil {
+		return fmt.Errorf("route check: %w", err)
+	}
 	if err := j.q.RequeueStuckSMS(ctx); err != nil {
 		return fmt.Errorf("requeue sms: %w", err)
 	}
@@ -203,6 +206,9 @@ func (j *Jobs) Retention(ctx context.Context) error {
 		return err
 	}
 	if err := j.q.DeleteOldEmailTokens(ctx, toTimestamp(now.Add(-retainLinks))); err != nil {
+		return err
+	}
+	if err := j.q.DeleteOldBroadcasts(ctx, toTimestamp(now.Add(-retainBroadcasts))); err != nil {
 		return err
 	}
 	if err := j.q.DeleteExpiredPendingSignups(ctx, toTimestamp(now)); err != nil {

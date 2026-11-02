@@ -20,14 +20,20 @@ WHERE tenant_id = $1
   AND status = 'cancelled'
   AND status_changed_at >= $2
   AND status_changed_at < $3
+  AND ($4::uuid IS NULL OR driver_id = $4::uuid)
+  AND ($5::text IS NULL OR lower(origin_city) = lower($5::text))
+  AND ($6::text IS NULL OR lower(destination_city) = lower($6::text))
 GROUP BY 1
 ORDER BY total DESC, reason
 `
 
 type ReportCancellationsParams struct {
-	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	DateFrom pgtype.Timestamptz `db:"date_from" json:"date_from"`
-	DateTo   pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
 }
 
 type ReportCancellationsRow struct {
@@ -39,7 +45,14 @@ type ReportCancellationsRow struct {
 // Why shipments were cancelled, and how many of them after the cargo had
 // left: a refused or returned load cost a trip.
 func (q *Queries) ReportCancellations(ctx context.Context, arg ReportCancellationsParams) ([]ReportCancellationsRow, error) {
-	rows, err := q.db.Query(ctx, reportCancellations, arg.TenantID, arg.DateFrom, arg.DateTo)
+	rows, err := q.db.Query(ctx, reportCancellations,
+		arg.TenantID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.DriverID,
+		arg.Origin,
+		arg.Destination,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -67,15 +80,21 @@ FROM shipments
 WHERE tenant_id = $1
   AND created_at >= $2
   AND created_at < $3
+  AND ($4::uuid IS NULL OR driver_id = $4::uuid)
+  AND ($5::text IS NULL OR lower(origin_city) = lower($5::text))
+  AND ($6::text IS NULL OR lower(destination_city) = lower($6::text))
 GROUP BY customer_name, customer_phone
 ORDER BY shipments DESC
 LIMIT 20
 `
 
 type ReportCustomersParams struct {
-	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	DateFrom pgtype.Timestamptz `db:"date_from" json:"date_from"`
-	DateTo   pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
 }
 
 type ReportCustomersRow struct {
@@ -87,7 +106,14 @@ type ReportCustomersRow struct {
 }
 
 func (q *Queries) ReportCustomers(ctx context.Context, arg ReportCustomersParams) ([]ReportCustomersRow, error) {
-	rows, err := q.db.Query(ctx, reportCustomers, arg.TenantID, arg.DateFrom, arg.DateTo)
+	rows, err := q.db.Query(ctx, reportCustomers,
+		arg.TenantID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.DriverID,
+		arg.Origin,
+		arg.Destination,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -122,15 +148,21 @@ WHERE tenant_id = $2
   AND status = 'delivered'
   AND actual_delivery >= $3
   AND actual_delivery < $4
+  AND ($5::uuid IS NULL OR driver_id = $5::uuid)
+  AND ($6::text IS NULL OR lower(origin_city) = lower($6::text))
+  AND ($7::text IS NULL OR lower(destination_city) = lower($7::text))
 GROUP BY 1
 ORDER BY 1
 `
 
 type ReportDeliveriesPerDayParams struct {
-	Tz       string             `db:"tz" json:"tz"`
-	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	DateFrom pgtype.Timestamptz `db:"date_from" json:"date_from"`
-	DateTo   pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	Tz          string             `db:"tz" json:"tz"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
 }
 
 type ReportDeliveriesPerDayRow struct {
@@ -142,12 +174,19 @@ type ReportDeliveriesPerDayRow struct {
 // Reports cover the half-open interval [from, to). Days are bucketed in the
 // caller's time zone so "deliveries on Tuesday" means Tuesday in Addis Ababa,
 // not in UTC.
+//
+// Every report takes the same optional filters (FR-034 AC-034.5): one
+// driver, and a route given by its origin town, its destination town or
+// both.
 func (q *Queries) ReportDeliveriesPerDay(ctx context.Context, arg ReportDeliveriesPerDayParams) ([]ReportDeliveriesPerDayRow, error) {
 	rows, err := q.db.Query(ctx, reportDeliveriesPerDay,
 		arg.Tz,
 		arg.TenantID,
 		arg.DateFrom,
 		arg.DateTo,
+		arg.DriverID,
+		arg.Origin,
+		arg.Destination,
 	)
 	if err != nil {
 		return nil, err
@@ -175,22 +214,33 @@ SELECT u.id AS driver_id, u.full_name AS driver_name,
        COUNT(s.id) FILTER (WHERE s.status = 'delivered' AND s.estimated_delivery IS NOT NULL)::bigint AS with_eta,
        COALESCE(AVG(EXTRACT(EPOCH FROM (s.actual_delivery - COALESCE(s.picked_up_at, s.created_at))) / 3600.0)
            FILTER (WHERE s.status = 'delivered'), 0)::float8 AS avg_transit_hours,
-       (SELECT COUNT(DISTINCT e.shipment_id) FROM shipment_events e
+       (SELECT COUNT(DISTINCT e.shipment_id) FROM shipment_events e JOIN shipments c ON c.id = e.shipment_id
         WHERE e.tenant_id = $1 AND e.event_type = 'status_changed' AND e.to_status = 'issue'
           AND e.actor_id = u.id
-          AND e.occurred_at >= $2 AND e.occurred_at < $3)::bigint AS issues
+          AND e.occurred_at >= $2 AND e.occurred_at < $3
+          AND ($4::text IS NULL OR lower(c.origin_city) = lower($4::text))
+          AND ($5::text IS NULL OR lower(c.destination_city) = lower($5::text))
+       )::bigint AS issues
 FROM users u
 LEFT JOIN shipments s ON s.driver_id = u.id
      AND s.actual_delivery >= $2 AND s.actual_delivery < $3
+     AND ($4::text IS NULL OR lower(s.origin_city) = lower($4::text))
+     AND ($5::text IS NULL OR lower(s.destination_city) = lower($5::text))
 WHERE u.tenant_id = $1 AND u.role = 'driver'
-GROUP BY u.id, u.full_name
+  AND ($6::uuid IS NULL OR u.id = $6::uuid)
+GROUP BY u.id, u.full_name, u.is_active
+HAVING COUNT(s.id) > 0
+    OR (u.is_active AND $4::text IS NULL AND $5::text IS NULL)
 ORDER BY delivered DESC, u.full_name
 `
 
 type ReportDriverPerformanceParams struct {
-	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	DateFrom pgtype.Timestamptz `db:"date_from" json:"date_from"`
-	DateTo   pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
 }
 
 type ReportDriverPerformanceRow struct {
@@ -203,8 +253,17 @@ type ReportDriverPerformanceRow struct {
 	Issues          int64       `db:"issues" json:"issues"`
 }
 
+// Every active driver, and any other who delivered in the period; with a
+// route filter, only those who drove it.
 func (q *Queries) ReportDriverPerformance(ctx context.Context, arg ReportDriverPerformanceParams) ([]ReportDriverPerformanceRow, error) {
-	rows, err := q.db.Query(ctx, reportDriverPerformance, arg.TenantID, arg.DateFrom, arg.DateTo)
+	rows, err := q.db.Query(ctx, reportDriverPerformance,
+		arg.TenantID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.Origin,
+		arg.Destination,
+		arg.DriverID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -243,15 +302,21 @@ WHERE tenant_id = $1
   AND status = 'delivered'
   AND actual_delivery >= $2
   AND actual_delivery < $3
+  AND ($4::uuid IS NULL OR driver_id = $4::uuid)
+  AND ($5::text IS NULL OR lower(origin_city) = lower($5::text))
+  AND ($6::text IS NULL OR lower(destination_city) = lower($6::text))
 GROUP BY 1, 2
 ORDER BY delivered DESC
 LIMIT 20
 `
 
 type ReportRoutesParams struct {
-	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	DateFrom pgtype.Timestamptz `db:"date_from" json:"date_from"`
-	DateTo   pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
 }
 
 type ReportRoutesRow struct {
@@ -264,7 +329,14 @@ type ReportRoutesRow struct {
 }
 
 func (q *Queries) ReportRoutes(ctx context.Context, arg ReportRoutesParams) ([]ReportRoutesRow, error) {
-	rows, err := q.db.Query(ctx, reportRoutes, arg.TenantID, arg.DateFrom, arg.DateTo)
+	rows, err := q.db.Query(ctx, reportRoutes,
+		arg.TenantID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.DriverID,
+		arg.Origin,
+		arg.Destination,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -294,32 +366,50 @@ const reportSummary = `-- name: ReportSummary :one
 SELECT
     (SELECT COUNT(*) FROM shipments c
      WHERE c.tenant_id = $1
-       AND c.created_at >= $2 AND c.created_at < $3)::bigint AS created,
+       AND c.created_at >= $2 AND c.created_at < $3
+       AND ($4::uuid IS NULL OR c.driver_id = $4::uuid)
+       AND ($5::text IS NULL OR lower(c.origin_city) = lower($5::text))
+       AND ($6::text IS NULL OR lower(c.destination_city) = lower($6::text)))::bigint AS created,
     COUNT(*) FILTER (WHERE status = 'delivered')::bigint AS delivered,
     COUNT(*) FILTER (WHERE status = 'delivered' AND estimated_delivery IS NOT NULL
                        AND actual_delivery <= estimated_delivery)::bigint AS on_time,
     COUNT(*) FILTER (WHERE status = 'delivered' AND estimated_delivery IS NOT NULL)::bigint AS with_eta,
     COALESCE(AVG(EXTRACT(EPOCH FROM (actual_delivery - COALESCE(picked_up_at, created_at))) / 3600.0)
         FILTER (WHERE status = 'delivered'), 0)::float8 AS avg_transit_hours,
-    (SELECT COUNT(DISTINCT e.shipment_id) FROM shipment_events e
+    (SELECT COUNT(DISTINCT e.shipment_id) FROM shipment_events e JOIN shipments c ON c.id = e.shipment_id
      WHERE e.tenant_id = $1 AND e.event_type = 'status_changed' AND e.to_status = 'issue'
-       AND e.occurred_at >= $2 AND e.occurred_at < $3)::bigint AS issues,
+       AND e.occurred_at >= $2 AND e.occurred_at < $3
+       AND ($4::uuid IS NULL OR c.driver_id = $4::uuid)
+       AND ($5::text IS NULL OR lower(c.origin_city) = lower($5::text))
+       AND ($6::text IS NULL OR lower(c.destination_city) = lower($6::text)))::bigint AS issues,
     (SELECT COUNT(*) FROM shipments c
      WHERE c.tenant_id = $1 AND c.status = 'cancelled'
-       AND c.status_changed_at >= $2 AND c.status_changed_at < $3)::bigint AS cancelled,
-    (SELECT COUNT(*) FROM proof_of_deliveries p
+       AND c.status_changed_at >= $2 AND c.status_changed_at < $3
+       AND ($4::uuid IS NULL OR c.driver_id = $4::uuid)
+       AND ($5::text IS NULL OR lower(c.origin_city) = lower($5::text))
+       AND ($6::text IS NULL OR lower(c.destination_city) = lower($6::text)))::bigint AS cancelled,
+    (SELECT COUNT(*) FROM proof_of_deliveries p JOIN shipments c ON c.id = p.shipment_id
      WHERE p.tenant_id = $1 AND p.status = 'accepted'
-       AND p.recorded_at >= $2 AND p.recorded_at < $3)::bigint AS with_pod
+       AND p.recorded_at >= $2 AND p.recorded_at < $3
+       AND ($4::uuid IS NULL OR c.driver_id = $4::uuid)
+       AND ($5::text IS NULL OR lower(c.origin_city) = lower($5::text))
+       AND ($6::text IS NULL OR lower(c.destination_city) = lower($6::text)))::bigint AS with_pod
 FROM shipments
 WHERE tenant_id = $1
   AND actual_delivery >= $2
   AND actual_delivery < $3
+  AND ($4::uuid IS NULL OR driver_id = $4::uuid)
+  AND ($5::text IS NULL OR lower(origin_city) = lower($5::text))
+  AND ($6::text IS NULL OR lower(destination_city) = lower($6::text))
 `
 
 type ReportSummaryParams struct {
-	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	DateFrom pgtype.Timestamptz `db:"date_from" json:"date_from"`
-	DateTo   pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
 }
 
 type ReportSummaryRow struct {
@@ -334,7 +424,14 @@ type ReportSummaryRow struct {
 }
 
 func (q *Queries) ReportSummary(ctx context.Context, arg ReportSummaryParams) (ReportSummaryRow, error) {
-	row := q.db.QueryRow(ctx, reportSummary, arg.TenantID, arg.DateFrom, arg.DateTo)
+	row := q.db.QueryRow(ctx, reportSummary,
+		arg.TenantID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.DriverID,
+		arg.Origin,
+		arg.Destination,
+	)
 	var i ReportSummaryRow
 	err := row.Scan(
 		&i.Created,
