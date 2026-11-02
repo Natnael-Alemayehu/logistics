@@ -113,6 +113,7 @@
       <div><dt>Received by</dt><dd>{{.RecipientName}}{{with .RecipientPhone}} · <a href="{{telURL .}}">{{.}}</a>{{end}}</dd></div>
       <div><dt>Recorded</dt><dd>{{when .RecordedAt}}{{with .DriverName}} by {{.}}{{end}}</dd></div>
       {{with .DeliveryNotes}}<div><dt>Driver's note</dt><dd>{{.}}</dd></div>{{end}}
+      {{if and .LocationReason (not (bool .LocationVerified))}}<div><dt>Away from the destination because</dt><dd>{{reasonLabel (str .LocationReason)}}</dd></div>{{end}}
       {{if eq .Status "dismissed"}}<div><dt>Dismissed</dt><dd>{{when .ReviewedAt}}{{with .ReviewerName}} by {{.}}{{end}}</dd></div>{{end}}
     </dl>
     <div class="pod-media">
@@ -137,6 +138,7 @@
       <div><dt>Received by</dt><dd>{{.RecipientName}}{{with .RecipientPhone}} · <a href="{{telURL .}}">{{.}}</a>{{end}}</dd></div>
       <div><dt>Recorded</dt><dd>{{when .RecordedAt}}{{with .DriverName}} by {{.}}{{end}}{{if and .SyncedAt.Valid (gt (.SyncedAt.Time.Sub .RecordedAt.Time).Minutes 10.0)}} · <span class="muted">synced {{when .SyncedAt}}</span>{{end}}</dd></div>
       {{with .DeliveryNotes}}<div><dt>Driver's note</dt><dd>{{.}}</dd></div>{{end}}
+      {{if and .LocationReason (not (bool .LocationVerified))}}<div><dt>Away from the destination because</dt><dd>{{reasonLabel (str .LocationReason)}}</dd></div>{{end}}
     </dl>
     <div class="pod-media">
       {{if .SignatureUrl}}<figure><a href="/app/shipments/{{$id}}/media/0" target="_blank" rel="noopener"><img src="/app/shipments/{{$id}}/media/0" alt="Recipient's signature" class="signature" loading="lazy"></a><figcaption>Signature</figcaption></figure>{{end}}

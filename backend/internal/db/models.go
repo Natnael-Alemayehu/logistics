@@ -175,6 +175,7 @@ type ProofOfDelivery struct {
 	HeldReason             *string            `db:"held_reason" json:"held_reason"`
 	ReviewedAt             pgtype.Timestamptz `db:"reviewed_at" json:"reviewed_at"`
 	ReviewedBy             pgtype.UUID        `db:"reviewed_by" json:"reviewed_by"`
+	LocationReason         *string            `db:"location_reason" json:"location_reason"`
 }
 
 type SavedFilter struct {
@@ -301,6 +302,7 @@ type SyncMetadatum struct {
 	BatteryLevel       *int32             `db:"battery_level" json:"battery_level"`
 	ClockOffsetSeconds *int32             `db:"clock_offset_seconds" json:"clock_offset_seconds"`
 	TrackingPaused     bool               `db:"tracking_paused" json:"tracking_paused"`
+	PowerSaving        bool               `db:"power_saving" json:"power_saving"`
 }
 
 type Tenant struct {
@@ -378,6 +380,9 @@ type User struct {
 	LastLoginAt           pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
 	EmailVerifiedAt       pgtype.Timestamptz `db:"email_verified_at" json:"email_verified_at"`
 	AlertEmails           []string           `db:"alert_emails" json:"alert_emails"`
+	Language              *string            `db:"language" json:"language"`
+	AppBatterySaver       bool               `db:"app_battery_saver" json:"app_battery_saver"`
+	AppVibrate            bool               `db:"app_vibrate" json:"app_vibrate"`
 }
 
 type Vehicle struct {

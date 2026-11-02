@@ -78,12 +78,22 @@ UPDATE users
 SET pin_hash = $2, password_reset_required = $3, failed_login_attempts = 0, locked_until = NULL
 WHERE id = $1;
 
+-- name: SetDriverAppSettings :exec
+-- The driver app's settings, chosen on the phone (FR-026 AC-026.6). The
+-- phone sends only those the driver changed; the rest stay as they are.
+UPDATE users
+SET language = COALESCE(sqlc.narg(language)::text, language),
+    app_battery_saver = COALESCE(sqlc.narg(battery_saver)::boolean, app_battery_saver),
+    app_vibrate = COALESCE(sqlc.narg(vibrate)::boolean, app_vibrate)
+WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id) AND role = 'driver';
+
 -- name: ListDriversWithStatus :many
 -- The drivers page and the assignment picker: who is on duty, how loaded they
 -- are, and when their device last talked to the server.
 SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at,
        v.plate_number AS vehicle_plate,
        sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version, sm.storage_used_kb,
+       COALESCE(sm.power_saving, false)::bool AS power_saving,
        -- On duty (FR-031): carrying a load that has left, or with the app
        -- open and sharing location in the last half hour.
        -- A driver who never synced has no sync row, hence the COALESCEs.

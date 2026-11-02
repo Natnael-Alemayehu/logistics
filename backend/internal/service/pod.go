@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -69,6 +70,9 @@ type PODInput struct {
 	PhotoKeys      []string
 	Notes          string
 	Lat, Lng       *float64
+	// LocationReason is why the driver recorded it away from the
+	// destination, one of model.LocationReasons.
+	LocationReason string
 	RecordedAt     time.Time
 	ClientID       string
 }
@@ -89,6 +93,13 @@ func (in *PODInput) Check() error {
 		in.RecipientPhone = n
 	} else {
 		in.RecipientPhone = ""
+	}
+	// A reason this server doesn't know, from an app newer or older than
+	// it, still says the driver had one.
+	if r := strings.TrimSpace(in.LocationReason); r != "" && !slices.Contains(model.LocationReasons, r) {
+		in.LocationReason = "other"
+	} else {
+		in.LocationReason = r
 	}
 	return nil
 }
@@ -207,6 +218,7 @@ func (s *ShipmentService) RecordPOD(ctx context.Context, a Actor, id pgtype.UUID
 			DeliveryNotes:          toText(strings.TrimSpace(truncate(in.Notes, 1000))),
 			LocationVerified:       &verified,
 			LocationMismatchMeters: mismatch,
+			LocationReason:         toText(in.LocationReason),
 			RecordedAt:             toTimestamp(recorded),
 			ClientID:               toText(in.ClientID),
 			Status:                 status,
@@ -247,9 +259,13 @@ func (s *ShipmentService) RecordPOD(ctx context.Context, a Actor, id pgtype.UUID
 		})
 		switch {
 		case haveFix && !verified && cur.DestinationLat != nil:
+			msg := fmt.Sprintf("Delivery of %s was recorded %s from the destination.", cur.TrackingNumber, formatDistance(distance))
+			if in.LocationReason != "" {
+				msg += " The driver's reason: " + model.ReasonLabel(in.LocationReason) + "."
+			}
 			s.raise(ctx, q, after, newAlert{
 				TenantID: cur.TenantID, ShipmentID: cur.ID, DriverID: driverID, Type: AlertPODLocation, Severity: SeverityWarning,
-				Message: fmt.Sprintf("Delivery of %s was recorded %s from the destination.", cur.TrackingNumber, formatDistance(distance)),
+				Message: msg,
 			})
 		case !haveFix:
 			s.raise(ctx, q, after, newAlert{

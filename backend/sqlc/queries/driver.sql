@@ -28,8 +28,8 @@ WHERE shipments.driver_id = sqlc.arg(driver_id) AND shipments.tenant_id = sqlc.a
 -- name: UpsertSyncMetadata :exec
 INSERT INTO sync_metadata (
     driver_id, last_sync_at, device_id, app_version, battery_level,
-    pending_sync_count, storage_used_kb, clock_offset_seconds, tracking_paused
-) VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8)
+    pending_sync_count, storage_used_kb, clock_offset_seconds, tracking_paused, power_saving
+) VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (driver_id) DO UPDATE SET
     last_sync_at = NOW(),
     device_id = EXCLUDED.device_id,
@@ -38,7 +38,8 @@ ON CONFLICT (driver_id) DO UPDATE SET
     pending_sync_count = EXCLUDED.pending_sync_count,
     storage_used_kb = EXCLUDED.storage_used_kb,
     clock_offset_seconds = EXCLUDED.clock_offset_seconds,
-    tracking_paused = EXCLUDED.tracking_paused;
+    tracking_paused = EXCLUDED.tracking_paused,
+    power_saving = EXCLUDED.power_saving;
 
 -- name: GetSyncMetadata :one
 SELECT * FROM sync_metadata WHERE driver_id = $1;

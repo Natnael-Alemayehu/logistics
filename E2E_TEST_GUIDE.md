@@ -115,6 +115,52 @@ Also try:
 - **Forgot your PIN?**: request a code, read it in the server terminal, and
   set a new PIN.
 
+### On the road
+
+Chrome's DevTools can stand in for the road: **Sensors** sets the phone's
+position, and **Network** throttles or cuts the connection.
+
+- **Distance to the drop-off.** With a position set (e.g. Addis Ababa,
+  9.03, 38.74), a load's page says how far the drop-off is and in which
+  direction, such as "222 km south of you", from the last position the phone
+  had. This works offline. With signal, a small map shows you and the
+  drop-off.
+- **Delivering away from the drop-off.** Open **Record delivery** while far
+  from the destination: a warning says how far away you are before anyone
+  signs. **Go back**, or pick why you're delivering here (the recipient met the
+  truck elsewhere, the destination is wrong, the phone's location is off, or
+  other). The button reads **Deliver here anyway**, and "Other" needs a note.
+  On the dashboard, the delivery shows **Away from the destination because …**
+  and the location alert gives the driver's reason. The tolerance is 500 m
+  for a destination with an exact location and 15 km for a city.
+- **Suggestions.** The recipient's name offers the customer and the people
+  who signed for this customer in the last year. **Quick notes** under Notes
+  add "Left at reception" and similar lines. **Message the office** has quick
+  messages such as "On my way".
+- **Weak signal.** Add latency of over 10 seconds in DevTools (a custom
+  network profile) and tap the status pill. It shows **Weak signal** after
+  the slow sync, and while the phone says it's online but syncs keep
+  failing. On a weak signal, deliveries go one at a time.
+- **Battery saver.** In the menu, **Battery saver** records a position every
+  15 minutes and syncs every 5. It turns on by itself below 20% battery when
+  the phone isn't charging, and the menu then says so. The driver's page on
+  the dashboard shows "Saving battery: a position every 15 minutes", and the
+  map popup says the same. Parked for 10 minutes, the app stops the GPS and
+  checks every 5 minutes (15 when saving battery) until the truck moves.
+- **Keep the screen on while charging** holds the screen on during long
+  drives, only while the phone is plugged in and the app is open.
+- **Storage.** The menu shows how much the app holds and whether the browser
+  protects it from automatic clean-up (an installed app usually is). The
+  list warns when the phone is nearly full: under 50 MB left, or more than
+  80% of the browser's allowance used. **Clear saved data** asks first, needs
+  signal, and downloads the current work again. Updates not yet sent stay.
+- **Settings follow the driver.** Choose Amharic and battery saver on one
+  phone, then sign in on another. The second phone starts in the browser's
+  language and switches to the driver's choices after the first sync. Signing
+  in on the second phone signs the first one out, and the first phone forgets
+  its shipments and messages.
+- **Help** in the menu calls the office on the company's contact phone.
+
 ## 5. Conflicts
 
 1. Assign a shipment, let the driver sync, then take the phone offline.

@@ -50,7 +50,8 @@ SELECT DISTINCT ON (t.driver_id)
        ST_Y(t.coordinates)::float8 AS latitude,
        ST_X(t.coordinates)::float8 AS longitude,
        t.speed_kph, t.battery_level, t.recorded_at,
-       sm.last_sync_at, sm.tracking_paused
+       sm.last_sync_at, sm.tracking_paused,
+       COALESCE(sm.power_saving, false)::bool AS power_saving
 FROM tracking_events t
 JOIN users u ON u.id = t.driver_id
 LEFT JOIN sync_metadata sm ON sm.driver_id = t.driver_id
