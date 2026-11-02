@@ -1,0 +1,161 @@
+{{define "content"}}{{$d := .Data}}{{$o := $d.O}}{{$t := $o.Tenant}}{{$st := $o.Standing}}{{$u := $d.Usage}}
+<div class="page-head">
+  <div><h1>Billing</h1><p class="muted">{{$t.Name}}{{with $t.Tin}} · TIN {{.}}{{end}}</p></div>
+  <div class="actions"><a class="btn" href="/app/settings">Company details</a></div>
+</div>
+
+<div class="grid-detail">
+<div class="col-main stack">
+  <section class="card standing standing-{{$st.State}}">
+    {{if eq $st.State "trialing"}}
+      <div class="card-head"><h2>Free trial</h2><span class="badge">{{$st.DaysLeft}} days left</span></div>
+      <p>Your trial ends <strong>{{when $st.TrialEnds}}</strong>. Everything works until then. To keep booking shipments after that, choose a plan below{{if $o.Open}}, or pay the invoice waiting for you{{end}}.</p>
+    {{else if eq $st.State "trial_ended"}}
+      <div class="card-head"><h2>Your free trial has ended</h2><span class="badge s-issue">Read-only</span></div>
+      <p>It ended {{when $st.TrialEnds}}. Shipments already on the road carry on and nothing is deleted, but booking or assigning shipments and adding drivers, vehicles or staff wait until you choose a plan.</p>
+    {{else}}
+      <div class="card-head">
+        <h2>{{$o.Current.Name}} plan</h2>
+        {{if eq $st.State "read_only"}}<span class="badge s-issue">Read-only</span>{{else if eq $st.State "past_due"}}<span class="badge s-issue">Overdue</span>{{else}}<span class="badge s-delivered">Active</span>{{end}}
+      </div>
+      <dl class="facts">
+        <div><dt>Price</dt><dd>{{if eq $t.BillingCycle "annual"}}{{birr $o.Current.Annual}} a year{{else}}{{birr $o.Current.Monthly}} a month{{end}}, plus {{$d.VAT}}% VAT</dd></div>
+        <div><dt>{{if $t.PeriodStart.Time.After $.Now}}Starts{{else}}This period{{end}}</dt><dd>{{if $t.PeriodStart.Time.After $.Now}}{{date $t.PeriodStart}}, when your trial ends; paid until {{date $t.PeriodEnd}}{{else}}{{date $t.PeriodStart}} to {{date $t.PeriodEnd}}, then renews {{if eq $t.BillingCycle "annual"}}yearly{{else}}monthly{{end}}{{end}}</dd></div>
+        <div><dt>Includes</dt><dd>Up to {{$t.MaxDrivers}} drivers and {{grouped $t.SmsQuota}} text messages a month</dd></div>
+      </dl>
+      {{if eq $st.State "read_only"}}
+        <p class="banner bad">Invoice {{$st.DebtNumber}} is unpaid, so the account is read-only: shipments on the road carry on, but booking and adding drivers wait until it is paid.</p>
+      {{else if eq $st.State "past_due"}}
+        <p class="banner warn">Invoice {{$st.DebtNumber}} was due on {{date $st.DebtDue}}. If it isn't paid by {{when $st.ReadOnlyAt}}, the account becomes read-only.</p>
+      {{end}}
+      {{if or $t.PendingPlan $t.PendingCycle}}
+      <form method="post" action="/app/billing/plan" class="pending-change">
+        <input type="hidden" name="plan" value="{{$t.Plan}}">
+        <input type="hidden" name="cycle" value="{{$t.BillingCycle}}">
+        <p>From <strong>{{date $t.PeriodEnd}}</strong>:
+          {{with $t.PendingPlan}}the {{planName .}} plan{{if $t.PendingCycle}}, {{end}}{{end}}{{with $t.PendingCycle}}billed {{if eq (str .) "annual"}}annually{{else}}monthly{{end}}{{end}}.
+          <button class="link" type="submit">Keep things as they are</button></p>
+      </form>
+      {{else}}
+      <form method="post" action="/app/billing/plan">
+        <input type="hidden" name="plan" value="{{$t.Plan}}">
+        {{if eq $t.BillingCycle "annual"}}
+        <input type="hidden" name="cycle" value="monthly">
+        <p class="small muted">Billed annually. <button class="link" type="submit">Switch to monthly billing from {{date $t.PeriodEnd}}</button></p>
+        {{else}}
+        <input type="hidden" name="cycle" value="annual">
+        <p class="small muted">Billed monthly. <button class="link" type="submit">Switch to annual billing from {{date $t.PeriodEnd}}</button> and pay for 10 months a year instead of 12.</p>
+        {{end}}
+      </form>
+      {{end}}
+    {{end}}
+  </section>
+
+  {{if $o.Open}}
+  <section class="card">
+    <div class="card-head"><h2>To pay</h2></div>
+    <ul class="invoice-due">
+      {{range $o.Open}}
+      <li>
+        <div><a href="/app/billing/invoices/{{uuid .ID}}"><strong>{{.Number}}</strong></a> · {{invoiceKind .Kind}}
+          <div class="small muted">{{if past .DueAt}}<span class="text-bad">Was due {{date .DueAt}}</span>{{else}}Due {{date .DueAt}}{{end}}{{if or (eq .Kind "subscription") (eq .Kind "upgrade")}} · lapses if unpaid{{end}}</div></div>
+        <strong class="num">{{birr .TotalSantim}}</strong>
+        <a class="btn btn-primary btn-sm" href="/app/billing/invoices/{{uuid .ID}}">Pay</a>
+      </li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
+
+  <form method="post" action="/app/billing/plan" class="card plan-picker">
+    <div class="card-head">
+      <h2>{{if $o.Subscribed}}Change plan{{else}}Choose a plan{{end}}</h2>
+      <fieldset class="segmented">
+        <legend class="sr-only">Billing cycle</legend>
+        <label><input type="radio" name="cycle" value="monthly" {{if eq (field .Form "cycle" "monthly") "monthly"}}checked{{end}}> Monthly</label>
+        <label><input type="radio" name="cycle" value="annual" {{if eq (field .Form "cycle" "monthly") "annual"}}checked{{end}}> Annual · 2 months free</label>
+      </fieldset>
+    </div>
+    <div class="plan-grid">
+      {{range $o.Options}}
+      <article class="plan-card {{if .Current}}is-current{{end}}">
+        <h3>{{.Name}}{{if .Current}} <span class="badge">Your plan</span>{{else if .Pending}} <span class="badge">From {{date $t.PeriodEnd}}</span>{{end}}</h3>
+        {{if .Offered}}
+        <p class="plan-price">{{etb .Monthly}}<span class="muted"> / month</span></p>
+        <p class="small muted">or {{etb .Annual}} a year, plus {{$d.VAT}}% VAT</p>
+        {{else}}
+        <p class="plan-price">Priced for you</p>
+        <p class="small muted">For large fleets, with terms agreed with us.</p>
+        {{end}}
+        <ul class="plan-feats">
+          <li>Up to {{grouped .MaxDrivers}} drivers</li>
+          <li>{{grouped .SMSIncluded}} text messages a month</li>
+          <li>Unlimited office staff and shipments</li>
+        </ul>
+        {{if .Blocked}}<p class="small text-bad">{{.Blocked}}</p>{{end}}
+        {{if not .Offered}}
+          <a class="btn btn-block" href="mailto:{{$.App.SupportEmail}}?subject=Enterprise%20plan">Ask for an offer</a>
+        {{else if .Current}}
+          <p class="small muted plan-note">Current plan</p>
+        {{else if .Pending}}
+          <p class="small muted plan-note">Chosen for your next period</p>
+        {{else}}
+          <button class="btn btn-block {{if or (eq .Change "subscribe") (eq .Change "upgrade")}}btn-primary{{end}}" type="submit" name="plan" value="{{.Code}}" {{if .Blocked}}disabled{{end}}>
+            {{if eq .Change "upgrade"}}Upgrade to {{.Name}}{{else if eq .Change "downgrade"}}Move to {{.Name}} on {{date $t.PeriodEnd}}{{else if eq .Change "switch"}}Switch to {{.Name}}{{else}}Choose {{.Name}}{{end}}
+          </button>
+        {{end}}
+      </article>
+      {{end}}
+    </div>
+    <p class="small muted">
+      {{if $o.Subscribed}}An upgrade applies once you pay the difference for the rest of this period. A smaller plan or a new billing cycle starts with your next period.
+      {{else}}You pay for a period in advance, by telebirr, CBE Birr or bank transfer. Paying before the trial ends doesn't cut it short: the plan starts when it ends.{{end}}
+      Texts beyond the allowance are never blocked; each costs ETB 0.50 plus VAT on the next month's invoice.
+    </p>
+  </form>
+</div>
+
+<aside class="col-side stack">
+  <section class="card">
+    <div class="card-head"><h2>This month</h2></div>
+    {{template "meter" (dict "Label" "Active drivers" "Used" $u.ActiveDrivers "Limit" $u.MaxDrivers "Note" "Driver places on your plan")}}
+    {{$texts := "Included this month"}}{{if ne $t.Plan "trial"}}{{$texts = "Included this month; extra ones cost ETB 0.50 each"}}{{end}}
+    {{template "meter" (dict "Label" "Text messages" "Used" $u.SMSThisMonth "Limit" $u.SMSIncluded "Note" $texts)}}
+    <dl class="facts facts-2 usage-facts">
+      <div><dt>Shipments booked</dt><dd>{{grouped $u.ShipmentsThisMonth}}</dd></div>
+      <div><dt>Delivered</dt><dd>{{grouped $u.DeliveredThisMonth}}</dd></div>
+      <div><dt>Vehicles</dt><dd>{{grouped $u.Vehicles}}</dd></div>
+      <div><dt>Office staff</dt><dd>{{grouped $u.Staff}}</dd></div>
+    </dl>
+  </section>
+
+  <section class="card card-flush">
+    <div class="card-head"><h2>Invoices</h2></div>
+    {{if $o.Invoices}}
+    <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th>Invoice</th><th class="num">Total</th><th>Status</th></tr></thead>
+      <tbody>
+        {{range $o.Invoices}}
+        <tr>
+          <td><a href="/app/billing/invoices/{{uuid .ID}}" class="mono">{{.Number}}</a><div class="small muted">{{invoiceKind .Kind}} · {{date .IssuedAt}}</div></td>
+          <td class="num">{{birr .TotalSantim}}</td>
+          <td>{{template "inv-status" .}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p class="muted card-pad">No invoices yet.</p>{{end}}
+  </section>
+</aside>
+</div>
+{{end}}
+
+{{define "meter"}}{{$pct := share .Used .Limit}}
+<div class="meter {{if ge $pct 80}}is-near{{end}}">
+  <div class="meter-head"><span>{{.Label}}</span><strong>{{grouped .Used}} of {{grouped .Limit}}</strong></div>
+  <div class="meter-track" role="meter" aria-label="{{.Label}}" aria-valuemin="0" aria-valuemax="{{.Limit}}" aria-valuenow="{{.Used}}"><span class="meter-fill" style="width: {{$pct}}%"></span></div>
+  <p class="small muted">{{.Note}}{{if ge $pct 100}} · <span class="text-warn">limit reached</span>{{else if ge $pct 80}} · <span class="text-warn">almost used up</span>{{end}}</p>
+</div>
+{{end}}

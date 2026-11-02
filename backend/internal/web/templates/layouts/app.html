@@ -46,6 +46,7 @@
 <nav class="sidenav" id="sidenav" aria-label="Main">
   {{if .Me}}{{if .Me.IsPlatformAdmin}}
   <a href="/app/platform" {{if eq .Nav "platform"}}aria-current="page"{{end}}>{{template "icon" "building"}}Companies</a>
+  <a href="/app/platform/billing" {{if eq .Nav "platform-billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
   {{else if not .Me.MustChangeCredential}}
   <a href="/app" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>{{template "icon" "home"}}Overview</a>
   <a href="/app/shipments" {{if eq .Nav "shipments"}}aria-current="page"{{end}}>{{template "icon" "box"}}Shipments</a>
@@ -56,6 +57,7 @@
   {{if .Me.CanManageCompany}}
   <p class="nav-section">Company</p>
   <a href="/app/team" {{if eq .Nav "team"}}aria-current="page"{{end}}>{{template "icon" "users"}}Team</a>
+  <a href="/app/billing" {{if eq .Nav "billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
   <a href="/app/settings" {{if eq .Nav "settings"}}aria-current="page"{{end}}>{{template "icon" "gear"}}Settings</a>
   {{end}}
   <div class="nav-foot">
@@ -67,9 +69,7 @@
 <div class="scrim" data-toggle="nav" hidden></div>
 
 <main id="main" class="main">
-  {{if and .Me .App.TrialDaysLeft}}{{if le .App.TrialDaysLeft 5}}
-  <div class="banner warn">Your free trial ends {{if le .App.TrialDaysLeft 1}}today{{else}}in {{.App.TrialDaysLeft}} days{{end}}. {{if .Me.CanManageCompany}}<a href="/app/settings#plan">Choose a plan</a> to keep booking shipments.{{else}}Ask your administrator to choose a plan.{{end}}</div>
-  {{end}}{{end}}
+  {{if and .Me (ne .Nav "billing") (not .Me.MustChangeCredential)}}{{template "standing-banner" .}}{{end}}
   {{if and .Me .Me.Email (not .Me.EmailVerified) (not .Me.MustChangeCredential)}}
   <form class="banner info" method="post" action="/app/account/verify-email">
     Please confirm your email address: open the link we sent to {{.Me.Email}}. <button type="submit" class="link">Send it again</button>
@@ -86,3 +86,18 @@
 {{block "scripts" .}}{{end}}
 </body>
 </html>{{end}}
+
+{{/* Where the company is with paying, on every page but billing's own. An
+   invoice not yet overdue is mentioned on the overview only. */}}
+{{define "standing-banner"}}{{$admin := .Me.CanManageCompany}}{{with .Standing}}
+{{if eq .State "trialing"}}{{if and .DaysLeft (le .DaysLeft 5)}}
+<div class="banner warn">Your free trial ends {{when .TrialEnds}}. {{if $admin}}<a href="/app/billing">Choose a plan</a> to keep booking shipments after that.{{else}}Ask an administrator to choose a plan to keep booking shipments after that.{{end}}</div>
+{{end}}{{else if eq .State "trial_ended"}}
+<div class="banner bad"><strong>Your free trial has ended, so the account is read-only.</strong> Shipments on the road carry on and nothing is deleted, but booking and adding drivers wait until {{if $admin}}you <a href="/app/billing">choose a plan</a>{{else}}an administrator chooses a plan{{end}}.</div>
+{{else if eq .State "due"}}{{if and $admin (eq $.Nav "dashboard")}}
+<div class="banner info">Invoice {{.DebtNumber}} is due on {{date .DebtDue}}. <a href="/app/billing">Pay it</a></div>
+{{end}}{{else if eq .State "past_due"}}
+<div class="banner warn">Invoice {{.DebtNumber}} is overdue. If it isn't paid by {{when .ReadOnlyAt}}, the account becomes read-only. {{if $admin}}<a href="/app/billing">Pay it now</a>{{else}}Ask an administrator to pay it.{{end}}</div>
+{{else if eq .State "read_only"}}
+<div class="banner bad"><strong>Invoice {{.DebtNumber}} is unpaid, so the account is read-only.</strong> Shipments on the road carry on, but booking and adding drivers wait until it is paid. {{if $admin}}<a href="/app/billing">Pay it</a>{{else}}Ask an administrator to pay it.{{end}}</div>
+{{end}}{{end}}{{end}}

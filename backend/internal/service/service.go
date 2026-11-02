@@ -20,6 +20,7 @@ import (
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/pkg/payments"
 	"github.com/natnael-alemayehu/logistics/pkg/storage"
 )
 
@@ -36,6 +37,11 @@ type Settings struct {
 	Secret []byte
 	// SMSNumber is the number or short code drivers text status updates to.
 	SMSNumber string
+	// SupportEmail is where companies write to the platform operator.
+	SupportEmail string
+	// BankDetails tells companies where to send a bank transfer; empty when
+	// transfers aren't accepted.
+	BankDetails string
 }
 
 // Publisher delivers live updates to dashboards. The WebSocket hub
@@ -52,7 +58,9 @@ type Deps struct {
 	Storage   storage.Storage
 	SMS       SMSSender
 	Mail      MailSender
-	Settings  Settings
+	// Payments are the mobile-money providers, in the order offered.
+	Payments []payments.Provider
+	Settings Settings
 	// Now is the clock, replaceable in tests.
 	Now func() time.Time
 }
@@ -73,6 +81,7 @@ type Services struct {
 	Media     *MediaService
 	Jobs      *Jobs
 	Audit     *AuditService
+	Billing   *BillingService
 }
 
 // New wires the services together.
@@ -102,11 +111,12 @@ func New(d Deps) *Services {
 	s.Auth = &AuthService{core: c}
 	s.Users = &UserService{core: c}
 	s.Vehicles = &VehicleService{core: c}
-	s.Tenants = &TenantService{core: c, auth: s.Auth}
+	s.Billing = &BillingService{core: c, providers: d.Payments}
+	s.Tenants = &TenantService{core: c, auth: s.Auth, billing: s.Billing}
 	s.Reports = &ReportService{core: c}
 	s.Tracking = &TrackingService{core: c}
 	s.Sync = &SyncService{core: c, shipments: s.Shipments, media: s.Media}
-	s.Jobs = &Jobs{core: c}
+	s.Jobs = &Jobs{core: c, billing: s.Billing}
 	return s
 }
 
@@ -176,6 +186,10 @@ type Principal struct {
 	TenantName string
 	TenantPlan string
 	TrialEnds  *time.Time
+	// DebtNumber and DebtDue are the company's oldest unpaid renewal or
+	// usage invoice, if any: read-only mode follows from them.
+	DebtNumber string
+	DebtDue    *time.Time
 	// MustChangeCredential is set after an admin reset or on first login with
 	// an issued credential. The caller may do nothing else until it is changed.
 	MustChangeCredential bool

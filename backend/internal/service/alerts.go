@@ -22,6 +22,8 @@ const (
 	AlertDeliveryOnCanceled = "delivery_on_cancelled"
 	AlertDeliveryHeld       = "delivery_held"
 	AlertPickupOverdue      = "pickup_overdue"
+	AlertDriverLimitNear    = "driver_limit_near"
+	AlertSMSQuotaNear       = "sms_quota_near"
 )
 
 // Severities.
@@ -47,6 +49,8 @@ var alertLabels = map[string]string{
 	AlertDeliveryOnCanceled: "Delivery recorded on a cancelled shipment",
 	AlertDeliveryHeld:       "Delivery needs review",
 	AlertPickupOverdue:      "Not collected",
+	AlertDriverLimitNear:    "Driver places running out",
+	AlertSMSQuotaNear:       "Text allowance running out",
 }
 
 // AlertLabel is the display name of an alert type.

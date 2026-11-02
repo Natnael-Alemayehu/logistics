@@ -210,6 +210,11 @@
         href: d.shipment_id ? "/app/shipments/" + d.shipment_id : "/app/alerts",
         ttl: d.severity === "critical" ? 12000 : 7000,
       });
+    } else if (msg.type === "payment" && $("[data-payment]")?.dataset.payment === d.id) {
+      // The provider answered: show the outcome.
+      location.reload();
+    } else if (msg.type === "invoice" && $("[data-invoice]")?.dataset.invoice === d.id) {
+      location.reload();
     } else if (msg.type === "shipment" && page && page.dataset.shipment === d.id) {
       toast("This shipment was updated (" + d.status_label.toLowerCase() + ").", {
         href: location.pathname,

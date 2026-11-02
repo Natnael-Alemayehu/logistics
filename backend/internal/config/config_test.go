@@ -59,6 +59,7 @@ func TestShortSecretRejected(t *testing.T) {
 func TestProductionRequiresPublicURL(t *testing.T) {
 	t.Setenv("APP_SECRET_FILE", filepath.Join(t.TempDir(), "secret"))
 	t.Setenv("ENVIRONMENT", "production")
+	t.Setenv("BILLING_BANK_DETAILS", "Commercial Bank of Ethiopia, account 1000123456789, Menged PLC")
 	if _, err := Load(); err == nil {
 		t.Error("production without PUBLIC_URL should fail")
 	}
@@ -99,6 +100,10 @@ func TestProductionHasNoPaymentStandIn(t *testing.T) {
 	t.Setenv("APP_SECRET_FILE", filepath.Join(t.TempDir(), "secret"))
 	t.Setenv("ENVIRONMENT", "production")
 	t.Setenv("PUBLIC_URL", "https://menged.example.et/")
+	if _, err := Load(); err == nil {
+		t.Error("production with no way to pay should fail")
+	}
+	t.Setenv("BILLING_BANK_DETAILS", "Commercial Bank of Ethiopia, account 1000123456789, Menged PLC")
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)

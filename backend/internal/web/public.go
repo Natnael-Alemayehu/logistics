@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -20,7 +21,7 @@ func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	s.render(w, r, http.StatusOK, "public/landing", s.view(w, r, "", "", map[string]any{"Plans": model.Plans[1:]}))
+	s.render(w, r, http.StatusOK, "public/landing", s.view(w, r, "", "", map[string]any{"Plans": model.Plans[1:], "TrialDays": model.TrialDays}))
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +77,26 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) signupView(w http.ResponseWriter, r *http.Request) *View {
 	trial, _ := model.PlanByCode(model.PlanTrial)
-	return s.view(w, r, "Start your free trial", "", map[string]any{"Towns": geo.Places(), "TrialDrivers": trial.MaxDrivers})
+	var plans []model.Plan
+	for _, p := range model.Plans {
+		if p.SelfServe {
+			plans = append(plans, p)
+		}
+	}
+	v := s.view(w, r, "Start your free trial", "", map[string]any{
+		"Towns": geo.Places(), "TrialDrivers": trial.MaxDrivers, "TrialDays": model.TrialDays, "Plans": plans,
+	})
+	// The landing page's plan links choose one in advance.
+	if plan := r.URL.Query().Get("plan"); plan != "" {
+		v.Form.Set("plan", plan+":"+model.CycleMonthly)
+	}
+	return v
+}
+
+// signupPlan splits the sign-up form's choice, such as "business:annual".
+func signupPlan(choice string) (plan, cycle string) {
+	plan, cycle, _ = strings.Cut(choice, ":")
+	return plan, cycle
 }
 
 // signupPage is the registration form, filled in again from a sign-up still
@@ -84,7 +104,10 @@ func (s *Server) signupView(w http.ResponseWriter, r *http.Request) *View {
 func (s *Server) signupPage(w http.ResponseWriter, r *http.Request) {
 	v := s.signupView(w, r)
 	if ps, err := s.svc.Tenants.PendingSignup(r.Context(), s.signupToken(r)); err == nil {
-		v.Form = url.Values{"company": {ps.Company}, "city": {ps.City}, "name": {ps.FullName}, "email": {ps.Email}, "phone": {ps.Phone}}
+		v.Form = url.Values{
+			"company": {ps.Company}, "city": {ps.City}, "name": {ps.FullName}, "email": {ps.Email}, "phone": {ps.Phone},
+			"plan": {ps.Plan + ":" + ps.BillingCycle},
+		}
 	}
 	s.render(w, r, http.StatusOK, "public/signup", v)
 }
@@ -101,10 +124,12 @@ func (s *Server) signupToken(r *http.Request) string {
 }
 
 func (s *Server) signup(w http.ResponseWriter, r *http.Request) {
+	plan, cycle := signupPlan(r.PostFormValue("plan"))
 	token, err := s.svc.Tenants.StartSignup(r.Context(), service.SignupInput{
 		Company: r.PostFormValue("company"), City: r.PostFormValue("city"),
 		AdminName: r.PostFormValue("name"), Email: r.PostFormValue("email"),
 		Phone: r.PostFormValue("phone"), Password: r.PostFormValue("password"),
+		Plan: plan, Cycle: cycle,
 	})
 	if err != nil {
 		if !s.formError(w, r, "public/signup", s.signupView(w, r), err) {
@@ -169,6 +194,13 @@ func (s *Server) signupVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: signupCookie, Path: "/signup", MaxAge: -1, HttpOnly: true, Secure: s.cfg.SecureCookies(), SameSite: http.SameSiteLaxMode})
 	s.setSessionCookie(w, res.Token, time.Time{})
+	if res.Invoice != nil {
+		s.setFlash(w, "success", fmt.Sprintf("Welcome to %s! Your company is set up, and your %d-day free trial has started. "+
+			"Here is the invoice for your plan: confirm your email with the link we sent, then pay it whenever you're ready.",
+			s.cfg.AppName, model.TrialDays))
+		http.Redirect(w, r, "/app/billing/invoices/"+res.Invoice.ID.String(), http.StatusSeeOther)
+		return
+	}
 	s.setFlash(w, "success", "Welcome to "+s.cfg.AppName+"! Start by adding a vehicle and your first driver, then book a shipment.")
 	http.Redirect(w, r, "/app", http.StatusSeeOther)
 }

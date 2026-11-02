@@ -23,13 +23,51 @@ perfect coverage. Drivers with feature phones report by SMS instead
 | Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) and a sync indicator that shows what is still waiting to send |
 | Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
 | Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
-| The operator | `/app/platform` | Every company on the platform, plans, driver limits, suspension |
+| Company admins | `/app/billing` | The plan and this month's usage, plan changes, printable invoices, payment by telebirr or CBE Birr, or bank transfer details |
+| The operator | `/app/platform` | Every company with its plan and activity, trial extensions, Enterprise terms, suspension; unpaid invoices, bank transfers to record, refunds to send, monthly recurring revenue |
 
 Companies sign up on their own, confirming the admin's phone with an SMS code,
-and get a 14-day trial with up to 5 drivers. Staff who forget their password
-reset it with an emailed link.
+and either start a 14-day free trial or choose a plan and pay at once. Staff
+who forget their password reset it with an emailed link.
 Data is separated per company throughout, and there are five roles: driver,
 dispatcher, fleet manager, admin and platform admin.
+
+## Plans
+
+| Plan | Drivers | Texts a month | Price |
+|---|---|---|---|
+| Free trial | 10 | 500 | free for 14 days |
+| Starter | 10 | 500 | ETB 2,500 a month |
+| Business | 50 | 3,000 | ETB 9,000 a month |
+| Enterprise | agreed | agreed | agreed with the operator |
+
+Every plan has the whole product, with unlimited office staff and shipments;
+plans differ only in limits. Prices exclude 15% VAT, and a year costs ten
+months. Texts beyond the allowance are never blocked, because a customer who
+misses a delivery update costs more than the text: each costs ETB 0.50 on the
+next month's usage invoice.
+
+A company pays for each period in advance, by bank transfer, which the
+operator records, or by mobile money. There is no real telebirr or CBE Birr
+adapter yet: `pkg/payments` has the interface and the stand-ins, so a
+production site takes bank transfers until one is written.
+
+An upgrade applies once its prorated invoice is paid. A smaller plan, or the
+other billing cycle, starts with the next period. A plan change waits while a
+renewal or usage invoice is unpaid. Invoices are due 7 days after they are
+issued.
+
+A company becomes **read-only** when its trial ends, or when a renewal or
+usage invoice is still unpaid 7 days after it was due. Read-only stops new
+work only: booking shipments, assigning unassigned ones, and adding drivers,
+vehicles or staff. Loads already on the road carry on, with driver updates,
+proof of delivery, reassignment and customer SMS. Viewing, exporting and
+paying always work, and paying lifts it at once. The operator can also
+suspend a company, which signs everyone out.
+
+Money that arrives for an invoice already paid or cancelled is not kept: the
+operator sees it under **Refunds to send** and records the refund once it is
+sent back.
 
 ## Architecture
 
@@ -39,11 +77,11 @@ One Go binary serves everything:
           browsers (dashboard, tracking)        driver phones (PWA)        SMS provider
                       │  HTML + WebSocket              │  JSON sync              │  webhook
                       └───────────────┬────────────────┴─────────────┬──────────┘
-                                ┌─────▼──────────────────────────────▼─────┐
+                                ┌─────▼──────────────────────────────▼───────┐
                                 │  menged (cmd/server)                       │
                                 │  internal/web      routes, templates, API  │
                                 │  internal/service  business rules          │
-                                │  background: SMS outbox, alerts, retention │
+                                │  jobs: outboxes, alerts, billing, cleanup  │
                                 └─────────────────────┬──────────────────────┘
                                               PostgreSQL + PostGIS
 ```
@@ -57,9 +95,13 @@ One Go binary serves everything:
   Every change carries a client ID, so a resend after a lost response is
   harmless. When the phone and the office disagree, the office wins and the
   driver is told why.
-- **SMS goes through an outbox** in the database, sent by a background worker
-  with retries. Customers can text STOP to opt out. The mock provider logs messages to
-  Settings → Text messages, where you can also simulate a driver's reply.
+- **SMS and email go through outboxes** in the database, sent by a background
+  worker with retries, so a provider outage delays a message rather than
+  losing it. Customers can text STOP to opt out.
+- **Outside services have stand-ins.** SMS, email and payments default to
+  providers that print what they would send in the server's terminal: codes,
+  links, invoices and payment prompts. A production deployment refuses to
+  start with them unless `ALLOW_MOCK_PROVIDERS=true`.
 - **Everything is embedded**: templates, static files and migrations are in the
   binary, which migrates the database on start.
 
@@ -73,13 +115,14 @@ proof of delivery and SMS reporting don't depend on GPS.
 backend/
   cmd/server/          main: serve, migrate, seed
   internal/web/        HTTP: routes, middleware, handlers, templates/, static/
-  internal/service/    shipments, status rules, sync, auth, SMS, alerts, reports, jobs
-  internal/model/      statuses, transitions, reasons, roles, plans
+  internal/service/    shipments, status rules, sync, auth, SMS, email, billing, alerts, reports, jobs
+  internal/model/      statuses, transitions, reasons, roles, plans and prices
   internal/db/         sqlc-generated queries (from sqlc/queries)
   internal/geo/        Ethiopian towns, distances, transit-time estimates
   internal/phone/      Ethiopian phone number normalisation
   migrations/          goose migrations, embedded
-  pkg/                 sms providers, storage (local or S3), websocket hub, hashing
+  pkg/                 SMS, email and payment providers, terminal stand-ins, storage (local or S3),
+                       websocket hub, hashing
   tests/integration/   end-to-end tests over HTTP against PostGIS
   deployments/         production compose file, Caddy, Prometheus
 ```
@@ -104,9 +147,11 @@ trucks on the road and two alerts:
 | Platform admin | `/login` | `admin@menged.et` / `menged-admin` |
 | Driver | `/driver/` | `0912345601` … `0912345605`, PIN `2580` |
 
-SMS is simulated by default. To try a feature-phone driver, open Settings →
-Text messages and send `ET <last 4 of a tracking number> 3` from a driver's
-number.
+SMS, email and payments are simulated by default: codes, links and payment
+prompts are printed in the terminal running `make run`. To try a
+feature-phone driver, open Settings → Text messages and send
+`ET <last 4 of a tracking number> 3` from a driver's number, or run
+`go run ./cmd/server sms-in 0912345601 "ET 7K3M 3"` from `backend/`.
 
 `make dev` rebuilds on Go changes (with [air](https://github.com/air-verse/air)).
 Templates and static files are reloaded from disk on every request either way.
@@ -116,7 +161,8 @@ Templates and static files are reloaded from disk on every request either way.
 ```bash
 make test               # unit tests
 make test-integration   # end-to-end: signup → book → driver sync → POD → tracking → confirmation,
-                        # replayed syncs, conflicts, tenant isolation, roles, SMS commands
+                        # replayed syncs, conflicts, tenant isolation, roles, SMS commands,
+                        # accounts, and billing from trial to renewal, upgrade and refund
 ```
 
 The integration tests create a scratch database on the server from `make db`
@@ -127,7 +173,7 @@ container instead.
 
 ```bash
 cd backend
-cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_PROVIDER and its keys, SMS_INBOUND_SECRET
+cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_* and SMTP_* settings, BILLING_BANK_DETAILS
 docker compose -f deployments/docker-compose.prod.yml up -d
 ```
 

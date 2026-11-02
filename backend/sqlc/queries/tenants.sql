@@ -25,12 +25,11 @@ SET name = $2,
     sms_on_delivered = $10,
     sms_on_cancelled = $11,
     sms_on_delayed = $12,
-    sms_driver_on_assign = $13
+    sms_driver_on_assign = $13,
+    tin = $14,
+    updated_at = NOW()
 WHERE id = $1
 RETURNING *;
-
--- name: UpdateTenantPlan :exec
-UPDATE tenants SET plan = $2, max_drivers = $3 WHERE id = $1;
 
 -- name: SetTenantActive :exec
 UPDATE tenants SET is_active = $2 WHERE id = $1;
@@ -40,6 +39,8 @@ SELECT t.*,
        (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role = 'driver' AND u.is_active)::bigint AS drivers,
        (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role <> 'driver' AND u.is_active)::bigint AS staff,
        (SELECT COUNT(*) FROM shipments s WHERE s.tenant_id = t.id AND s.created_at > NOW() - INTERVAL '30 days')::bigint AS shipments_30d,
-       (SELECT MAX(s.created_at) FROM shipments s WHERE s.tenant_id = t.id)::timestamptz AS last_shipment_at
+       (SELECT MAX(s.created_at) FROM shipments s WHERE s.tenant_id = t.id)::timestamptz AS last_shipment_at,
+       (SELECT MIN(i.due_at) FROM invoices i
+        WHERE i.tenant_id = t.id AND i.status = 'open' AND i.kind IN ('renewal', 'usage'))::timestamptz AS debt_due_at
 FROM tenants t
 ORDER BY t.created_at DESC;

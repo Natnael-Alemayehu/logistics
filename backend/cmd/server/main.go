@@ -29,6 +29,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/migrations"
 	"github.com/natnael-alemayehu/logistics/pkg/console"
 	"github.com/natnael-alemayehu/logistics/pkg/mail"
+	"github.com/natnael-alemayehu/logistics/pkg/payments"
 	"github.com/natnael-alemayehu/logistics/pkg/sms"
 	"github.com/natnael-alemayehu/logistics/pkg/storage"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
@@ -173,6 +174,20 @@ func (s smsLog) Debug(msg string, kv ...interface{}) { s.l.Debug().Fields(kv).Ms
 // terminal is where the stand-in providers print what they would have sent.
 var terminal = console.New(os.Stdout)
 
+// paymentProviders are the mobile-money methods offered. There are no real
+// adapters yet: the stand-ins print each payment request with a link to a
+// page that approves or declines it.
+func paymentProviders(cfg *config.Config) []payments.Provider {
+	if cfg.PaymentProvider != "mock" {
+		return nil
+	}
+	prompt := func(reference string) string { return cfg.PublicURL + "/dev/payments/" + reference }
+	return []payments.Provider{
+		payments.NewMock("telebirr", "telebirr", cfg.Secret, prompt, terminal),
+		payments.NewMock("cbebirr", "CBE Birr", cfg.Secret, prompt, terminal),
+	}
+}
+
 func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher, log zerolog.Logger) (*service.Services, error) {
 	if mocked := cfg.MockedProviders(); cfg.IsProduction() && len(mocked) > 0 && !cfg.AllowMockProviders {
 		return nil, fmt.Errorf("%s would only be printed to the terminal in production: configure real providers, "+
@@ -206,9 +221,11 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher
 	}
 	return service.New(service.Deps{
 		Pool: pool, Log: log, Publisher: pub, Storage: store, SMS: smsSender{provider}, Mail: mailSender{mailer},
+		Payments: paymentProviders(cfg),
 		Settings: service.Settings{
 			AppName: cfg.AppName, BaseURL: cfg.PublicURL, Location: cfg.Timezone,
 			Secret: cfg.Secret, SMSNumber: cfg.SMSNumber,
+			SupportEmail: cfg.SupportEmail, BankDetails: cfg.BankDetails,
 		},
 	}), nil
 }

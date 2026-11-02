@@ -324,7 +324,7 @@ func (s *Server) settingsData(r *http.Request) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"Tenant": tenant, "Usage": usage, "Towns": geo.Places(), "Plans": model.Plans[1:]}, nil
+	return map[string]any{"Tenant": tenant, "Usage": usage, "Towns": geo.Places()}, nil
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -341,6 +341,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		"contact_email":         {deref(tenant.ContactEmail)},
 		"region_city":           {tenant.RegionCity},
 		"max_active_per_driver": {strconv.Itoa(int(tenant.MaxActivePerDriver))},
+		"tin":                   {deref(tenant.Tin)},
 	}
 	for name, on := range map[string]bool{
 		"sms_on_created": tenant.SmsOnCreated, "sms_on_dispatched": tenant.SmsOnDispatched,
@@ -359,7 +360,7 @@ func (s *Server) settingsUpdate(w http.ResponseWriter, r *http.Request) {
 	maxActive, _ := strconv.Atoi(r.PostFormValue("max_active_per_driver"))
 	on := func(name string) bool { return r.PostFormValue(name) != "" }
 	_, err := s.svc.Tenants.UpdateSettings(r.Context(), principal(r), service.SettingsInput{
-		Name: r.PostFormValue("name"), ContactPhone: r.PostFormValue("contact_phone"),
+		Name: r.PostFormValue("name"), TIN: r.PostFormValue("tin"), ContactPhone: r.PostFormValue("contact_phone"),
 		ContactEmail: r.PostFormValue("contact_email"), RegionCity: r.PostFormValue("region_city"),
 		MaxActivePerDriver: maxActive,
 		SMSOnCreated:       on("sms_on_created"), SMSOnDispatched: on("sms_on_dispatched"),
@@ -518,31 +519,41 @@ type auditRow struct {
 type auditChange struct{ Field, From, To string }
 
 var auditActions = map[string]string{
-	"login":                    "Signed in",
-	"login_failed":             "Failed sign-in",
-	"login_locked":             "Account locked after failed sign-ins",
-	"password_changed":         "Changed their password",
-	"pin_changed":              "Changed their PIN",
-	"pin_reset":                "Reset their PIN by SMS",
-	"credential_reset":         "Issued a temporary sign-in",
-	"driver_created":           "Added a driver",
-	"driver_updated":           "Edited a driver",
-	"staff_created":            "Added a team member",
-	"staff_updated":            "Edited a team member",
-	"user_deactivated":         "Deactivated an account",
-	"user_reactivated":         "Reactivated an account",
-	"vehicle_created":          "Added a vehicle",
-	"vehicle_updated":          "Edited a vehicle",
-	"settings_updated":         "Changed company settings",
-	"company_signup":           "Created the company",
-	"password_reset_requested": "Asked for a password reset link",
-	"password_reset":           "Reset their password by email",
-	"email_verified":           "Confirmed their email address",
-	"pod_accepted":             "Accepted a held delivery",
-	"pod_dismissed":            "Dismissed a held delivery",
-	"tenant_suspended":         "Suspended a company",
-	"tenant_restored":          "Restored a company",
-	"tenant_plan_changed":      "Changed a company's plan",
+	"login":                      "Signed in",
+	"login_failed":               "Failed sign-in",
+	"login_locked":               "Account locked after failed sign-ins",
+	"password_changed":           "Changed their password",
+	"pin_changed":                "Changed their PIN",
+	"pin_reset":                  "Reset their PIN by SMS",
+	"credential_reset":           "Issued a temporary sign-in",
+	"driver_created":             "Added a driver",
+	"driver_updated":             "Edited a driver",
+	"staff_created":              "Added a team member",
+	"staff_updated":              "Edited a team member",
+	"user_deactivated":           "Deactivated an account",
+	"user_reactivated":           "Reactivated an account",
+	"vehicle_created":            "Added a vehicle",
+	"vehicle_updated":            "Edited a vehicle",
+	"settings_updated":           "Changed company settings",
+	"company_signup":             "Created the company",
+	"password_reset_requested":   "Asked for a password reset link",
+	"password_reset":             "Reset their password by email",
+	"email_verified":             "Confirmed their email address",
+	"pod_accepted":               "Accepted a held delivery",
+	"pod_dismissed":              "Dismissed a held delivery",
+	"tenant_suspended":           "Suspended a company",
+	"tenant_restored":            "Restored a company",
+	"plan_chosen":                "Chose a plan",
+	"payment_started":            "Started a payment",
+	"invoice_paid":               "Invoice paid",
+	"invoice_marked_paid":        "Recorded a bank transfer",
+	"invoice_voided":             "Cancelled an invoice",
+	"payment_refund_due":         "Payment to refund",
+	"payment_refunded":           "Payment refunded",
+	"subscription_renewed":       "Subscription renewed",
+	"trial_extended":             "Extended a free trial",
+	"enterprise_offer_set":       "Set Enterprise terms",
+	"enterprise_offer_withdrawn": "Withdrew Enterprise terms",
 }
 
 func (s *Server) userNames(ctx context.Context, tenantID pgtype.UUID) map[pgtype.UUID]string {
@@ -657,15 +668,4 @@ func (s *Server) platformTenantActive(w http.ResponseWriter, r *http.Request) {
 		msg = "Company restored."
 	}
 	s.actionResult(w, r, "/app/platform", err, msg)
-}
-
-func (s *Server) platformTenantPlan(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		s.notFound(w, r)
-		return
-	}
-	limit, _ := strconv.Atoi(r.PostFormValue("max_drivers"))
-	err = s.svc.Tenants.SetPlan(r.Context(), principal(r), id, r.PostFormValue("plan"), limit, clientInfo(r))
-	s.actionResult(w, r, "/app/platform", err, "Plan updated.")
 }

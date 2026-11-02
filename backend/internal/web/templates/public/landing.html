@@ -54,10 +54,11 @@
     <article class="card plan">
       <h3>{{.Name}}</h3>
       <p class="plan-price">{{if .MonthlyETB}}{{money .MonthlyETB}}<span class="muted"> / month</span>{{else}}Let's talk{{end}}</p>
-      <p>Up to {{.MaxDrivers}} drivers, unlimited office staff and shipments.</p>
+      <p>{{if .SelfServe}}Up to {{.MaxDrivers}} drivers and {{grouped .SMSIncluded}} customer texts a month.{{else}}Hundreds of drivers, with limits and a price agreed with you.{{end}} Unlimited office staff and shipments.</p>
+      {{if .SelfServe}}<a class="btn" href="/signup?plan={{.Code}}">Start with {{.Name}}</a>{{else}}<a class="btn" href="mailto:{{$.App.SupportEmail}}?subject=Enterprise%20plan">Ask for an offer</a>{{end}}
     </article>
     {{end}}
   </div>
-  <p class="muted small">Every plan includes the driver app, customer tracking and reports. Customer SMS is billed at cost.</p>
+  <p class="muted small">Every plan starts with a {{.Data.TrialDays}}-day free trial and includes the driver app, customer tracking and reports. Prices are before 15% VAT; paid annually, a year costs ten months. Texts beyond the allowance are never blocked and cost ETB 0.50 each.</p>
 </section>
 {{end}}

@@ -37,6 +37,13 @@ type AuditLog struct {
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type BillingNotice struct {
+	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Kind      string             `db:"kind" json:"kind"`
+	Episode   string             `db:"episode" json:"episode"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Email struct {
 	ID            pgtype.UUID        `db:"id" json:"id"`
 	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
@@ -64,6 +71,56 @@ type EmailToken struct {
 	ExpiresAt pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	UsedAt    pgtype.Timestamptz `db:"used_at" json:"used_at"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Invoice struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Number         string             `db:"number" json:"number"`
+	Kind           string             `db:"kind" json:"kind"`
+	Plan           string             `db:"plan" json:"plan"`
+	BillingCycle   string             `db:"billing_cycle" json:"billing_cycle"`
+	PeriodStart    pgtype.Timestamptz `db:"period_start" json:"period_start"`
+	PeriodEnd      pgtype.Timestamptz `db:"period_end" json:"period_end"`
+	Lines          []byte             `db:"lines" json:"lines"`
+	Usage          []byte             `db:"usage" json:"usage"`
+	SubtotalSantim int64              `db:"subtotal_santim" json:"subtotal_santim"`
+	VatSantim      int64              `db:"vat_santim" json:"vat_santim"`
+	TotalSantim    int64              `db:"total_santim" json:"total_santim"`
+	Status         string             `db:"status" json:"status"`
+	IssuedAt       pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	DueAt          pgtype.Timestamptz `db:"due_at" json:"due_at"`
+	PaidAt         pgtype.Timestamptz `db:"paid_at" json:"paid_at"`
+	VoidedAt       pgtype.Timestamptz `db:"voided_at" json:"voided_at"`
+	CustomerName   string             `db:"customer_name" json:"customer_name"`
+	CustomerTin    *string            `db:"customer_tin" json:"customer_tin"`
+	CustomerCity   *string            `db:"customer_city" json:"customer_city"`
+	CreatedBy      pgtype.UUID        `db:"created_by" json:"created_by"`
+}
+
+type InvoiceCounter struct {
+	Year int32 `db:"year" json:"year"`
+	Last int32 `db:"last" json:"last"`
+}
+
+type Payment struct {
+	ID              pgtype.UUID        `db:"id" json:"id"`
+	TenantID        pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	InvoiceID       pgtype.UUID        `db:"invoice_id" json:"invoice_id"`
+	Provider        string             `db:"provider" json:"provider"`
+	Reference       string             `db:"reference" json:"reference"`
+	ProviderRef     *string            `db:"provider_ref" json:"provider_ref"`
+	PayerPhone      *string            `db:"payer_phone" json:"payer_phone"`
+	AmountSantim    int64              `db:"amount_santim" json:"amount_santim"`
+	Status          string             `db:"status" json:"status"`
+	Raw             []byte             `db:"raw" json:"raw"`
+	Note            *string            `db:"note" json:"note"`
+	RefundDue       bool               `db:"refund_due" json:"refund_due"`
+	RefundedAt      pgtype.Timestamptz `db:"refunded_at" json:"refunded_at"`
+	RefundReference *string            `db:"refund_reference" json:"refund_reference"`
+	RecordedBy      pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 }
 
 type PendingSignup struct {
@@ -223,26 +280,39 @@ type SyncMetadatum struct {
 }
 
 type Tenant struct {
-	ID                 pgtype.UUID        `db:"id" json:"id"`
-	Name               string             `db:"name" json:"name"`
-	Slug               string             `db:"slug" json:"slug"`
-	Plan               string             `db:"plan" json:"plan"`
-	MaxDrivers         int32              `db:"max_drivers" json:"max_drivers"`
-	IsActive           bool               `db:"is_active" json:"is_active"`
-	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	ContactPhone       *string            `db:"contact_phone" json:"contact_phone"`
-	ContactEmail       *string            `db:"contact_email" json:"contact_email"`
-	RegionCity         string             `db:"region_city" json:"region_city"`
-	MaxActivePerDriver int32              `db:"max_active_per_driver" json:"max_active_per_driver"`
-	SmsOnCreated       bool               `db:"sms_on_created" json:"sms_on_created"`
-	SmsOnDispatched    bool               `db:"sms_on_dispatched" json:"sms_on_dispatched"`
-	SmsOnArrived       bool               `db:"sms_on_arrived" json:"sms_on_arrived"`
-	SmsOnDelivered     bool               `db:"sms_on_delivered" json:"sms_on_delivered"`
-	SmsOnCancelled     bool               `db:"sms_on_cancelled" json:"sms_on_cancelled"`
-	SmsOnDelayed       bool               `db:"sms_on_delayed" json:"sms_on_delayed"`
-	SmsDriverOnAssign  bool               `db:"sms_driver_on_assign" json:"sms_driver_on_assign"`
-	TrialEndsAt        pgtype.Timestamptz `db:"trial_ends_at" json:"trial_ends_at"`
+	ID                    pgtype.UUID        `db:"id" json:"id"`
+	Name                  string             `db:"name" json:"name"`
+	Slug                  string             `db:"slug" json:"slug"`
+	Plan                  string             `db:"plan" json:"plan"`
+	MaxDrivers            int32              `db:"max_drivers" json:"max_drivers"`
+	IsActive              bool               `db:"is_active" json:"is_active"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ContactPhone          *string            `db:"contact_phone" json:"contact_phone"`
+	ContactEmail          *string            `db:"contact_email" json:"contact_email"`
+	RegionCity            string             `db:"region_city" json:"region_city"`
+	MaxActivePerDriver    int32              `db:"max_active_per_driver" json:"max_active_per_driver"`
+	SmsOnCreated          bool               `db:"sms_on_created" json:"sms_on_created"`
+	SmsOnDispatched       bool               `db:"sms_on_dispatched" json:"sms_on_dispatched"`
+	SmsOnArrived          bool               `db:"sms_on_arrived" json:"sms_on_arrived"`
+	SmsOnDelivered        bool               `db:"sms_on_delivered" json:"sms_on_delivered"`
+	SmsOnCancelled        bool               `db:"sms_on_cancelled" json:"sms_on_cancelled"`
+	SmsOnDelayed          bool               `db:"sms_on_delayed" json:"sms_on_delayed"`
+	SmsDriverOnAssign     bool               `db:"sms_driver_on_assign" json:"sms_driver_on_assign"`
+	TrialEndsAt           pgtype.Timestamptz `db:"trial_ends_at" json:"trial_ends_at"`
+	BillingCycle          string             `db:"billing_cycle" json:"billing_cycle"`
+	PeriodStart           pgtype.Timestamptz `db:"period_start" json:"period_start"`
+	PeriodEnd             pgtype.Timestamptz `db:"period_end" json:"period_end"`
+	PendingPlan           *string            `db:"pending_plan" json:"pending_plan"`
+	PendingCycle          *string            `db:"pending_cycle" json:"pending_cycle"`
+	EnterprisePriceSantim *int64             `db:"enterprise_price_santim" json:"enterprise_price_santim"`
+	EnterpriseMaxDrivers  *int32             `db:"enterprise_max_drivers" json:"enterprise_max_drivers"`
+	EnterpriseSmsQuota    *int32             `db:"enterprise_sms_quota" json:"enterprise_sms_quota"`
+	SubscribedAt          pgtype.Timestamptz `db:"subscribed_at" json:"subscribed_at"`
+	SmsQuota              int32              `db:"sms_quota" json:"sms_quota"`
+	SmsMonthQuota         int32              `db:"sms_month_quota" json:"sms_month_quota"`
+	SmsBilledMonth        pgtype.Date        `db:"sms_billed_month" json:"sms_billed_month"`
+	Tin                   *string            `db:"tin" json:"tin"`
 }
 
 type TrackingEvent struct {

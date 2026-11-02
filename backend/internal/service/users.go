@@ -117,6 +117,9 @@ func (s *UserService) CreateDriver(ctx context.Context, p *Principal, in PersonI
 		if err != nil {
 			return err
 		}
+		if err := s.requireWritable(ctx, q, tenant); err != nil {
+			return err
+		}
 		if err := checkDriverQuota(ctx, q, tenant); err != nil {
 			return err
 		}
@@ -216,7 +219,7 @@ func checkDriverQuota(ctx context.Context, q *db.Queries, t db.Tenant) error {
 		return err
 	}
 	if n >= int64(t.MaxDrivers) {
-		return limitReached(fmt.Sprintf("Your %s plan allows %d active drivers. Deactivate one, or contact us to upgrade.",
+		return limitReached(fmt.Sprintf("Your %s plan allows %d active drivers. Deactivate one, or move to a bigger plan on the Billing page.",
 			model.PlanName(t.Plan), t.MaxDrivers))
 	}
 	return nil
@@ -239,6 +242,13 @@ func (s *UserService) CreateStaff(ctx context.Context, p *Principal, in PersonIn
 	}
 	out := &NewAccount{}
 	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		tenant, err := q.GetTenantByID(ctx, p.TenantID)
+		if err != nil {
+			return err
+		}
+		if err := s.requireWritable(ctx, q, tenant); err != nil {
+			return err
+		}
 		pw := temporaryPassword()
 		h, err := hash.Password(pw)
 		if err != nil {
@@ -379,13 +389,18 @@ func (s *UserService) SetActive(ctx context.Context, p *Principal, id pgtype.UUI
 					return err
 				}
 			}
-		} else if u.Role == model.RoleDriver {
+		} else {
 			tenant, err := q.GetTenantByID(ctx, p.TenantID)
 			if err != nil {
 				return err
 			}
-			if err := checkDriverQuota(ctx, q, tenant); err != nil {
+			if err := s.requireWritable(ctx, q, tenant); err != nil {
 				return err
+			}
+			if u.Role == model.RoleDriver {
+				if err := checkDriverQuota(ctx, q, tenant); err != nil {
+					return err
+				}
 			}
 		}
 		if err := q.SetUserActive(ctx, db.SetUserActiveParams{ID: id, TenantID: p.TenantID, IsActive: active}); err != nil {

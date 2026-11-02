@@ -1,6 +1,7 @@
 {{define "content"}}{{$d := .Data}}
 <div class="page-head">
   <div><h1>Companies</h1><p class="muted">{{len $d.Tenants}} companies · {{$d.Drivers}} active drivers · {{grouped $d.Shipments}} shipments in the last 30 days</p></div>
+  <div class="actions"><a class="btn" href="/app/platform/billing">Billing</a></div>
 </div>
 <div class="card card-flush">
 <div class="table-wrap">
@@ -11,7 +12,10 @@
   <tr {{if not .IsActive}}class="is-muted"{{end}}>
     <td><strong>{{.Name}}</strong>{{if not .IsActive}} <span class="badge s-issue">Suspended</span>{{end}}
       <div class="muted small">{{.RegionCity}} · since {{date .CreatedAt}}{{with .ContactPhone}} · {{.}}{{end}}</div></td>
-    <td>{{planName .Plan}}{{if eq .Plan "trial"}}{{if .TrialEndsAt.Valid}}<div class="small {{if .TrialEndsAt.Time.Before $.Now}}text-bad{{else}}muted{{end}}">ends {{date .TrialEndsAt}}</div>{{end}}{{end}}</td>
+    <td>{{planName .Plan}}{{if eq .Plan "trial"}}{{if .TrialEndsAt.Valid}}<div class="small {{if past .TrialEndsAt}}text-bad{{else}}muted{{end}}">{{if past .TrialEndsAt}}ended{{else}}ends{{end}} {{date .TrialEndsAt}}</div>{{end}}
+      {{else if .PeriodEnd.Valid}}, {{lower (cycleName .BillingCycle)}}<div class="small muted">renews {{date .PeriodEnd}}{{with .PendingPlan}} as {{planName .}}{{end}}</div>{{end}}
+      {{if .DebtDueAt.Valid}}<div class="small {{if past .DebtDueAt}}text-bad{{else}}muted{{end}}">invoice {{if past .DebtDueAt}}overdue since{{else}}due{{end}} {{date .DebtDueAt}}</div>{{end}}
+      {{if .EnterprisePriceSantim}}<div class="small muted">Enterprise terms: {{etb (i64 .EnterprisePriceSantim)}} a month</div>{{end}}</td>
     <td class="num">{{.Drivers}} / {{.MaxDrivers}}</td>
     <td class="num">{{.Staff}}</td>
     <td class="num">{{.Shipments30d}}</td>
@@ -21,12 +25,23 @@
       <details class="pop pop-right">
         <summary class="btn btn-sm">Manage</summary>
         <div class="pop-panel stack">
-          <form method="post" action="/app/platform/tenants/{{$id}}/plan" class="stack">
-            <label>Plan
-              <select name="plan">{{range $d.Plans}}<option value="{{.Code}}" {{if eq .Code $t.Plan}}selected{{end}}>{{.Name}} ({{.MaxDrivers}} drivers)</option>{{end}}</select>
+          {{if eq .Plan "trial"}}
+          <form method="post" action="/app/platform/tenants/{{$id}}/trial" class="stack">
+            <label>Extend the trial by
+              <select name="days"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select>
             </label>
-            <label>Custom driver limit <span class="muted">(optional)</span><input name="max_drivers" type="number" min="1" max="10000"></label>
-            <button class="btn btn-sm btn-primary" type="submit">Save plan</button>
+            <button class="btn btn-sm btn-primary" type="submit">Extend trial</button>
+          </form>
+          {{end}}
+          <form method="post" action="/app/platform/tenants/{{$id}}/offer" class="stack">
+            <p class="small"><strong>Enterprise terms</strong></p>
+            <label>Price a month, in birr, before VAT <input name="price" inputmode="numeric" value="{{wholeBirr .EnterprisePriceSantim}}" placeholder="e.g. 30000"></label>
+            <div class="row-2">
+              <label>Drivers <input name="max_drivers" type="number" min="1" max="10000" value="{{with .EnterpriseMaxDrivers}}{{.}}{{else}}500{{end}}"></label>
+              <label>Texts a month <input name="sms_quota" type="number" min="0" max="1000000" value="{{with .EnterpriseSmsQuota}}{{.}}{{else}}10000{{end}}"></label>
+            </div>
+            <button class="btn btn-sm" type="submit">{{if .EnterprisePriceSantim}}Update terms{{else}}Offer Enterprise{{end}}</button>
+            <p class="hint">The company is emailed the terms and chooses Enterprise on its billing page. Clear the price to withdraw them.</p>
           </form>
           <form method="post" action="/app/platform/tenants/{{$id}}/active">
             <input type="hidden" name="active" value="{{if .IsActive}}false{{else}}true{{end}}">

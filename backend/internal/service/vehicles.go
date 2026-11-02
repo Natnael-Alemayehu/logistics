@@ -111,6 +111,13 @@ func (s *VehicleService) Create(ctx context.Context, p *Principal, in VehicleInp
 	if err != nil {
 		return db.Vehicle{}, err
 	}
+	tenant, err := s.q.GetTenantByID(ctx, p.TenantID)
+	if err != nil {
+		return db.Vehicle{}, err
+	}
+	if err := s.requireWritable(ctx, s.q, tenant); err != nil {
+		return db.Vehicle{}, err
+	}
 	v, err := s.q.CreateVehicle(ctx, db.CreateVehicleParams{TenantID: p.TenantID, PlateNumber: plate, VehicleType: vt, CapacityKg: capacity})
 	if err != nil {
 		return v, duplicatePlate(err)
