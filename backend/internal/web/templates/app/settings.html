@@ -64,6 +64,12 @@
     <p class="small muted">Useful for drivers who rarely open the app. Drivers always see new work in the app on their next sync.</p>
   </fieldset>
 
+  <fieldset class="card">
+    <legend>Alerts</legend>
+    <label class="check"><input type="checkbox" name="alert_on_delivery" {{if field $f "alert_on_delivery" ""}}checked{{end}}> Alert the office when a shipment is delivered</label>
+    <p class="small muted">Problems, delays and late loads always raise an alert. Each person chooses which alerts are also emailed to them under <a href="/app/account">Account</a>.</p>
+  </fieldset>
+
   <div class="form-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
 </form>
 

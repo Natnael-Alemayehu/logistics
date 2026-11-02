@@ -44,6 +44,29 @@ func TestNearest(t *testing.T) {
 	}
 }
 
+func TestRegionsFrameTheirTowns(t *testing.T) {
+	regions := Regions()
+	seen := map[string]Region{}
+	for i, r := range regions {
+		if i > 0 && regions[i-1].Name >= r.Name {
+			t.Fatalf("regions not sorted: %q before %q", regions[i-1].Name, r.Name)
+		}
+		if r.South >= r.North || r.West >= r.East {
+			t.Errorf("%s has an empty frame: %+v", r.Name, r)
+		}
+		seen[r.Name] = r
+	}
+	for _, p := range places {
+		r, ok := seen[p.Region]
+		if !ok {
+			t.Fatalf("no region for %s (%s)", p.Name, p.Region)
+		}
+		if p.Lat < r.South || p.Lat > r.North || p.Lng < r.West || p.Lng > r.East {
+			t.Errorf("%s lies outside the frame of %s", p.Name, r.Name)
+		}
+	}
+}
+
 func TestInServiceArea(t *testing.T) {
 	if !InServiceArea(9.03, 38.74) {
 		t.Error("Addis Ababa should be in the service area")

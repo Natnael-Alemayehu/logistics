@@ -435,6 +435,16 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 			Text: deref(m.Note), From: m.ActorName, At: m.CreatedAt.Time,
 		})
 	}
+	// Messages to every driver on the road belong to no shipment.
+	all, err := s.q.ListDriverBroadcastsSince(ctx, db.ListDriverBroadcastsSinceParams{
+		TenantID: p.TenantID, DriverID: p.UserID, Since: toTimestamp(msgSince),
+	})
+	if err != nil {
+		return err
+	}
+	for _, m := range all {
+		resp.Messages = append(resp.Messages, DriverMessage{ID: m.ID.String(), Text: m.Body, From: m.SenderName, At: m.CreatedAt.Time})
+	}
 
 	u, err := s.q.GetUserByID(ctx, db.GetUserByIDParams{ID: p.UserID, TenantID: p.TenantID})
 	if err != nil {

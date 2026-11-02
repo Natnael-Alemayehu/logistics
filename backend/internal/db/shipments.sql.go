@@ -554,8 +554,8 @@ func (q *Queries) ListActiveShipmentsByDriver(ctx context.Context, arg ListActiv
 const listActiveShipmentsForMap = `-- name: ListActiveShipmentsForMap :many
 SELECT s.id, s.tracking_number, s.status, s.priority,
        s.destination_city, s.destination_lat, s.destination_lng,
-       s.origin_lat, s.origin_lng, s.driver_id,
-       d.full_name AS driver_name
+       s.origin_city, s.origin_lat, s.origin_lng, s.driver_id,
+       d.full_name AS driver_name, s.customer_name, s.estimated_delivery
 FROM shipments s
 LEFT JOIN users d ON d.id = s.driver_id
 WHERE s.tenant_id = $1
@@ -565,17 +565,20 @@ LIMIT 500
 `
 
 type ListActiveShipmentsForMapRow struct {
-	ID              pgtype.UUID `db:"id" json:"id"`
-	TrackingNumber  string      `db:"tracking_number" json:"tracking_number"`
-	Status          string      `db:"status" json:"status"`
-	Priority        string      `db:"priority" json:"priority"`
-	DestinationCity *string     `db:"destination_city" json:"destination_city"`
-	DestinationLat  *float64    `db:"destination_lat" json:"destination_lat"`
-	DestinationLng  *float64    `db:"destination_lng" json:"destination_lng"`
-	OriginLat       *float64    `db:"origin_lat" json:"origin_lat"`
-	OriginLng       *float64    `db:"origin_lng" json:"origin_lng"`
-	DriverID        pgtype.UUID `db:"driver_id" json:"driver_id"`
-	DriverName      *string     `db:"driver_name" json:"driver_name"`
+	ID                pgtype.UUID        `db:"id" json:"id"`
+	TrackingNumber    string             `db:"tracking_number" json:"tracking_number"`
+	Status            string             `db:"status" json:"status"`
+	Priority          string             `db:"priority" json:"priority"`
+	DestinationCity   *string            `db:"destination_city" json:"destination_city"`
+	DestinationLat    *float64           `db:"destination_lat" json:"destination_lat"`
+	DestinationLng    *float64           `db:"destination_lng" json:"destination_lng"`
+	OriginCity        *string            `db:"origin_city" json:"origin_city"`
+	OriginLat         *float64           `db:"origin_lat" json:"origin_lat"`
+	OriginLng         *float64           `db:"origin_lng" json:"origin_lng"`
+	DriverID          pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	DriverName        *string            `db:"driver_name" json:"driver_name"`
+	CustomerName      string             `db:"customer_name" json:"customer_name"`
+	EstimatedDelivery pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
 }
 
 func (q *Queries) ListActiveShipmentsForMap(ctx context.Context, tenantID pgtype.UUID) ([]ListActiveShipmentsForMapRow, error) {
@@ -595,10 +598,13 @@ func (q *Queries) ListActiveShipmentsForMap(ctx context.Context, tenantID pgtype
 			&i.DestinationCity,
 			&i.DestinationLat,
 			&i.DestinationLng,
+			&i.OriginCity,
 			&i.OriginLat,
 			&i.OriginLng,
 			&i.DriverID,
 			&i.DriverName,
+			&i.CustomerName,
+			&i.EstimatedDelivery,
 		); err != nil {
 			return nil, err
 		}
@@ -894,10 +900,12 @@ func (q *Queries) ListRecentShipmentsByVehicle(ctx context.Context, arg ListRece
 const listShipments = `-- name: ListShipments :many
 SELECT s.id, s.tenant_id, s.tracking_number, s.origin_address, s.destination_address, s.customer_name, s.customer_phone, s.cargo_description, s.cargo_weight, s.cargo_value, s.special_instructions, s.driver_id, s.vehicle_id, s.status, s.status_note, s.status_reason, s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at, s.created_by, s.status_changed_at, s.priority, s.origin_city, s.destination_city, s.origin_lat, s.origin_lng, s.destination_lat, s.destination_lng, s.destination_precise, s.picked_up_at, s.confirm_token, s.customer_confirmed_at, s.customer_feedback, s.eta_manual, s.planned_pickup_at,
        d.full_name AS driver_name,
-       v.plate_number AS vehicle_plate
+       v.plate_number AS vehicle_plate,
+       sm.last_sync_at AS driver_last_sync
 FROM shipments s
 LEFT JOIN users d ON d.id = s.driver_id
 LEFT JOIN vehicles v ON v.id = s.vehicle_id
+LEFT JOIN sync_metadata sm ON sm.driver_id = s.driver_id
 WHERE s.tenant_id = $1
   AND (cardinality($2::text[]) = 0 OR s.status = ANY($2::text[]))
   AND ($3::uuid IS NULL OR s.driver_id = $3::uuid)
@@ -921,9 +929,19 @@ ORDER BY
   CASE WHEN $11::text = 'eta_asc' THEN s.estimated_delivery END ASC NULLS LAST,
   CASE WHEN $11::text = 'eta_desc' THEN s.estimated_delivery END DESC NULLS LAST,
   CASE WHEN $11::text = 'updated_desc' THEN s.updated_at END DESC,
-  CASE WHEN $11::text = 'status' THEN s.status END ASC,
-  CASE WHEN $11::text = 'customer' THEN s.customer_name END ASC,
+  -- Statuses sort in the order a shipment goes through them.
+  CASE WHEN $11::text = 'status' THEN array_position(ARRAY['pending', 'assigned', 'in_transit', 'delayed', 'arrived', 'issue', 'delivered', 'cancelled'], s.status) END ASC,
+  CASE WHEN $11::text = 'status_desc' THEN array_position(ARRAY['pending', 'assigned', 'in_transit', 'delayed', 'arrived', 'issue', 'delivered', 'cancelled'], s.status) END DESC,
+  CASE WHEN $11::text = 'customer' THEN lower(s.customer_name) END ASC,
+  CASE WHEN $11::text = 'customer_desc' THEN lower(s.customer_name) END DESC,
   CASE WHEN $11::text = 'tracking' THEN s.tracking_number END ASC,
+  CASE WHEN $11::text = 'tracking_desc' THEN s.tracking_number END DESC,
+  CASE WHEN $11::text = 'driver' THEN lower(d.full_name) END ASC NULLS LAST,
+  CASE WHEN $11::text = 'driver_desc' THEN lower(d.full_name) END DESC NULLS LAST,
+  CASE WHEN $11::text = 'route' THEN lower(COALESCE(s.origin_city, s.origin_address)) END ASC,
+  CASE WHEN $11::text = 'route' THEN lower(COALESCE(s.destination_city, s.destination_address)) END ASC,
+  CASE WHEN $11::text = 'route_desc' THEN lower(COALESCE(s.origin_city, s.origin_address)) END DESC,
+  CASE WHEN $11::text = 'route_desc' THEN lower(COALESCE(s.destination_city, s.destination_address)) END DESC,
   CASE WHEN $11::text = 'priority' THEN
       CASE s.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END
   END ASC,
@@ -948,9 +966,10 @@ type ListShipmentsParams struct {
 }
 
 type ListShipmentsRow struct {
-	Shipment     Shipment `db:"shipment" json:"shipment"`
-	DriverName   *string  `db:"driver_name" json:"driver_name"`
-	VehiclePlate *string  `db:"vehicle_plate" json:"vehicle_plate"`
+	Shipment       Shipment           `db:"shipment" json:"shipment"`
+	DriverName     *string            `db:"driver_name" json:"driver_name"`
+	VehiclePlate   *string            `db:"vehicle_plate" json:"vehicle_plate"`
+	DriverLastSync pgtype.Timestamptz `db:"driver_last_sync" json:"driver_last_sync"`
 }
 
 // Every filter is optional: an empty status list or a NULL argument means "no
@@ -1018,6 +1037,7 @@ func (q *Queries) ListShipments(ctx context.Context, arg ListShipmentsParams) ([
 			&i.Shipment.PlannedPickupAt,
 			&i.DriverName,
 			&i.VehiclePlate,
+			&i.DriverLastSync,
 		); err != nil {
 			return nil, err
 		}

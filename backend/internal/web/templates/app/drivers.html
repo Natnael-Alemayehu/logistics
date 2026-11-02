@@ -5,6 +5,7 @@
     <p class="muted">{{$d.Usage.ActiveDrivers}} of {{$d.Usage.MaxDrivers}} driver places on your {{$d.Usage.Plan.Name}} plan</p>
   </div>
   <div class="actions">
+    <a class="btn" href="/app/drivers/message">Message drivers on the road</a>
     {{if .Me.CanManageFleet}}<a class="btn btn-primary" href="/app/drivers/new">+ Add a driver</a>{{end}}
   </div>
 </div>
@@ -15,15 +16,18 @@
   <button class="btn" type="submit">Search</button>
 </form>
 
+<p class="small muted">On duty: carrying a load that has left, or with the driver app open and sharing location in the last half hour.</p>
+
 {{if $d.Drivers}}
 <div class="card card-flush">
 <div class="table-wrap">
 <table class="table rows-link">
-  <thead><tr><th>Driver</th><th>Vehicle</th><th class="num">Active</th><th class="num">Delivered this month</th><th>Driver app</th></tr></thead>
+  <thead><tr><th>Driver</th><th>Duty</th><th>Vehicle</th><th class="num">Active</th><th class="num">Delivered this month</th><th>Driver app</th></tr></thead>
   <tbody>
   {{range $d.Drivers}}
   <tr data-href="/app/drivers/{{uuid .ID}}" {{if not .IsActive}}class="is-muted"{{end}}>
     <td><a href="/app/drivers/{{uuid .ID}}"><strong>{{.FullName}}</strong></a>{{if not .IsActive}} <span class="badge">Deactivated</span>{{end}}<div class="muted small">{{str .Phone}}</div></td>
+    <td>{{if .OnDuty}}<span class="badge s-in_transit">On duty</span>{{else if .IsActive}}<span class="muted">Off duty</span>{{else}}<span class="muted">—</span>{{end}}</td>
     <td>{{with .VehiclePlate}}{{.}}{{else}}<span class="muted">—</span>{{end}}</td>
     <td class="num">{{.ActiveShipments}}</td>
     <td class="num">{{.DeliveredThisMonth}}</td>

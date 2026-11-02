@@ -24,6 +24,8 @@ const (
 	AlertPickupOverdue      = "pickup_overdue"
 	AlertDriverLimitNear    = "driver_limit_near"
 	AlertSMSQuotaNear       = "sms_quota_near"
+	AlertDelivered          = "delivered"
+	AlertRouteDeviation     = "route_deviation"
 )
 
 // Severities.
@@ -51,6 +53,17 @@ var alertLabels = map[string]string{
 	AlertPickupOverdue:      "Not collected",
 	AlertDriverLimitNear:    "Driver places running out",
 	AlertSMSQuotaNear:       "Text allowance running out",
+	AlertDelivered:          "Delivered",
+	AlertRouteDeviation:     "Moving away from the destination",
+}
+
+// AlertTypes lists the alert types in the order the account page offers
+// them for email, most urgent first.
+var AlertTypes = []string{
+	AlertIssueReported, AlertDeliveryHeld, AlertCustomerIssue, AlertDeliveryOnCanceled,
+	AlertDelayReported, AlertETAExceeded, AlertPickupOverdue, AlertRouteDeviation, AlertDriverOffline,
+	AlertPODLocation, AlertDeliveredNoPOD, AlertSyncConflict,
+	AlertDelivered, AlertDriverMessage, AlertDriverLimitNear, AlertSMSQuotaNear,
 }
 
 // AlertLabel is the display name of an alert type.
@@ -97,6 +110,7 @@ func (c *core) raise(ctx context.Context, q *db.Queries, after *afterCommit, a n
 		c.log.Error().Err(err).Str("type", a.Type).Msg("create alert")
 		return
 	}
+	c.emailAlert(ctx, q, after, row)
 	after.do(func() {
 		c.publish(row.TenantID, "alert", map[string]any{
 			"id":          row.ID.String(),
@@ -107,6 +121,42 @@ func (c *core) raise(ctx context.Context, q *db.Queries, after *afterCommit, a n
 			"shipment_id": uuidString(row.ShipmentID),
 		})
 	})
+}
+
+// emailAlert sends a copy of an alert to the office staff who asked for
+// alerts of its type by email (FR-033 AC-033.4).
+func (c *core) emailAlert(ctx context.Context, q *db.Queries, after *afterCommit, a db.Alert) {
+	to, err := q.ListAlertEmailRecipients(ctx, db.ListAlertEmailRecipientsParams{TenantID: a.TenantID, AlertType: a.AlertType})
+	if err != nil {
+		c.log.Error().Err(err).Msg("alert email recipients")
+		return
+	}
+	link := c.cfg.BaseURL + "/app/alerts"
+	if a.ShipmentID.Valid {
+		link = c.cfg.BaseURL + "/app/shipments/" + a.ShipmentID.String()
+	}
+	for _, r := range to {
+		c.enqueueEmail(ctx, q, after, outboundEmail{
+			TenantID: a.TenantID, To: deref(r.Email), Purpose: EmailAlert,
+			Subject: AlertLabel(a.AlertType) + ": " + truncate(a.Message, 80),
+			Body: c.emailBody(r.FullName, a.Message, "Open it in "+c.cfg.AppName+": "+link,
+				"You get this because you chose to have these alerts emailed. Change that under Account in "+c.cfg.AppName+"."),
+		})
+	}
+}
+
+// SetAlertEmails chooses which alert types are emailed to the caller.
+func (s *AlertService) SetAlertEmails(ctx context.Context, p *Principal, types []string) error {
+	if p.IsDriver() || p.IsPlatformAdmin() {
+		return ErrUnauthorized
+	}
+	keep := []string{}
+	for _, t := range AlertTypes {
+		if contains(types, t) {
+			keep = append(keep, t)
+		}
+	}
+	return s.q.SetAlertEmails(ctx, db.SetAlertEmailsParams{AlertTypes: keep, ID: p.UserID, TenantID: p.TenantID})
 }
 
 // AlertFilter narrows the alert list.

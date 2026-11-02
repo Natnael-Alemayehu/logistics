@@ -5,7 +5,8 @@
 </div>
 {{template "form-error" .}}
 <div class="grid-detail">
-<form method="post" action="/app/account" class="card col-main stack" novalidate>
+<div class="col-main stack">
+<form method="post" action="/app/account" class="card stack" novalidate>
   <h2>Your details</h2>
   <label>Full name
     <input name="full_name" value="{{field $f "full_name" ""}}" required {{if index $e "full_name"}}aria-invalid="true"{{end}}>
@@ -24,6 +25,27 @@
   <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
 </form>
 
+{{with $d.Alerts}}
+<section class="card">
+  <div class="card-head"><h2>Alerts</h2></div>
+  <div class="stack mb-m" data-notify hidden>
+    <p class="small">Critical alerts can pop up on this computer even when {{$.App.Name}} is in a background tab.</p>
+    <p class="small" data-notify-state></p>
+    <p><button class="btn btn-sm" type="button" data-notify-toggle>Turn on notifications in this browser</button></p>
+  </div>
+  <form method="post" action="/app/account/alerts" class="stack">
+    <fieldset class="choice">
+      <legend>Email me these alerts{{if not $.Me.EmailVerified}} <span class="muted small">(once your email address is confirmed)</span>{{end}}</legend>
+      <div class="check-grid">
+        {{range .}}<label class="check"><input type="checkbox" name="alert" value="{{.Type}}" {{if .On}}checked{{end}}> {{.Label}}</label>{{end}}
+      </div>
+    </fieldset>
+    <div class="form-actions"><button class="btn" type="submit">Save alert emails</button></div>
+  </form>
+</section>
+{{end}}
+</div>
+
 <section class="card col-side">
   <div class="card-head"><h2>Where you're signed in</h2></div>
   <ul class="session-list">
@@ -31,7 +53,7 @@
     <li>
       <div>
         <strong>{{if eq .ID $d.Current}}This browser{{else if eq .Kind "api"}}Driver app{{else}}Browser{{end}}</strong>
-        <p class="small muted">{{with .UserAgent}}{{truncate 60 .}}{{end}}</p>
+        {{$ua := .UserAgent}}{{with device $ua}}<p class="small muted" title="{{$ua}}">{{.}}</p>{{end}}
         <p class="small muted">{{with .IpAddress}}{{.}} · {{end}}active {{ago .LastSeenAt}}</p>
       </div>
       {{if ne .ID $d.Current}}<form method="post" action="/app/account/sessions/{{uuid .ID}}/revoke"><button class="btn btn-sm btn-ghost" type="submit">Sign out</button></form>{{end}}

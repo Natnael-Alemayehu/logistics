@@ -386,10 +386,36 @@ func (s *ShipmentService) Update(ctx context.Context, a Actor, id pgtype.UUID, i
 			ev.Note = "Shipment details updated: " + strings.Join(changed, ", ")
 		}
 		s.event(ctx, q, a, out, ev)
+		// A new drop-off matters enough to text as well (FR-011 AC-011.4):
+		// the driver may be on the road with the app closed.
+		if cur.DriverID.Valid && contains(changed, "destination") {
+			if err := s.textNewDestination(ctx, q, after, out); err != nil {
+				return err
+			}
+		}
 		after.do(func() { s.publishShipment(out, "edited") })
 		return nil
 	})
 	return out, err
+}
+
+// textNewDestination tells the assigned driver by SMS where a shipment now
+// goes.
+func (s *ShipmentService) textNewDestination(ctx context.Context, q *db.Queries, after *afterCommit, sh db.Shipment) error {
+	d, err := q.GetUserByID(ctx, db.GetUserByIDParams{ID: sh.DriverID, TenantID: sh.TenantID})
+	if err != nil || d.Phone == nil {
+		return nil
+	}
+	t, err := q.GetTenantByID(ctx, sh.TenantID)
+	if err != nil {
+		return err
+	}
+	s.enqueueSMS(ctx, q, after, outboundSMS{
+		TenantID: sh.TenantID, ShipmentID: sh.ID, Phone: *d.Phone, Purpose: PurposeDriverMessage,
+		Body: fmt.Sprintf("%s: shipment %s now goes to %s. Customer %s %s.",
+			t.Name, ShortRef(sh.TrackingNumber), place(sh.DestinationCity, sh.DestinationAddress), sh.CustomerName, sh.CustomerPhone),
+	})
+	return nil
 }
 
 func changedFields(a, b db.Shipment) []string {
@@ -638,6 +664,11 @@ func (s *ShipmentService) List(ctx context.Context, tenantID pgtype.UUID, f Ship
 	if contains(model.Priorities, f.Priority) {
 		priority = &f.Priority
 	}
+	// Phones are stored as 09…: a number typed as +251… finds them too.
+	query := strings.TrimSpace(f.Query)
+	if local, err := phone.Normalize(query); err == nil {
+		query = local
+	}
 
 	list := db.ListShipmentsParams{
 		TenantID:    tenantID,
@@ -649,7 +680,7 @@ func (s *ShipmentService) List(ctx context.Context, tenantID pgtype.UUID, f Ship
 		DateTo:      to,
 		Origin:      toText(strings.TrimSpace(f.Origin)),
 		Destination: toText(strings.TrimSpace(f.Destination)),
-		Query:       toText(escapeLike(strings.TrimSpace(f.Query))),
+		Query:       toText(escapeLike(query)),
 		Sort:        f.Sort,
 		RowLimit:    limit,
 		RowOffset:   offset,
@@ -688,10 +719,20 @@ type ShipmentDetail struct {
 	Vehicle  *db.Vehicle
 	Events   []db.ShipmentEvent
 	POD      *db.GetPODByShipmentIDRow
-	Route    []db.ListShipmentRouteRow
+	// Route is the trip's newest routePoints positions, oldest first.
+	Route []db.ListShipmentRouteRow
+	// RouteCapped says older positions were left out of Route.
+	RouteCapped bool
 	// Next lists the status changes a dispatcher can make from here.
 	Next []string
 }
+
+// The shipment page draws a trip's newest 2,000 positions (about a day and a
+// half of driving at one a minute). The CSV export has every one.
+const (
+	routePoints  = 2000
+	exportPoints = 200000
+)
 
 // Detail assembles the shipment page.
 func (s *ShipmentService) Detail(ctx context.Context, tenantID, id pgtype.UUID) (*ShipmentDetail, error) {
@@ -716,15 +757,30 @@ func (s *ShipmentService) Detail(ctx context.Context, tenantID, id pgtype.UUID) 
 	if pod, err := s.q.GetPODByShipmentID(ctx, db.GetPODByShipmentIDParams{ShipmentID: id, TenantID: tenantID}); err == nil {
 		d.POD = &pod
 	}
-	start, end := shipmentWindow(sh, s.now())
-	d.Route, err = s.q.ListShipmentRoute(ctx, db.ListShipmentRouteParams{
-		TenantID: tenantID, ShipmentID: id, DriverID: sh.DriverID,
-		WindowStart: toTimestamp(start), WindowEnd: toTimestamp(end),
-	})
-	if err != nil {
+	if d.Route, err = s.route(ctx, sh, routePoints); err != nil {
 		return nil, err
 	}
+	d.RouteCapped = len(d.Route) == routePoints
 	return d, nil
+}
+
+// Positions is every recorded position of a shipment's trip, oldest first, for
+// the location export (AC-030.7).
+func (s *ShipmentService) Positions(ctx context.Context, tenantID, id pgtype.UUID) (db.Shipment, []db.ListShipmentRouteRow, error) {
+	sh, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return db.Shipment{}, nil, err
+	}
+	pts, err := s.route(ctx, sh, exportPoints)
+	return sh, pts, err
+}
+
+func (s *ShipmentService) route(ctx context.Context, sh db.Shipment, max int32) ([]db.ListShipmentRouteRow, error) {
+	start, end := shipmentWindow(sh, s.now())
+	return s.q.ListShipmentRoute(ctx, db.ListShipmentRouteParams{
+		TenantID: sh.TenantID, ShipmentID: sh.ID, DriverID: sh.DriverID,
+		WindowStart: toTimestamp(start), WindowEnd: toTimestamp(end), MaxPoints: max,
+	})
 }
 
 // shipmentWindow is the span during which the shipment was on its driver's

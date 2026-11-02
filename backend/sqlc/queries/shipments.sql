@@ -134,10 +134,12 @@ RETURNING *;
 -- interpolated SQL.
 SELECT sqlc.embed(s),
        d.full_name AS driver_name,
-       v.plate_number AS vehicle_plate
+       v.plate_number AS vehicle_plate,
+       sm.last_sync_at AS driver_last_sync
 FROM shipments s
 LEFT JOIN users d ON d.id = s.driver_id
 LEFT JOIN vehicles v ON v.id = s.vehicle_id
+LEFT JOIN sync_metadata sm ON sm.driver_id = s.driver_id
 WHERE s.tenant_id = sqlc.arg(tenant_id)
   AND (cardinality(sqlc.arg(statuses)::text[]) = 0 OR s.status = ANY(sqlc.arg(statuses)::text[]))
   AND (sqlc.narg(driver_id)::uuid IS NULL OR s.driver_id = sqlc.narg(driver_id)::uuid)
@@ -161,9 +163,19 @@ ORDER BY
   CASE WHEN sqlc.arg(sort)::text = 'eta_asc' THEN s.estimated_delivery END ASC NULLS LAST,
   CASE WHEN sqlc.arg(sort)::text = 'eta_desc' THEN s.estimated_delivery END DESC NULLS LAST,
   CASE WHEN sqlc.arg(sort)::text = 'updated_desc' THEN s.updated_at END DESC,
-  CASE WHEN sqlc.arg(sort)::text = 'status' THEN s.status END ASC,
-  CASE WHEN sqlc.arg(sort)::text = 'customer' THEN s.customer_name END ASC,
+  -- Statuses sort in the order a shipment goes through them.
+  CASE WHEN sqlc.arg(sort)::text = 'status' THEN array_position(ARRAY['pending', 'assigned', 'in_transit', 'delayed', 'arrived', 'issue', 'delivered', 'cancelled'], s.status) END ASC,
+  CASE WHEN sqlc.arg(sort)::text = 'status_desc' THEN array_position(ARRAY['pending', 'assigned', 'in_transit', 'delayed', 'arrived', 'issue', 'delivered', 'cancelled'], s.status) END DESC,
+  CASE WHEN sqlc.arg(sort)::text = 'customer' THEN lower(s.customer_name) END ASC,
+  CASE WHEN sqlc.arg(sort)::text = 'customer_desc' THEN lower(s.customer_name) END DESC,
   CASE WHEN sqlc.arg(sort)::text = 'tracking' THEN s.tracking_number END ASC,
+  CASE WHEN sqlc.arg(sort)::text = 'tracking_desc' THEN s.tracking_number END DESC,
+  CASE WHEN sqlc.arg(sort)::text = 'driver' THEN lower(d.full_name) END ASC NULLS LAST,
+  CASE WHEN sqlc.arg(sort)::text = 'driver_desc' THEN lower(d.full_name) END DESC NULLS LAST,
+  CASE WHEN sqlc.arg(sort)::text = 'route' THEN lower(COALESCE(s.origin_city, s.origin_address)) END ASC,
+  CASE WHEN sqlc.arg(sort)::text = 'route' THEN lower(COALESCE(s.destination_city, s.destination_address)) END ASC,
+  CASE WHEN sqlc.arg(sort)::text = 'route_desc' THEN lower(COALESCE(s.origin_city, s.origin_address)) END DESC,
+  CASE WHEN sqlc.arg(sort)::text = 'route_desc' THEN lower(COALESCE(s.destination_city, s.destination_address)) END DESC,
   CASE WHEN sqlc.arg(sort)::text = 'priority' THEN
       CASE s.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END
   END ASC,
@@ -241,8 +253,8 @@ WHERE tenant_id = $1 AND created_at >= $2;
 -- name: ListActiveShipmentsForMap :many
 SELECT s.id, s.tracking_number, s.status, s.priority,
        s.destination_city, s.destination_lat, s.destination_lng,
-       s.origin_lat, s.origin_lng, s.driver_id,
-       d.full_name AS driver_name
+       s.origin_city, s.origin_lat, s.origin_lng, s.driver_id,
+       d.full_name AS driver_name, s.customer_name, s.estimated_delivery
 FROM shipments s
 LEFT JOIN users d ON d.id = s.driver_id
 WHERE s.tenant_id = $1

@@ -2,19 +2,38 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/internal/geo"
 )
 
 // ReportService computes the performance reports (FR-034).
 type ReportService struct{ *core }
 
+// ReportFilter is what a report covers: a date range and, optionally, one
+// driver and a route given by its origin town, its destination town or both
+// (FR-034 AC-034.5).
+type ReportFilter struct {
+	From, To    time.Time // To is exclusive
+	DriverID    pgtype.UUID
+	Origin      string
+	Destination string
+}
+
+// Filtered reports whether the report covers less than every shipment in
+// its date range.
+func (f ReportFilter) Filtered() bool {
+	return f.DriverID.Valid || f.Origin != "" || f.Destination != ""
+}
+
 // Report covers one date range.
 type Report struct {
 	From, To  time.Time // To is exclusive
+	Filter    ReportFilter
 	Summary   db.ReportSummaryRow
 	Daily     []DailyDeliveries
 	Drivers   []db.ReportDriverPerformanceRow
@@ -60,16 +79,30 @@ func (s *ReportService) Range(from, to string) (time.Time, time.Time) {
 	return start, end
 }
 
+// Town names a report filter by its route: a known town under its usual
+// name, so "Nazret" finds shipments to Adama, or the text as typed.
+func Town(name string) string {
+	name = strings.Join(strings.Fields(name), " ")
+	if p, ok := geo.Lookup(name); ok {
+		return p.Name
+	}
+	return name
+}
+
 // Build computes every section of the report.
-func (s *ReportService) Build(ctx context.Context, tenantID pgtype.UUID, from, to time.Time) (*Report, error) {
-	r := &Report{From: from, To: to}
+func (s *ReportService) Build(ctx context.Context, tenantID pgtype.UUID, rf ReportFilter) (*Report, error) {
+	from, to := rf.From, rf.To
+	r := &Report{From: from, To: to, Filter: rf}
 	f, t := toTimestamp(from), toTimestamp(to)
+	driver, origin, dest := rf.DriverID, toText(rf.Origin), toText(rf.Destination)
 	var err error
-	if r.Summary, err = s.q.ReportSummary(ctx, db.ReportSummaryParams{TenantID: tenantID, DateFrom: f, DateTo: t}); err != nil {
+	if r.Summary, err = s.q.ReportSummary(ctx, db.ReportSummaryParams{
+		TenantID: tenantID, DateFrom: f, DateTo: t, DriverID: driver, Origin: origin, Destination: dest,
+	}); err != nil {
 		return nil, err
 	}
 	daily, err := s.q.ReportDeliveriesPerDay(ctx, db.ReportDeliveriesPerDayParams{
-		Tz: s.cfg.Location.String(), TenantID: tenantID, DateFrom: f, DateTo: t,
+		Tz: s.cfg.Location.String(), TenantID: tenantID, DateFrom: f, DateTo: t, DriverID: driver, Origin: origin, Destination: dest,
 	})
 	if err != nil {
 		return nil, err
@@ -82,16 +115,24 @@ func (s *ReportService) Build(ctx context.Context, tenantID pgtype.UUID, from, t
 		row := byDay[day.Format("2006-01-02")]
 		r.Daily = append(r.Daily, DailyDeliveries{Day: day, Delivered: row.Delivered, OnTime: row.OnTime})
 	}
-	if r.Drivers, err = s.q.ReportDriverPerformance(ctx, db.ReportDriverPerformanceParams{TenantID: tenantID, DateFrom: f, DateTo: t}); err != nil {
+	if r.Drivers, err = s.q.ReportDriverPerformance(ctx, db.ReportDriverPerformanceParams{
+		TenantID: tenantID, DateFrom: f, DateTo: t, DriverID: driver, Origin: origin, Destination: dest,
+	}); err != nil {
 		return nil, err
 	}
-	if r.Routes, err = s.q.ReportRoutes(ctx, db.ReportRoutesParams{TenantID: tenantID, DateFrom: f, DateTo: t}); err != nil {
+	if r.Routes, err = s.q.ReportRoutes(ctx, db.ReportRoutesParams{
+		TenantID: tenantID, DateFrom: f, DateTo: t, DriverID: driver, Origin: origin, Destination: dest,
+	}); err != nil {
 		return nil, err
 	}
-	if r.Customers, err = s.q.ReportCustomers(ctx, db.ReportCustomersParams{TenantID: tenantID, DateFrom: f, DateTo: t}); err != nil {
+	if r.Customers, err = s.q.ReportCustomers(ctx, db.ReportCustomersParams{
+		TenantID: tenantID, DateFrom: f, DateTo: t, DriverID: driver, Origin: origin, Destination: dest,
+	}); err != nil {
 		return nil, err
 	}
-	if r.Cancellations, err = s.q.ReportCancellations(ctx, db.ReportCancellationsParams{TenantID: tenantID, DateFrom: f, DateTo: t}); err != nil {
+	if r.Cancellations, err = s.q.ReportCancellations(ctx, db.ReportCancellationsParams{
+		TenantID: tenantID, DateFrom: f, DateTo: t, DriverID: driver, Origin: origin, Destination: dest,
+	}); err != nil {
 		return nil, err
 	}
 	return r, nil

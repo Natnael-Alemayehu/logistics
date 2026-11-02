@@ -19,7 +19,7 @@ perfect coverage. Drivers with feature phones report by SMS instead
 
 | For | Where | What they get |
 |---|---|---|
-| Dispatchers, fleet managers, admins | `/app` | Live fleet map, shipment board with tabs and filters, booking with a town list or a dropped pin, assignment, status overrides, messages to drivers, alerts (late, problem reported, driver quiet with cargo), reports with CSV export, printable waybills, team and vehicle management, an audit log, company settings and SMS preferences |
+| Dispatchers, fleet managers, admins | `/app` | A live fleet map with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences |
 | Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) and a sync indicator that shows what is still waiting to send |
 | Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
 | Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
@@ -88,7 +88,9 @@ One Go binary serves everything:
 
 - **Server-rendered dashboard.** `html/template` with a little vanilla JS for
   live updates, maps (Leaflet, vendored) and charts (inline SVG). No build step,
-  and a strict CSP (`script-src 'self'`).
+  and a strict CSP (`script-src 'self'`). When the WebSocket reports a change,
+  a page fetches itself again and swaps in its live parts, so the server
+  renders everything.
 - **Driver app as a PWA** (`internal/web/static/driver`). A service worker
   caches the shell, IndexedDB holds shipments and an outbox, and `POST
   /api/v1/driver/sync` exchanges everything in one gzip-compressed request.
@@ -162,7 +164,9 @@ Templates and static files are reloaded from disk on every request either way.
 make test               # unit tests
 make test-integration   # end-to-end: signup → book → driver sync → POD → tracking → confirmation,
                         # replayed syncs, conflicts, tenant isolation, roles, SMS commands,
-                        # accounts, and billing from trial to renewal, upgrade and refund
+                        # accounts, billing from trial to renewal, upgrade and refund, and
+                        # dispatch tools: bulk assign, saved views, broadcasts, alert emails,
+                        # route deviation, location history and report filters
 ```
 
 The integration tests create a scratch database on the server from `make db`
@@ -181,6 +185,10 @@ This runs the app, PostGIS and Caddy, which gets a TLS certificate for `DOMAIN`.
 Signatures and photos go to the `app-data` volume, or to S3 with
 `STORAGE_TYPE=s3`. Add `--profile monitoring` for Prometheus and Grafana; set
 `METRICS_TOKEN` and put the same value in `deployments/prometheus/metrics_token`.
+
+The maps' satellite view uses Esri World Imagery, which needs an ArcGIS
+licence for commercial use. Point `MAP_SATELLITE_URL` at your own imagery
+provider, or set it to `off`.
 
 Point your SMS provider's inbound webhook at
 `https://DOMAIN/api/v1/sms/inbound?secret=SMS_INBOUND_SECRET`. Back up with

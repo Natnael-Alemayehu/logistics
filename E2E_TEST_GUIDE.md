@@ -179,22 +179,108 @@ or isn't a phone number at all.
 
 ## 8. Running the business
 
-- **Overview**: KPIs, live map (green = online, amber = quiet, red = offline),
-  what needs attention, recent activity. Updates arrive live.
-- **Shipments**: tabs (unassigned, active, needs attention, delivered,
-  cancelled), search and filters, CSV export.
-- **Alerts**: late shipments, problems, drivers quiet for four hours while
-  carrying cargo. Dismiss each one, or mark all read.
-- **Reports**: deliveries per day with on-time share, on-time rate and transit
-  time by driver, route and customer, and CSV for each section.
+### Overview
+
+- Five figures: active shipments, drivers on duty out of all drivers, loads
+  delayed or with a problem, loads waiting for a driver, and deliveries today.
+- The live map shows each driver's last position (green = online, amber =
+  quiet, red = offline, a red ring = carrying a load that is delayed or has a
+  problem), each destination, and a dashed line from origin to destination
+  for every active load. Filter it by status, driver or region: the count
+  beside the filters says how many loads match. Click a driver to see their
+  loads and highlight their routes. The layers button switches to satellite
+  imagery.
+- **Needs attention** lists open alerts. **Recent activity** shows the last
+  20 events.
+
+Check: report a delay by SMS from a second terminal (section 6). Within a few
+seconds, without a reload, the figures, alerts and activity change. Nothing
+moves while you are typing or have a menu open; the page catches up after.
+
+### Shipments
+
+- Tabs (unassigned, active, needs attention, delivered, cancelled), search,
+  filters and CSV export. Matches are highlighted. A phone number is found
+  however it is written: `0922 334 455`, `+251922334455` or `922334455`.
+- Click a column heading to sort by it, and again to reverse. **Columns**
+  hides columns, and this browser remembers the choice.
+- A driver whose app hasn't synced for 30 minutes while carrying a load is
+  marked in red ("synced 2 hours ago").
+- Under **Search and filter**, **Save this view as** keeps the tab, search
+  and filters as a chip above the list. × removes it. Each person has their
+  own views.
+- On **Unassigned**, tick shipments (the box in the heading ticks them all),
+  choose a driver and **Assign**. Each shipment is assigned on its own: if
+  the driver reaches their active-load limit, the message lists the ones that
+  were not given to them and why, and the rest are assigned.
+
+Check: change the destination of an assigned shipment. The driver gets an SMS
+("now goes to Hawassa"), and the app shows it.
+
+A shipment's page has a **Location history** with the newest 200 positions:
+time, coordinates, accuracy, speed and battery. **Download every position as
+CSV** has all of them.
+
+### Drivers
+
+- Each driver is **On duty** or **Off duty**. On duty means carrying a load
+  that has left, or having the app open and sharing location in the last half
+  hour. The overview counts the same way.
+- A driver's page shows the phone's battery, app version and storage used.
+  **Reset PIN** texts the new temporary PIN to the driver.
+- **Message drivers on the road** writes once to every driver with a load
+  assigned or under way, either typed or picked from the quick messages.
+  Drivers whose app hasn't synced for 15 minutes get it by SMS as well.
+  **Sent** lists earlier messages and how many went by SMS. Each shipment
+  page offers the same quick messages.
+
+### Alerts
+
+The alert types are:
+- late shipments;
+- loads not collected;
+- problems and delays;
+- drivers quiet for four hours while carrying cargo;
+- deliveries far from the destination;
+- **Moving away from the destination**: a load in transit that has got more
+  than 20 km further from its destination over the last hour. Testing this
+  takes an hour of real positions, so `TestHeadingAwayFromTheDestination`
+  covers it.
+
+Each delivery also raises an information alert. Turn it off with **Settings →
+Alert the office when a shipment is delivered**. Dismiss alerts one at a time,
+or mark all read.
+
+Under **Account → Alerts**:
+- **Turn on notifications in this browser** makes critical alerts pop up as
+  system notifications while Menged is in a background tab.
+- **Email me these alerts** picks the alert types that are emailed to you as
+  well, once your email address is confirmed. Each email links to the
+  shipment.
+
+Check: tick **Issue reported** and save. Then send `ET 7K3M 5 flat tyre` by
+SMS: the email appears in the server terminal.
+
+### Reports
+
+- Choose a period or a preset, a driver, and a route by its towns. A town is
+  found under its other names too, so `Nazret` finds Adama. The chart groups
+  deliveries per day, week or month.
+- Every table has a CSV link that follows the filters.
+- **Print or save as PDF** prints the page in light colours, whatever the
+  screen's theme.
+
+### The rest
+
 - **Settings**: company details, which SMS go out, the active-load limit per
-  driver.
+  driver, and the delivered alert.
 - **Audit log**: sign-ins, failed sign-ins and lockouts, credential resets,
   and every change to people, vehicles and settings, with before and after
   values.
-- **Account**: profile, password, and sessions on other devices, which you
-  can sign out. A new email address must be confirmed again: a link goes to
-  it, and reset links sent to the old address stop working.
+- **Account**: your profile and password, and the browsers and phones you are
+  signed in on ("Chrome on Android"), which you can sign out. A new email
+  address must be confirmed again: a link goes to it, and reset links sent to
+  the old address stop working.
 
 ## 9. Paying for the product
 

@@ -52,7 +52,7 @@ INSERT INTO users (
     tenant_id, role, full_name, phone, email, password_hash, pin_hash,
     is_active, password_reset_required, vehicle_id
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails
 `
 
 type CreateUserParams struct {
@@ -98,12 +98,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.VehicleID,
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
+		&i.AlertEmails,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
 WHERE lower(email) = lower($1)
 `
 
@@ -128,12 +129,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.VehicleID,
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
+		&i.AlertEmails,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -163,12 +165,13 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.VehicleID,
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
+		&i.AlertEmails,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
 WHERE phone = $1
 `
 
@@ -193,6 +196,7 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone *string) (User, erro
 		&i.VehicleID,
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
+		&i.AlertEmails,
 	)
 	return i, err
 }
@@ -201,7 +205,7 @@ const incrementFailedLoginAttempts = `-- name: IncrementFailedLoginAttempts :one
 UPDATE users
 SET failed_login_attempts = failed_login_attempts + 1
 WHERE id = $1
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails
 `
 
 func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -225,6 +229,7 @@ func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UU
 		&i.VehicleID,
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
+		&i.AlertEmails,
 	)
 	return i, err
 }
@@ -277,7 +282,15 @@ func (q *Queries) ListAllUsersForPlatform(ctx context.Context, tenantID pgtype.U
 const listDriversWithStatus = `-- name: ListDriversWithStatus :many
 SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at,
        v.plate_number AS vehicle_plate,
-       sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version,
+       sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version, sm.storage_used_kb,
+       -- On duty (FR-031): carrying a load that has left, or with the app
+       -- open and sharing location in the last half hour.
+       -- A driver who never synced has no sync row, hence the COALESCEs.
+       COALESCE(u.is_active AND (
+           EXISTS (SELECT 1 FROM shipments s
+                   WHERE s.driver_id = u.id AND s.status IN ('in_transit', 'delayed', 'arrived', 'issue'))
+           OR (COALESCE(sm.last_sync_at > NOW() - INTERVAL '30 minutes', false) AND NOT COALESCE(sm.tracking_paused, false))
+       ), false)::bool AS on_duty,
        (SELECT COUNT(*) FROM shipments s
         WHERE s.driver_id = u.id
           AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active_shipments,
@@ -290,15 +303,17 @@ LEFT JOIN sync_metadata sm ON sm.driver_id = u.id
 WHERE u.tenant_id = $1
   AND u.role = 'driver'
   AND (NOT $2::bool OR u.is_active)
-  AND ($3::text IS NULL
-       OR u.full_name ILIKE '%' || $3::text || '%'
-       OR u.phone ILIKE '%' || $3::text || '%')
+  AND ($3::uuid IS NULL OR u.id = $3::uuid)
+  AND ($4::text IS NULL
+       OR u.full_name ILIKE '%' || $4::text || '%'
+       OR u.phone ILIKE '%' || $4::text || '%')
 ORDER BY u.is_active DESC, u.full_name
 `
 
 type ListDriversWithStatusParams struct {
 	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 	ActiveOnly bool        `db:"active_only" json:"active_only"`
+	DriverID   pgtype.UUID `db:"driver_id" json:"driver_id"`
 	Query      *string     `db:"query" json:"query"`
 }
 
@@ -314,6 +329,8 @@ type ListDriversWithStatusRow struct {
 	BatteryLevel       *int32             `db:"battery_level" json:"battery_level"`
 	TrackingPaused     *bool              `db:"tracking_paused" json:"tracking_paused"`
 	AppVersion         *string            `db:"app_version" json:"app_version"`
+	StorageUsedKb      *int32             `db:"storage_used_kb" json:"storage_used_kb"`
+	OnDuty             bool               `db:"on_duty" json:"on_duty"`
 	ActiveShipments    int64              `db:"active_shipments" json:"active_shipments"`
 	DeliveredThisMonth int64              `db:"delivered_this_month" json:"delivered_this_month"`
 }
@@ -321,7 +338,12 @@ type ListDriversWithStatusRow struct {
 // The drivers page and the assignment picker: who is on duty, how loaded they
 // are, and when their device last talked to the server.
 func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error) {
-	rows, err := q.db.Query(ctx, listDriversWithStatus, arg.TenantID, arg.ActiveOnly, arg.Query)
+	rows, err := q.db.Query(ctx, listDriversWithStatus,
+		arg.TenantID,
+		arg.ActiveOnly,
+		arg.DriverID,
+		arg.Query,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -341,6 +363,8 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 			&i.BatteryLevel,
 			&i.TrackingPaused,
 			&i.AppVersion,
+			&i.StorageUsedKb,
+			&i.OnDuty,
 			&i.ActiveShipments,
 			&i.DeliveredThisMonth,
 		); err != nil {
@@ -355,7 +379,7 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 }
 
 const listUsersByTenant = `-- name: ListUsersByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails FROM users
 WHERE tenant_id = $1 AND role <> 'driver'
 ORDER BY is_active DESC, full_name
 LIMIT $2 OFFSET $3
@@ -394,6 +418,7 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 			&i.VehicleID,
 			&i.LastLoginAt,
 			&i.EmailVerifiedAt,
+			&i.AlertEmails,
 		); err != nil {
 			return nil, err
 		}
@@ -519,7 +544,7 @@ SET full_name = $3,
     email_verified_at = CASE WHEN email IS NOT DISTINCT FROM $5 THEN email_verified_at END,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails
 `
 
 type UpdateUserProfileParams struct {
@@ -558,6 +583,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.VehicleID,
 		&i.LastLoginAt,
 		&i.EmailVerifiedAt,
+		&i.AlertEmails,
 	)
 	return i, err
 }

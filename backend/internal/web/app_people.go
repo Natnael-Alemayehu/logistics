@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -426,4 +427,60 @@ func (s *Server) vehicleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setFlash(w, "success", "Changes saved.")
 	http.Redirect(w, r, "/app/vehicles/"+vh.ID.String(), http.StatusSeeOther)
+}
+
+// broadcastPage writes to every driver with a shipment assigned or on the
+// road (FR-035 AC-035.4).
+func (s *Server) broadcastPage(w http.ResponseWriter, r *http.Request) {
+	data, err := s.broadcastData(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, "app/broadcast", s.view(w, r, "Message drivers", "drivers", data))
+}
+
+func (s *Server) broadcastData(r *http.Request) (map[string]any, error) {
+	p := principal(r)
+	drivers, err := s.svc.Shipments.DriversOnTheRoad(r.Context(), p.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	sent, err := s.svc.Shipments.Broadcasts(r.Context(), p.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"Drivers": drivers, "Sent": sent, "Quick": service.QuickMessages}, nil
+}
+
+func (s *Server) broadcastSend(w http.ResponseWriter, r *http.Request) {
+	res, err := s.svc.Shipments.Broadcast(r.Context(), actor(r), r.PostFormValue("body"))
+	if err != nil {
+		data, derr := s.broadcastData(r)
+		if derr != nil {
+			s.fail(w, r, derr)
+			return
+		}
+		if !s.formError(w, r, "app/broadcast", s.view(w, r, "Message drivers", "drivers", data), err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	msg := "Sent to 1 driver."
+	if res.Drivers != 1 {
+		msg = fmt.Sprintf("Sent to %d drivers.", res.Drivers)
+	}
+	switch {
+	case res.BySMS == 0:
+	case res.Drivers == 1:
+		msg += " Their app hasn't synced lately, so it went by SMS as well."
+	case res.BySMS == res.Drivers:
+		msg += " None of them has opened the app lately, so it went to all of them by SMS as well."
+	case res.BySMS == 1:
+		msg += " One of them hasn't opened the app lately, so it went to them by SMS as well."
+	default:
+		msg += fmt.Sprintf(" %d of them haven't opened the app lately, so it went to them by SMS as well.", res.BySMS)
+	}
+	s.setFlash(w, "success", msg)
+	http.Redirect(w, r, "/app/drivers/message", http.StatusSeeOther)
 }

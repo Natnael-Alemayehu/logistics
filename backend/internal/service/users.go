@@ -422,7 +422,10 @@ func (s *UserService) SetActive(ctx context.Context, p *Principal, id pgtype.UUI
 
 // DriverDetail is the driver page.
 type DriverDetail struct {
-	Driver      db.User
+	Driver db.User
+	// Status is the driver's line on the drivers page: whether they are
+	// on duty, how many shipments they carry.
+	Status      db.ListDriversWithStatusRow
 	Vehicle     *db.Vehicle
 	Counts      db.GetDriverDeliveryCountsRow
 	Performance db.GetDriverPerformanceRow
@@ -463,6 +466,13 @@ func (s *UserService) Driver(ctx context.Context, tenantID, id pgtype.UUID) (*Dr
 	}
 	if m, err := s.q.GetSyncMetadata(ctx, id); err == nil {
 		d.Device = &m
+	}
+	rows, err := s.q.ListDriversWithStatus(ctx, db.ListDriversWithStatusParams{TenantID: tenantID, DriverID: id})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) > 0 {
+		d.Status = rows[0]
 	}
 	return d, nil
 }

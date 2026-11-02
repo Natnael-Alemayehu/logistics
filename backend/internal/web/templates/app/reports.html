@@ -2,17 +2,42 @@
 <div class="page-head">
   <div>
     <h1>Reports</h1>
-    <p class="muted">{{date $r.From}} – {{date $d.Last}}</p>
+    <p class="muted">{{date $r.From}} – {{date $d.Last}}{{with $d.DriverName}} · {{.}}{{end}}{{if or $r.Filter.Origin $r.Filter.Destination}} · {{with $r.Filter.Origin}}{{.}}{{else}}anywhere{{end}} → {{with $r.Filter.Destination}}{{.}}{{else}}anywhere{{end}}{{end}}</p>
+  </div>
+  <div class="actions no-print">
+    <button class="btn" type="button" data-print title="Print, or choose “Save as PDF” as the printer">{{template "icon" "print"}} Print or save as PDF</button>
   </div>
 </div>
 
-<form class="toolbar filter-row" method="get" action="/app/reports">
+<form class="card report-filters no-print" method="get" action="/app/reports">
   <div class="presets" role="group" aria-label="Date range">
-    {{range $d.Presets}}<a class="chip" href="?from={{.From}}&amp;to={{.To}}" {{if and (eq .From $d.FromInput) (eq .To $d.ToInput)}}aria-current="true"{{end}}>{{.Label}}</a>{{end}}
+    {{range $d.Presets}}<a class="chip" href="{{.Href}}" {{if and (eq .From $d.FromInput) (eq .To $d.ToInput)}}aria-current="true"{{end}}>{{.Label}}</a>{{end}}
   </div>
-  <label class="inline">From <input type="date" name="from" value="{{$d.FromInput}}"></label>
-  <label class="inline">To <input type="date" name="to" value="{{$d.ToInput}}"></label>
-  <button class="btn" type="submit">Apply</button>
+  <div class="filter-grid">
+    <label>From <input type="date" name="from" value="{{$d.FromInput}}"></label>
+    <label>To <input type="date" name="to" value="{{$d.ToInput}}"></label>
+    <label>Driver
+      <select name="driver">
+        <option value="">Every driver</option>
+        {{range $d.Drivers}}<option value="{{uuid .ID}}" {{if eq (uuid .ID) (uuid $r.Filter.DriverID)}}selected{{end}}>{{.FullName}}{{if not .IsActive}} (deactivated){{end}}</option>{{end}}
+      </select>
+    </label>
+    <label>Chart
+      <select name="group">
+        <option value="">Best fit</option>
+        <option value="day" {{if eq $d.Group "day"}}selected{{end}}>Per day</option>
+        <option value="week" {{if eq $d.Group "week"}}selected{{end}}>Per week</option>
+        <option value="month" {{if eq $d.Group "month"}}selected{{end}}>Per month</option>
+      </select>
+    </label>
+    <label>From town <input name="origin" value="{{$r.Filter.Origin}}" list="report-towns" autocomplete="off" placeholder="Any"></label>
+    <label>To town <input name="destination" value="{{$r.Filter.Destination}}" list="report-towns" autocomplete="off" placeholder="Any"></label>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Apply</button>
+      {{if $r.Filter.Filtered}}<a class="btn btn-ghost" href="{{$d.Clear}}">Clear driver and route</a>{{end}}
+    </div>
+  </div>
+  <datalist id="report-towns">{{range $d.Towns}}<option value="{{.Name}}">{{end}}</datalist>
 </form>
 
 <section class="kpis kpis-6">
@@ -20,23 +45,24 @@
   <div class="kpi"><span class="kpi-l">On time</span><span class="kpi-n">{{pct $d.OnTime}}</span><span class="kpi-sub">{{if $sum.WithEta}}{{$sum.OnTime}} of {{$sum.WithEta}} with a due time{{else}}no due times yet{{end}}</span></div>
   <div class="kpi"><span class="kpi-l">Average transit</span><span class="kpi-n">{{hours $sum.AvgTransitHours}}</span><span class="kpi-sub">departure to delivery</span></div>
   <div class="kpi"><span class="kpi-l">With signature or photo</span><span class="kpi-n">{{pct $d.PODRate}}</span><span class="kpi-sub">{{$sum.WithPod}} deliveries</span></div>
-  <div class="kpi"><span class="kpi-l">Problems reported</span><span class="kpi-n">{{$sum.Issues}}</span><span class="kpi-sub">shipments with an issue</span></div>
+  <div class="kpi"><span class="kpi-l">Problems reported</span><span class="kpi-n">{{$sum.Issues}}</span><span class="kpi-sub">{{if eq $sum.Issues 1}}shipment{{else}}shipments{{end}} with an issue</span></div>
   <div class="kpi"><span class="kpi-l">Cancelled</span><span class="kpi-n">{{$sum.Cancelled}}</span><span class="kpi-sub">&nbsp;</span></div>
 </section>
 
 <section class="card chart-card">
   <div class="card-head">
-    <h2>Deliveries {{if $c.Weekly}}per week{{else}}per day{{end}}</h2>
-    <div class="legend small" aria-hidden="true">
-      <span><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-on"/></svg> On time</span>
-      <span><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-other"/></svg> Late or no due time</span>
+    <h2>Deliveries per {{$c.Group}}</h2>
+    <div class="legend small">
+      <span aria-hidden="true"><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-on"/></svg> On time</span>
+      <span aria-hidden="true"><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-other"/></svg> Late or no due time</span>
+      {{if not $c.Empty}}<a class="no-print" href="{{index $d.CSV "daily"}}">{{template "icon" "download"}} CSV</a>{{end}}
     </div>
   </div>
   {{if $c.Empty}}
   <p class="muted card-pad">No deliveries in this period.</p>
   {{else}}
   <div class="chart" data-chart>
-    <svg viewBox="-40 -14 768 242" role="img" aria-label="Deliveries {{if $c.Weekly}}per week{{else}}per day{{end}}, {{date $r.From}} to {{date $d.Last}}. The table below lists the values.">
+    <svg viewBox="-40 -14 768 242" role="img" aria-label="Deliveries per {{$c.Group}}, {{date $r.From}} to {{date $d.Last}}. The table below lists the values.">
       <g class="viz-grid">
         {{range $c.Ticks}}<line x1="0" x2="{{$c.Width}}" y1="{{.Y}}" y2="{{.Y}}"/><text x="-8" y="{{.Y}}" dy="0.32em" text-anchor="end">{{grouped .Value}}</text>{{end}}
       </g>
@@ -61,8 +87,8 @@
     <summary>Show as table</summary>
     <div class="table-wrap">
     <table class="table table-compact">
-      <thead><tr><th>{{if $c.Weekly}}Week of{{else}}Day{{end}}</th><th class="num">Delivered</th><th class="num">On time</th></tr></thead>
-      <tbody>{{range $c.Bars}}<tr><td>{{.Day.Format "Mon 2 Jan 2006"}}</td><td class="num">{{.Delivered}}</td><td class="num">{{.OnTime}}</td></tr>{{end}}</tbody>
+      <thead><tr><th>{{if eq $c.Group "month"}}Month{{else if eq $c.Group "week"}}Week of{{else}}Day{{end}}</th><th class="num">Delivered</th><th class="num">On time</th></tr></thead>
+      <tbody>{{range $c.Bars}}<tr><td>{{if eq $c.Group "month"}}{{.Day.Format "January 2006"}}{{else}}{{.Day.Format "Mon 2 Jan 2006"}}{{end}}</td><td class="num">{{.Delivered}}</td><td class="num">{{.OnTime}}</td></tr>{{end}}</tbody>
     </table>
     </div>
   </details>
@@ -71,7 +97,7 @@
 
 <div class="grid-2">
 <section class="card">
-  <div class="card-head"><h2>Drivers</h2><a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=drivers">{{template "icon" "download"}} CSV</a></div>
+  <div class="card-head"><h2>Drivers</h2><a class="small no-print" href="{{index $d.CSV "drivers"}}">{{template "icon" "download"}} CSV</a></div>
   {{if $r.Drivers}}
   <div class="table-wrap">
   <table class="table table-compact">
@@ -81,11 +107,11 @@
     {{end}}</tbody>
   </table>
   </div>
-  {{else}}<p class="muted">No deliveries in this period.</p>{{end}}
+  {{else}}<p class="muted">{{if $r.Filter.Filtered}}No driver delivered on this route in this period.{{else}}No drivers yet.{{end}}</p>{{end}}
 </section>
 
 <section class="card">
-  <div class="card-head"><h2>Routes</h2><a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=routes">{{template "icon" "download"}} CSV</a></div>
+  <div class="card-head"><h2>Routes</h2><a class="small no-print" href="{{index $d.CSV "routes"}}">{{template "icon" "download"}} CSV</a></div>
   {{if $r.Routes}}
   <div class="table-wrap">
   <table class="table table-compact">
@@ -100,7 +126,7 @@
 </div>
 
 <section class="card">
-  <div class="card-head"><h2>Cancellations</h2>{{if $r.Cancellations}}<a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=cancellations">{{template "icon" "download"}} CSV</a>{{end}}</div>
+  <div class="card-head"><h2>Cancellations</h2>{{if $r.Cancellations}}<a class="small no-print" href="{{index $d.CSV "cancellations"}}">{{template "icon" "download"}} CSV</a>{{end}}</div>
   {{if $r.Cancellations}}
   <div class="table-wrap">
   <table class="table table-compact">
@@ -114,7 +140,7 @@
 </section>
 
 <section class="card">
-  <div class="card-head"><h2>Top customers</h2><a class="small" href="?from={{$d.FromInput}}&amp;to={{$d.ToInput}}&amp;format=csv&amp;section=customers">{{template "icon" "download"}} CSV</a></div>
+  <div class="card-head"><h2>Top customers</h2><a class="small no-print" href="{{index $d.CSV "customers"}}">{{template "icon" "download"}} CSV</a></div>
   {{if $r.Customers}}
   <div class="table-wrap">
   <table class="table table-compact">

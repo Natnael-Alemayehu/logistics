@@ -152,6 +152,39 @@ func Places() []Place {
 	return out
 }
 
+// Region is an administrative region, or a corridor terminus abroad, framed
+// by the known places in it: enough to centre a map on, not a border.
+type Region struct {
+	Name                     string
+	South, West, North, East float64
+}
+
+// regionPad widens a region's frame beyond its outermost towns, about 30 km.
+const regionPad = 0.3
+
+// Regions returns the regions of the known places, sorted by name.
+func Regions() []Region {
+	byRegion := map[string]*Region{}
+	for _, p := range places {
+		r, ok := byRegion[p.Region]
+		if !ok {
+			r = &Region{Name: p.Region, South: p.Lat, North: p.Lat, West: p.Lng, East: p.Lng}
+			byRegion[p.Region] = r
+		}
+		r.South = min(r.South, p.Lat)
+		r.North = max(r.North, p.Lat)
+		r.West = min(r.West, p.Lng)
+		r.East = max(r.East, p.Lng)
+	}
+	out := make([]Region, 0, len(byRegion))
+	for _, r := range byRegion {
+		r.South, r.West, r.North, r.East = r.South-regionPad, r.West-regionPad, r.North+regionPad, r.East+regionPad
+		out = append(out, *r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // Nearest returns the known place closest to a coordinate and its distance in
 // metres.
 func Nearest(lat, lng float64) (Place, float64) {

@@ -107,17 +107,20 @@ type View struct {
 
 // AppInfo is deployment information templates use.
 type AppInfo struct {
-	Name         string
-	Version      string
-	TileURL      string
-	TileCredit   string
-	MockSMS      bool
-	MockMail     bool
-	MockPay      bool
-	SMSNumber    string
-	PublicURL    string
-	SupportEmail string
-	BankDetails  string
+	Name       string
+	Version    string
+	TileURL    string
+	TileCredit string
+	// SatelliteURL is empty when the maps offer no satellite view.
+	SatelliteURL    string
+	SatelliteCredit string
+	MockSMS         bool
+	MockMail        bool
+	MockPay         bool
+	SMSNumber       string
+	PublicURL       string
+	SupportEmail    string
+	BankDetails     string
 }
 
 // Flash is a one-time message shown after a redirect.
@@ -153,6 +156,14 @@ func (s *Server) takeFlash(w http.ResponseWriter, r *http.Request) *Flash {
 	return &f
 }
 
+// satelliteURL is the satellite imagery the maps offer, or "" for none.
+func (s *Server) satelliteURL() string {
+	if strings.EqualFold(s.cfg.MapSatelliteURL, "off") {
+		return ""
+	}
+	return s.cfg.MapSatelliteURL
+}
+
 // view starts a View for the request.
 func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string, data any) *View {
 	v := &View{
@@ -161,6 +172,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 		Form: url.Values{}, Errors: map[string]string{},
 		App: AppInfo{
 			Name: s.cfg.AppName, Version: s.version, TileURL: s.cfg.MapTileURL, TileCredit: s.cfg.MapTileAttribution,
+			SatelliteURL: s.satelliteURL(), SatelliteCredit: s.cfg.MapSatelliteAttribution,
 			MockSMS: s.mockSMS, MockMail: s.mockMail, MockPay: s.mockPay, SMSNumber: s.cfg.SMSNumber, PublicURL: s.cfg.PublicURL,
 			SupportEmail: s.cfg.SupportEmail, BankDetails: s.cfg.BankDetails,
 		},

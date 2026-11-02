@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/internal/phone"
 	"github.com/natnael-alemayehu/logistics/internal/service"
@@ -34,6 +35,37 @@ func invoiceKind(kind string) string {
 		return "Text messages"
 	}
 	return kind
+}
+
+// mark escapes s and wraps each occurrence of term in it, ignoring case,
+// in <mark>, to show what a search matched (FR-009 AC-009.5).
+func mark(term, s string) template.HTML {
+	t := []rune(strings.TrimSpace(term))
+	if len(t) == 0 {
+		return template.HTML(template.HTMLEscapeString(s))
+	}
+	r := []rune(s)
+	var b strings.Builder
+	for i := 0; i < len(r); {
+		if i+len(t) <= len(r) && strings.EqualFold(string(r[i:i+len(t)]), string(t)) {
+			b.WriteString("<mark>" + template.HTMLEscapeString(string(r[i:i+len(t)])) + "</mark>")
+			i += len(t)
+			continue
+		}
+		b.WriteString(template.HTMLEscapeString(string(r[i])))
+		i++
+	}
+	return template.HTML(b.String())
+}
+
+// truncateText shortens s to at most n characters, ending with an ellipsis
+// when it cuts.
+func truncateText(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 var errBadID = errors.New("malformed id")
@@ -148,6 +180,30 @@ func (s *Server) funcs() template.FuncMap {
 				return span(-d) + " late"
 			}
 			return "in " + span(d)
+		},
+		"isActive": model.IsActiveStatus,
+		// newestFirst lists up to n of a trip's positions, newest first.
+		"newestFirst": func(n int, pts []db.ListShipmentRouteRow) []db.ListShipmentRouteRow {
+			out := make([]db.ListShipmentRouteRow, 0, min(n, len(pts)))
+			for i := len(pts) - 1; i >= 0 && len(out) < n; i-- {
+				out = append(out, pts[i])
+			}
+			return out
+		},
+		"device": device,
+		// storage writes a size in kilobytes the way a phone's settings do.
+		"storage": func(kb *int32) string {
+			if kb == nil {
+				return ""
+			}
+			switch k := float64(*kb); {
+			case k >= 1024*1024:
+				return fmt.Sprintf("%.1f GB", k/1024/1024)
+			case k >= 1024:
+				return fmt.Sprintf("%.0f MB", k/1024)
+			default:
+				return fmt.Sprintf("%.0f KB", k)
+			}
 		},
 		"late": func(eta any, status string) bool {
 			t, ok := toTime(eta)
@@ -362,14 +418,58 @@ func (s *Server) funcs() template.FuncMap {
 		"bareURL": func(u string) string {
 			return strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
 		},
-		"truncate": func(n int, s string) string {
-			r := []rune(s)
-			if len(r) <= n {
-				return s
-			}
-			return string(r[:n-1]) + "…"
-		},
+		"truncate": func(n int, s string) string { return truncateText(s, n) },
+		"mark":     mark,
 	}
+}
+
+// device names a browser the way people know it, "Chrome on Android", from
+// its user agent, or shortens the user agent when it is not recognised.
+func device(ua *string) string {
+	if ua == nil {
+		return ""
+	}
+	s := *ua
+	var browser, system string
+	switch {
+	case strings.Contains(s, "Edg/"), strings.Contains(s, "EdgA/"), strings.Contains(s, "EdgiOS/"):
+		browser = "Edge"
+	case strings.Contains(s, "OPR/"), strings.Contains(s, "Opera"):
+		browser = "Opera"
+	case strings.Contains(s, "SamsungBrowser/"):
+		browser = "Samsung Internet"
+	case strings.Contains(s, "Firefox/"), strings.Contains(s, "FxiOS/"):
+		browser = "Firefox"
+	case strings.Contains(s, "Chrome/"), strings.Contains(s, "CriOS/"):
+		browser = "Chrome"
+	case strings.Contains(s, "Safari/"):
+		browser = "Safari"
+	}
+	switch {
+	case strings.Contains(s, "Android"):
+		system = "Android"
+	case strings.Contains(s, "iPhone"):
+		system = "iPhone"
+	case strings.Contains(s, "iPad"):
+		system = "iPad"
+	case strings.Contains(s, "Windows"):
+		system = "Windows"
+	case strings.Contains(s, "CrOS"):
+		system = "ChromeOS"
+	case strings.Contains(s, "Macintosh"):
+		system = "Mac"
+	case strings.Contains(s, "Linux"):
+		system = "Linux"
+	}
+	switch {
+	case browser != "" && system != "":
+		return browser + " on " + system
+	case browser != "":
+		return browser
+	case system != "":
+		return system
+	}
+	return truncateText(s, 60)
 }
 
 func relative(d time.Duration) string {

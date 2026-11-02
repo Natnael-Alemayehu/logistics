@@ -22,6 +22,7 @@ type Querier interface {
 	// Likewise a "not collected" alert once the load has left or been rescheduled.
 	AcknowledgeStalePickupAlerts(ctx context.Context) error
 	AddBillingNotice(ctx context.Context, arg AddBillingNoticeParams) (int64, error)
+	AddBroadcastRecipient(ctx context.Context, arg AddBroadcastRecipientParams) error
 	AddSMSOptOut(ctx context.Context, phone string) error
 	// The same five-minute lease as ClaimQueuedSMS.
 	ClaimQueuedEmails(ctx context.Context, limit int32) ([]Email, error)
@@ -42,6 +43,7 @@ type Querier interface {
 	CountSMSByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountSMSSentBetween(ctx context.Context, arg CountSMSSentBetweenParams) (int64, error)
 	CountSMSSentSince(ctx context.Context, arg CountSMSSentSinceParams) (int64, error)
+	CountSavedFilters(ctx context.Context, arg CountSavedFiltersParams) (int64, error)
 	CountShipments(ctx context.Context, arg CountShipmentsParams) (int64, error)
 	CountShipmentsByStatus(ctx context.Context, tenantID pgtype.UUID) ([]CountShipmentsByStatusRow, error)
 	CountShipmentsCreatedSince(ctx context.Context, arg CountShipmentsCreatedSinceParams) (int64, error)
@@ -55,6 +57,7 @@ type Querier interface {
 	// the unique indexes turn either duplicate into a no-op and no row returns.
 	CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
+	CreateBroadcast(ctx context.Context, arg CreateBroadcastParams) (Broadcast, error)
 	// Links sent by email, and sign-ups waiting for their SMS code.
 	CreateEmailToken(ctx context.Context, arg CreateEmailTokenParams) error
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
@@ -78,11 +81,13 @@ type Querier interface {
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteExpiredVerificationCodes(ctx context.Context) error
 	DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestamptz) error
+	DeleteOldBroadcasts(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldEmailTokens(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldEmails(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldTrackingEvents(ctx context.Context, recordedAt pgtype.Timestamptz) error
 	DeletePendingSignup(ctx context.Context, id pgtype.UUID) error
+	DeleteSavedFilter(ctx context.Context, arg DeleteSavedFilterParams) (int64, error)
 	EnqueueEmail(ctx context.Context, arg EnqueueEmailParams) (Email, error)
 	EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMessage, error)
 	// Once a reset link is used, the others sent to that person stop working.
@@ -146,6 +151,9 @@ type Querier interface {
 	ListActiveShipmentsByDriver(ctx context.Context, arg ListActiveShipmentsByDriverParams) ([]Shipment, error)
 	ListActiveShipmentsForMap(ctx context.Context, tenantID pgtype.UUID) ([]ListActiveShipmentsForMapRow, error)
 	ListActiveVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) ([]Vehicle, error)
+	// Office staff who asked to have alerts of this type emailed to them, at a
+	// confirmed address.
+	ListAlertEmailRecipients(ctx context.Context, arg ListAlertEmailRecipientsParams) ([]ListAlertEmailRecipientsRow, error)
 	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error)
 	ListAllInvoices(ctx context.Context, arg ListAllInvoicesParams) ([]ListAllInvoicesRow, error)
 	ListAllUsersForPlatform(ctx context.Context, tenantID pgtype.UUID) ([]ListAllUsersForPlatformRow, error)
@@ -157,8 +165,14 @@ type Querier interface {
 	// The company's active admins with an email address: invoices and billing
 	// notices go to those who confirmed theirs.
 	ListBillingContacts(ctx context.Context, tenantID pgtype.UUID) ([]ListBillingContactsRow, error)
+	ListBroadcasts(ctx context.Context, arg ListBroadcastsParams) ([]ListBroadcastsRow, error)
+	// Messages to every driver on the road that reached this driver.
+	ListDriverBroadcastsSince(ctx context.Context, arg ListDriverBroadcastsSinceParams) ([]ListDriverBroadcastsSinceRow, error)
 	// Notes and messages a dispatcher addressed to this driver.
 	ListDriverMessagesSince(ctx context.Context, arg ListDriverMessagesSinceParams) ([]ListDriverMessagesSinceRow, error)
+	// Active drivers with a shipment assigned or under way: who a message to
+	// "every driver on the road" reaches.
+	ListDriversOnTheRoad(ctx context.Context, tenantID pgtype.UUID) ([]ListDriversOnTheRoadRow, error)
 	// The drivers page and the assignment picker: who is on duty, how loaded they
 	// are, and when their device last talked to the server.
 	ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error)
@@ -180,11 +194,21 @@ type Querier interface {
 	ListRefundsDue(ctx context.Context) ([]ListRefundsDueRow, error)
 	// Proofs of delivery held for the office to review, and those it dismissed.
 	ListReviewPODs(ctx context.Context, arg ListReviewPODsParams) ([]ListReviewPODsRow, error)
+	// Across tenants. Loads on the road whose truck is heading away from the
+	// destination: its latest fix, from the last half hour, is more than
+	// min_gain metres further from the destination than a fix from about an
+	// hour earlier. There is no road routing offline, so this is the deviation
+	// that can be told from GPS alone (FR-033). The episode, the six-hour
+	// window of the latest fix, raises at most one alert per load that often.
+	ListRouteDeviations(ctx context.Context, minGain float64) ([]ListRouteDeviationsRow, error)
 	ListSMSByTenant(ctx context.Context, arg ListSMSByTenantParams) ([]ListSMSByTenantRow, error)
+	ListSavedFilters(ctx context.Context, arg ListSavedFiltersParams) ([]SavedFilter, error)
 	ListShipmentEvents(ctx context.Context, arg ListShipmentEventsParams) ([]ShipmentEvent, error)
 	// A truck carries several shipments at once and its pings are attributed to
 	// only one of them, so a shipment's route is the driver's track over the time
 	// the shipment was on board, plus anything explicitly tagged to it.
+	// The newest max_points positions, oldest first, so a long trip still ends
+	// where the truck is now.
 	ListShipmentRoute(ctx context.Context, arg ListShipmentRouteParams) ([]ListShipmentRouteRow, error)
 	// Every filter is optional: an empty status list or a NULL argument means "no
 	// constraint". Sorting goes through a whitelist of keys rather than
@@ -256,7 +280,13 @@ type Querier interface {
 	// Reports cover the half-open interval [from, to). Days are bucketed in the
 	// caller's time zone so "deliveries on Tuesday" means Tuesday in Addis Ababa,
 	// not in UTC.
+	//
+	// Every report takes the same optional filters (FR-034 AC-034.5): one
+	// driver, and a route given by its origin town, its destination town or
+	// both.
 	ReportDeliveriesPerDay(ctx context.Context, arg ReportDeliveriesPerDayParams) ([]ReportDeliveriesPerDayRow, error)
+	// Every active driver, and any other who delivered in the period; with a
+	// route filter, only those who drove it.
 	ReportDriverPerformance(ctx context.Context, arg ReportDriverPerformanceParams) ([]ReportDriverPerformanceRow, error)
 	ReportRoutes(ctx context.Context, arg ReportRoutesParams) ([]ReportRoutesRow, error)
 	ReportSummary(ctx context.Context, arg ReportSummaryParams) (ReportSummaryRow, error)
@@ -273,9 +303,12 @@ type Querier interface {
 	// Hours from departure to delivery for recent deliveries between two cities.
 	// ETA estimation takes the median once enough history exists.
 	RouteTransitHours(ctx context.Context, arg RouteTransitHoursParams) ([]float64, error)
+	// Saving under an existing name replaces that view.
+	SaveFilter(ctx context.Context, arg SaveFilterParams) (SavedFilter, error)
 	// Writes a company's subscription as the billing service decided it. The
 	// month's text allowance only ever rises until the month ends.
 	SaveSubscription(ctx context.Context, arg SaveSubscriptionParams) error
+	SetAlertEmails(ctx context.Context, arg SetAlertEmailsParams) error
 	SetCustomerConfirmation(ctx context.Context, arg SetCustomerConfirmationParams) (Shipment, error)
 	// A problem report: the customer has answered but not confirmed receipt.
 	SetCustomerFeedback(ctx context.Context, arg SetCustomerFeedbackParams) (Shipment, error)

@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/geo"
+	"github.com/natnael-alemayehu/logistics/internal/model"
 )
 
 // TrackingService records driver positions and serves the live map
@@ -35,19 +37,31 @@ type DriverPin struct {
 	LastSync *time.Time `json:"last_sync"`
 	Paused   bool       `json:"paused"`
 	State    string     `json:"state"`
+	// Region is the region of the nearest known town, for the map filter.
+	Region string `json:"region"`
 }
 
-// ShipmentPin is an active shipment's destination on the map.
+// ShipmentPin is an active shipment on the map: its destination, and the
+// line from where it was collected.
 type ShipmentPin struct {
-	ID             string   `json:"id"`
-	TrackingNumber string   `json:"tracking_number"`
-	Status         string   `json:"status"`
-	Priority       string   `json:"priority"`
-	Destination    string   `json:"destination"`
-	Lat            *float64 `json:"lat"`
-	Lng            *float64 `json:"lng"`
-	DriverID       string   `json:"driver_id"`
-	DriverName     string   `json:"driver_name"`
+	ID             string     `json:"id"`
+	TrackingNumber string     `json:"tracking_number"`
+	Status         string     `json:"status"`
+	StatusLabel    string     `json:"status_label"`
+	Priority       string     `json:"priority"`
+	Customer       string     `json:"customer"`
+	Origin         string     `json:"origin"`
+	OriginLat      *float64   `json:"origin_lat"`
+	OriginLng      *float64   `json:"origin_lng"`
+	Destination    string     `json:"destination"`
+	Lat            *float64   `json:"lat"`
+	Lng            *float64   `json:"lng"`
+	ETA            *time.Time `json:"eta"`
+	DriverID       string     `json:"driver_id"`
+	DriverName     string     `json:"driver_name"`
+	// Regions are the regions of the origin and the destination, for the
+	// map filter.
+	Regions []string `json:"regions"`
 }
 
 // MapData is everything the live map draws.
@@ -87,7 +101,7 @@ func (s *TrackingService) Map(ctx context.Context, tenantID pgtype.UUID) (*MapDa
 			ID: l.DriverID.String(), Name: l.DriverName, Phone: deref(l.DriverPhone),
 			Lat: l.Latitude, Lng: l.Longitude, SpeedKPH: numericOr(l.SpeedKph), Battery: l.BatteryLevel,
 			At: l.RecordedAt.Time, LastSync: timePtr(l.LastSyncAt), Paused: deref(l.TrackingPaused),
-			State: ConnectionState(last, now),
+			State: ConnectionState(last, now), Region: regionAt(l.Latitude, l.Longitude),
 		})
 	}
 	ships, err := s.q.ListActiveShipmentsForMap(ctx, tenantID)
@@ -95,13 +109,36 @@ func (s *TrackingService) Map(ctx context.Context, tenantID pgtype.UUID) (*MapDa
 		return nil, err
 	}
 	for _, sh := range ships {
-		m.Shipments = append(m.Shipments, ShipmentPin{
-			ID: sh.ID.String(), TrackingNumber: sh.TrackingNumber, Status: sh.Status, Priority: sh.Priority,
+		pin := ShipmentPin{
+			ID: sh.ID.String(), TrackingNumber: sh.TrackingNumber, Status: sh.Status, StatusLabel: model.StatusLabel(sh.Status),
+			Priority: sh.Priority, Customer: sh.CustomerName,
+			Origin: deref(sh.OriginCity), OriginLat: sh.OriginLat, OriginLng: sh.OriginLng,
 			Destination: deref(sh.DestinationCity), Lat: sh.DestinationLat, Lng: sh.DestinationLng,
-			DriverID: uuidString(sh.DriverID), DriverName: deref(sh.DriverName),
-		})
+			ETA: timePtr(sh.EstimatedDelivery), DriverID: uuidString(sh.DriverID), DriverName: deref(sh.DriverName),
+			Regions: []string{},
+		}
+		for _, end := range [][2]*float64{{sh.OriginLat, sh.OriginLng}, {sh.DestinationLat, sh.DestinationLng}} {
+			if end[0] == nil || end[1] == nil {
+				continue
+			}
+			if r := regionAt(*end[0], *end[1]); r != "" && !slices.Contains(pin.Regions, r) {
+				pin.Regions = append(pin.Regions, r)
+			}
+		}
+		m.Shipments = append(m.Shipments, pin)
 	}
 	return m, nil
+}
+
+// regionAt names the region of the known town nearest a point, or nothing
+// when no town is within 150 km: a point that far out is in no region the
+// map filter offers.
+func regionAt(lat, lng float64) string {
+	p, d := geo.Nearest(lat, lng)
+	if d > 150000 {
+		return ""
+	}
+	return p.Region
 }
 
 // Ping is one GPS fix from a driver's device.
