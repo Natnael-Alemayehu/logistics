@@ -8,6 +8,7 @@ import (
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 // Jobs are the periodic checks: drivers gone quiet, shipments past their ETA,
@@ -94,7 +95,10 @@ func (j *Jobs) once(ctx context.Context, retention, usage bool) (ran bool, err e
 	run("pickup_check", j.CheckPickups)
 	run("route_check", j.CheckRoutes)
 	run("outbox_requeue", func(ctx context.Context) error {
-		return errors.Join(j.q.RequeueStuckSMS(ctx), j.q.RequeueStuckEmails(ctx))
+		if err := errors.Join(j.q.RequeueStuckSMS(ctx), j.q.RequeueStuckEmails(ctx)); err != nil {
+			return err
+		}
+		return j.observeOutbox(ctx)
 	})
 	run("billing", j.billing.Run)
 	if usage {
@@ -104,6 +108,24 @@ func (j *Jobs) once(ctx context.Context, retention, usage bool) (ran bool, err e
 		run("retention", j.Retention)
 	}
 	return true, errors.Join(errs...)
+}
+
+// observeOutbox publishes how many texts and emails are waiting to be sent,
+// and for how long, for /metrics.
+func (j *Jobs) observeOutbox(ctx context.Context) error {
+	rows, err := j.q.OutboxWaiting(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		metrics.OutboxWaiting.WithLabelValues(r.Channel).Set(float64(r.Waiting))
+		var age float64
+		if r.Oldest.Valid {
+			age = time.Since(r.Oldest.Time).Seconds()
+		}
+		metrics.OutboxOldest.WithLabelValues(r.Channel).Set(age)
+	}
+	return nil
 }
 
 // CheckDrivers alerts on drivers carrying cargo who have not been heard from

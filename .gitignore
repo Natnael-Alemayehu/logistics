@@ -52,3 +52,9 @@ coverage.html
 coverage.out
 # Signatures and delivery photos stored locally
 uploads/
+
+# The token Prometheus sends to /metrics: the same secret as METRICS_TOKEN
+backend/deployments/prometheus/metrics_token
+
+# `go build ./cmd/server` run from backend/
+/backend/server

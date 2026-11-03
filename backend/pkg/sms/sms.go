@@ -28,8 +28,6 @@ const (
 
 var (
 	ErrInvalidPhone        = errors.New("invalid phone number format")
-	ErrOptedOut            = errors.New("recipient has opted out")
-	ErrRateLimited         = errors.New("rate limit exceeded")
 	ErrProviderUnavailable = errors.New("SMS provider unavailable")
 )
 
@@ -63,18 +61,20 @@ type Config struct {
 	Console *console.Console
 }
 
-func NewProvider(cfg Config, logger Logger, rateLimiter RateLimiter, optOutStore OptOutStore) (SMSProvider, error) {
+// NewProvider returns the configured provider. Opt-outs, pacing and retries
+// across restarts are the caller's: Menged's outbox handles them.
+func NewProvider(cfg Config, logger Logger) (SMSProvider, error) {
 	switch cfg.Provider {
 	case ProviderTwilio:
 		if cfg.TwilioAccountSID == "" || cfg.TwilioAuthToken == "" || cfg.TwilioFromNumber == "" {
 			return nil, errors.New("missing Twilio configuration")
 		}
-		return NewTwilioProvider(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber, logger, rateLimiter, optOutStore), nil
+		return NewTwilioProvider(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber, logger), nil
 	case ProviderEthioTelecom:
 		if cfg.EthioTelecomAPIURL == "" || cfg.EthioTelecomAPIKey == "" {
 			return nil, errors.New("missing Ethio Telecom configuration")
 		}
-		return NewEthioTelecomProvider(cfg.EthioTelecomAPIURL, cfg.EthioTelecomAPIKey, cfg.EthioTelecomSenderID, logger, rateLimiter, optOutStore), nil
+		return NewEthioTelecomProvider(cfg.EthioTelecomAPIURL, cfg.EthioTelecomAPIKey, cfg.EthioTelecomSenderID, logger), nil
 	case ProviderMock:
 		p := NewMockProvider(logger)
 		p.Console = cfg.Console
@@ -119,15 +119,4 @@ type Logger interface {
 	Error(msg string, fields ...interface{})
 	Warn(msg string, fields ...interface{})
 	Debug(msg string, fields ...interface{})
-}
-
-type RateLimiter interface {
-	Allow(phone string) bool
-	Record(phone string)
-}
-
-type OptOutStore interface {
-	IsOptedOut(phone string) bool
-	AddOptOut(phone string)
-	RemoveOptOut(phone string)
 }

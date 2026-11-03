@@ -15,7 +15,7 @@ import (
 )
 
 func TestEthioTelecomProvider_Name(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{})
 	assert.Equal(t, "ethiotelecom", provider.Name())
 }
 
@@ -47,7 +47,7 @@ func TestEthioTelecomProvider_Send_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
 	require.NoError(t, err)
@@ -56,30 +56,11 @@ func TestEthioTelecomProvider_Send_Success(t *testing.T) {
 }
 
 func TestEthioTelecomProvider_Send_InvalidPhone(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{})
 
 	err := provider.Send(context.Background(), "invalid", "Test message", MessageTypeNotification)
 	require.Error(t, err)
 	assert.Equal(t, ErrInvalidPhone, err)
-}
-
-func TestEthioTelecomProvider_Send_OptedOut(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	optOutStore.AddOptOut("+251912345678")
-
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
-	require.Error(t, err)
-	assert.Equal(t, ErrOptedOut, err)
-}
-
-func TestEthioTelecomProvider_Send_RateLimited(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, &alwaysBlockRateLimiter{}, nil)
-
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
-	require.Error(t, err)
-	assert.Equal(t, ErrRateLimited, err)
 }
 
 func TestEthioTelecomProvider_Send_APIError(t *testing.T) {
@@ -103,7 +84,7 @@ func TestEthioTelecomProvider_Send_APIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
 	require.Error(t, err)
@@ -135,27 +116,16 @@ func TestEthioTelecomProvider_SendBatch_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	err := provider.SendBatch(context.Background(), []string{"0912345678", "0712345678"}, "Test message", MessageTypeNotification)
 	require.NoError(t, err)
 }
 
 func TestEthioTelecomProvider_SendBatch_EmptyRecipients(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{})
 
 	err := provider.SendBatch(context.Background(), []string{}, "Test message", MessageTypeNotification)
-	require.NoError(t, err)
-}
-
-func TestEthioTelecomProvider_SendBatch_AllOptedOut(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	optOutStore.AddOptOut("+251912345678")
-	optOutStore.AddOptOut("+251712345678")
-
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	err := provider.SendBatch(context.Background(), []string{"0912345678", "0712345678"}, "Test message", MessageTypeNotification)
 	require.NoError(t, err)
 }
 
@@ -184,7 +154,7 @@ func TestEthioTelecomProvider_SendBatch_PartialFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	err := provider.SendBatch(context.Background(), []string{"0912345678", "0712345678"}, "Test message", MessageTypeNotification)
 	require.Error(t, err)
@@ -211,45 +181,11 @@ func TestEthioTelecomProvider_CheckStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	status, err := provider.CheckStatus(context.Background(), "MSG123")
 	require.NoError(t, err)
 	assert.Equal(t, "delivered", status)
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_Stop(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	provider.HandleOptOutMessage("STOP", "0912345678")
-
-	assert.True(t, optOutStore.IsOptedOut("+251912345678"))
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_Quit(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	provider.HandleOptOutMessage("QUIT", "0912345678")
-
-	assert.True(t, optOutStore.IsOptedOut("+251912345678"))
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_Subscribe(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	optOutStore.AddOptOut("+251912345678")
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	provider.HandleOptOutMessage("SUBSCRIBE", "0912345678")
-
-	assert.False(t, optOutStore.IsOptedOut("+251912345678"))
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_NoStore(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	provider.HandleOptOutMessage("STOP", "0912345678")
 }
 
 func TestEthioTelecomProvider_TokenManagement(t *testing.T) {
@@ -275,7 +211,7 @@ func TestEthioTelecomProvider_TokenManagement(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	_ = provider.Send(context.Background(), "0912345678", "Test 1", MessageTypeNotification)
 	_ = provider.Send(context.Background(), "0912345678", "Test 2", MessageTypeNotification)
@@ -304,14 +240,14 @@ func TestEthioTelecomProvider_TokenExpiry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
 	require.NoError(t, err)
 }
 
 func TestEthioTelecomProvider_InvalidateToken(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{})
 
 	provider.token = "existing-token"
 	provider.tokenExpiry = provider.tokenExpiry.Add(1 * time.Hour)
@@ -350,7 +286,7 @@ func TestEthioTelecomProvider_SendWithRetry_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	msgID, err := provider.sendWithRetry(context.Background(), "+251912345678", "Test", 3)
 	require.NoError(t, err)
@@ -374,7 +310,7 @@ func TestEthioTelecomProvider_SendWithRetry_MaxRetries(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 
 	_, err := provider.sendWithRetry(context.Background(), "+251912345678", "Test", 3)
 	require.Error(t, err)
@@ -398,11 +334,6 @@ func TestIsAuthError(t *testing.T) {
 	}
 }
 
-func TestNormalizeOptOutBody(t *testing.T) {
-	result := normalizeOptOutBody("STOP")
-	assert.Equal(t, "STOP", result)
-}
-
 func BenchmarkEthioTelecomProvider_Send(b *testing.B) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "auth/token") {
@@ -424,7 +355,7 @@ func BenchmarkEthioTelecomProvider_Send(b *testing.B) {
 	}))
 	defer server.Close()
 
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{})
 	ctx := context.Background()
 
 	b.ResetTimer()

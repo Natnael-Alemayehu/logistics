@@ -11,6 +11,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/geo"
 	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 // SyncService is the driver app's offline sync (FR-009–013): the device
@@ -301,6 +302,11 @@ func (s *SyncService) Sync(ctx context.Context, p *Principal, req SyncRequest, c
 		resp.LocationsStored, _ = tracking.record(ctx, actor, req.DeviceID, pings, allowed)
 	}
 
+	for _, r := range resp.Results {
+		metrics.SyncChanges.WithLabelValues(r.Kind, syncOutcome(r)).Inc()
+	}
+	metrics.SyncLocations.Add(float64(resp.LocationsStored))
+
 	var battery, pending, storageKB, clockOffset *int32
 	if req.Battery != nil && *req.Battery >= 0 && *req.Battery <= 100 {
 		battery = ptr(int32(*req.Battery))
@@ -413,6 +419,17 @@ func (s *SyncService) applyPOD(ctx context.Context, a Actor, in SyncPOD, at time
 
 // resultFor classifies an outcome: domain errors are final, anything else is
 // a fault on our side the device should retry.
+// syncOutcome names a result for /metrics.
+func syncOutcome(r SyncResult) string {
+	switch {
+	case r.OK:
+		return "applied"
+	case r.Retry:
+		return "retry"
+	}
+	return "refused"
+}
+
 func resultFor(r SyncResult, err error) SyncResult {
 	if err == nil {
 		return r

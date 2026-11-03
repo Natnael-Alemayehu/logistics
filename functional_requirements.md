@@ -991,5 +991,120 @@ The platform consists of three main components:
 
 ---
 
+## Appendix D: Deviations
+
+Where the product differs from this document on purpose. Each entry gives
+the requirement, what Menged does instead, and why.
+
+### Not built
+
+- **FR-013 (P3)**: CSV import, bulk status updates and the progress
+  indicator (AC-013.1, AC-013.3, AC-013.5) are not built. Bulk assignment
+  (AC-013.2) is part of FR-007, and the shipment list exports to CSV with its
+  filters applied (AC-013.4).
+- **FR-046 and FR-047 (P3)**: there is no public API or webhooks yet.
+- **FR-025, offline maps**: map tiles are not cached. The driver's detail
+  screen shows the distance and compass direction to the drop-off from the
+  last GPS fix, which works without signal, and shows a map only when there
+  is signal. Caching tiles for every route would use most of the 100 MB
+  allowance on a phone that also has to hold unsent photos.
+
+### Shipments and the driver app
+
+- **FR-012, cancellation (AC-012.1)**: a dispatcher can also cancel a load
+  that is on the road, with on-road reasons (refused by the recipient,
+  returned to origin, cargo lost or damaged). Otherwise a refused load would
+  have no final state. Appendix B's state machine gains these transitions;
+  `model.AllowedTransitions` is the authority.
+- **FR-014, encryption (AC-014.4)**: the driver app's local data is not
+  encrypted. A web app would have to keep the key in the same origin as the
+  data, which protects nothing. Android's file-based encryption covers the
+  device, and signing a driver out remotely erases customers' details from
+  the phone at its next sync, while keeping updates it hasn't sent.
+- **FR-019, GPS sampling (AC-019.3)**: the app records a position every
+  minute while moving and every 5 minutes when parked, not every 5 or 15
+  minutes by network state. A web app tracks only while open, and then the
+  GPS and screen cost far more battery than the sample rate does. The
+  savings the requirement aims at are built: battery saver (on by itself
+  below 20% when not charging) keeps one coarse position every 15 minutes,
+  and after 10 minutes parked the GPS turns off with a check every 5 minutes
+  (15 when saving). Background tracking with a notification (AC-019.2) needs
+  a native app; the app can keep the screen on while charging instead.
+- **FR-031, on duty (AC-031.1)**: on duty is worked out, not switched by
+  hand. A driver is on duty while carrying a load that has left, or after
+  syncing with location on in the last 30 minutes.
+- **FR-030, route (AC-030.7)**: the shipment page draws the trip's newest
+  2,000 positions (about a day and a half at one a minute). The whole route
+  downloads as CSV from the same page.
+
+### Alerts
+
+- **FR-033, route deviation (AC-033.1)**: without road routing offline,
+  "deviation" means heading away from the destination: while in transit, the
+  truck gets more than 20 km further from the drop-off over about an hour.
+- **Repeat reports**: a new delay or problem report with a different reason
+  replaces the open alert about the earlier one, so the office sees the
+  current cause.
+- **Read and unread (AC-033.6)**: alerts count as read once the alerts page
+  is viewed. They can be acknowledged, not marked unread.
+- **Email copies (AC-033.4)**: each person chooses which alert types they
+  are emailed about, rather than one setting per company.
+- **History (AC-033.5)**: alerts are kept 90 days, not 30, the same as GPS
+  points, so an alert can be read alongside the route it was about.
+
+### Customers
+
+- **FR-036, rate limit (AC-036.7)**: tracking pages allow 60 requests a
+  minute per IP address, not 10. Ethiopian mobile users share carrier NAT
+  addresses, so 10 would lock out whole towns. Requests that send an SMS code
+  or check one keep the strict limit of 10.
+
+### Data
+
+- **FR-041, retention (AC-041.2, AC-041.3)**: after `RETAIN_SHIPMENT_DAYS`
+  (365 by default), a finished shipment keeps its row, with the customer's
+  and recipient's details, notes, signature, photos and texts removed. The
+  dates, cities, statuses, driver and cargo stay, so reports keep adding up
+  (AC-041.4).
+- **Export (AC-041.5)**: the company's data export holds no GPS points.
+  They are kept 90 days, and a shipment's route downloads from its page.
+- **Removing a person (AC-041.6)**: the company is the data controller, so a
+  company admin removes a deactivated driver's or staff member's details;
+  the person asks their company. Their history stays under "Former driver"
+  or "Former staff member". Audit entries keep the IP addresses they acted
+  from, as evidence.
+- **FR-042, append-only (AC-042.5)**: the shipment timeline is append-only as
+  well as the audit log, enforced by a database trigger.
+- **Audit retention (AC-042.6)**: audit entries are kept for as long as the
+  company exists. Deleting a company (AC-049.3) removes its audit log with
+  its other data; the platform's own log keeps an entry recording the
+  deletion.
+
+### Billing
+
+- **FR-043, plans (AC-043.1, AC-043.2)**: Starter allows 10 drivers, not 5.
+  Five leaves no plan for the most common fleet, 6 to 20 trucks. Every plan
+  has the same features; plans differ in drivers and included texts. A
+  feature withheld from small fleets would mostly be one they need.
+- **Upgrades (AC-043.5)**: an upgrade is invoiced at once for the rest of
+  the period and applies when that invoice is paid. Plan changes wait while
+  a renewal or usage invoice is unpaid.
+- **Late renewal**: when a period ended more than a day before it is renewed
+  (the company was suspended, or the jobs weren't running), the new period
+  starts at renewal, so time that already went by isn't billed.
+- **Overage (AC-045.4)**: texts beyond a plan's monthly allowance cost
+  ETB 0.50 each, counted by calendar month on annual plans too, and billed on
+  a usage invoice the next month. Texts are never blocked: customer
+  notifications matter more than the limit.
+- **Money that can't be applied**: a payment for an invoice that is already
+  paid or cancelled, or for a company that was deleted, is set aside as a
+  refund for the operator to send back.
+- **FR-044, read-only (AC-044.6)**: an overdue company becomes read-only
+  rather than suspended: new work stops, loads already on the road finish,
+  and viewing, exporting and paying keep working. Suspension by the
+  platform operator is separate and signs everyone out.
+
+---
+
 *Document End*
 *Total Requirements: 49*

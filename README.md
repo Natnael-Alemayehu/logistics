@@ -146,7 +146,7 @@ backend/
   pkg/                 SMS, email and payment providers, terminal stand-ins, storage (local or S3),
                        websocket hub, hashing
   tests/integration/   end-to-end tests over HTTP against PostGIS
-  deployments/         production compose file, Caddy, Prometheus
+  deployments/         production compose file, Caddy, Prometheus, Grafana
 ```
 
 ## Run it locally
@@ -205,8 +205,14 @@ docker compose -f deployments/docker-compose.prod.yml up -d
 
 This runs the app, PostGIS and Caddy, which gets a TLS certificate for `DOMAIN`.
 Signatures and photos go to the `app-data` volume, or to S3 with
-`STORAGE_TYPE=s3`. Add `--profile monitoring` for Prometheus and Grafana; set
-`METRICS_TOKEN` and put the same value in `deployments/prometheus/metrics_token`.
+`STORAGE_TYPE=s3`.
+
+Add `--profile monitoring` for Prometheus and Grafana: set `METRICS_TOKEN`, and
+put the same value in `deployments/prometheus/metrics_token`. Grafana listens
+on `127.0.0.1:3000` (reach it over an SSH tunnel) and comes with a **Menged**
+dashboard: requests, errors and response times by route, driver sync, texts
+and emails sent and waiting, background jobs, and memory. `/metrics` labels
+requests by route pattern (`/app/shipments/{id}`), never by company or ID.
 
 The maps' satellite view uses Esri World Imagery, which needs an ArcGIS
 licence for commercial use. Point `MAP_SATELLITE_URL` at your own imagery
@@ -220,6 +226,6 @@ Health checks: `/healthz` (process up) and `/readyz` (database reachable).
 
 ## Documents
 
-- [`functional_requirements.md`](functional_requirements.md): the original requirements
+- [`functional_requirements.md`](functional_requirements.md): the original requirements; Appendix D lists where the product deliberately differs
 - [`logistics.md`](logistics.md): background on the problem
 - [`E2E_TEST_GUIDE.md`](E2E_TEST_GUIDE.md): a manual walkthrough of every flow

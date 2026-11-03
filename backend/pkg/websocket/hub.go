@@ -4,6 +4,8 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog"
+
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 type Hub struct {
@@ -53,6 +55,7 @@ func (h *Hub) registerClient(client *Client) {
 	defer h.mutex.Unlock()
 
 	h.Clients[client] = true
+	metrics.WebSocketConnections.Inc()
 	roomID := GetTenantRoomID(client.TenantID)
 	room := h.getOrCreateRoom(roomID)
 	room.Subscribe(client)
@@ -71,6 +74,7 @@ func (h *Hub) unregisterClient(client *Client) {
 	if _, ok := h.Clients[client]; ok {
 		delete(h.Clients, client)
 		close(client.Send)
+		metrics.WebSocketConnections.Dec()
 
 		for roomID := range client.Rooms {
 			if room, exists := h.Rooms[roomID]; exists {

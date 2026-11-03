@@ -13,6 +13,7 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/internal/phone"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 // SMSSender is an SMS provider. It receives numbers in local form and is
@@ -141,11 +142,14 @@ func (s *SMSService) drain(ctx context.Context) {
 
 func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
 	if s.sender == nil {
+		metrics.Messages.WithLabelValues("sms", "none", "skipped").Inc()
 		_ = s.q.MarkSMSSkipped(ctx, db.MarkSMSSkippedParams{ID: m.ID, LastError: ptr("no SMS provider configured")})
 		return
 	}
+	provider := s.sender.Name()
 	if !m.Sensitive {
 		if out, err := s.q.IsPhoneOptedOut(ctx, m.Phone); err == nil && out {
+			metrics.Messages.WithLabelValues("sms", provider, "skipped").Inc()
 			_ = s.q.MarkSMSSkipped(ctx, db.MarkSMSSkippedParams{ID: m.ID, LastError: ptr("recipient opted out")})
 			return
 		}
@@ -155,7 +159,8 @@ func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
 	err := s.sender.Send(sendCtx, m.Phone, m.Body)
 	cancel()
 	if err == nil {
-		if err := s.q.MarkSMSSent(ctx, db.MarkSMSSentParams{ID: m.ID, Provider: ptr(s.sender.Name())}); err != nil {
+		metrics.Messages.WithLabelValues("sms", provider, "sent").Inc()
+		if err := s.q.MarkSMSSent(ctx, db.MarkSMSSentParams{ID: m.ID, Provider: &provider}); err != nil {
 			s.log.Error().Err(err).Msg("mark sms sent")
 		}
 		return
@@ -163,10 +168,12 @@ func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
 
 	msg := truncate(err.Error(), 300)
 	if int(m.Attempts) > len(smsBackoff) {
+		metrics.Messages.WithLabelValues("sms", provider, "failed").Inc()
 		s.log.Warn().Err(err).Str("purpose", m.Purpose).Msg("sms failed permanently")
 		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: &msg})
 		return
 	}
+	metrics.Messages.WithLabelValues("sms", provider, "retry").Inc()
 	next := s.now().Add(smsBackoff[m.Attempts-1])
 	_ = s.q.MarkSMSRetry(ctx, db.MarkSMSRetryParams{ID: m.ID, LastError: &msg, NextAttemptAt: toTimestamp(next)})
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 // HealthService reports how the system is running, for the platform admin
@@ -94,10 +95,14 @@ func (s *HealthService) Check(ctx context.Context, p *Principal) (*Health, error
 func (j *Jobs) record(ctx context.Context, name string, fn func(context.Context) error) error {
 	start, begun := j.now(), time.Now()
 	err := fn(ctx)
+	metrics.JobDuration.WithLabelValues(name).Observe(time.Since(begun).Seconds())
 	var msg *string
 	if err != nil {
 		m := truncate(err.Error(), 500)
 		msg = &m
+		metrics.JobFailures.WithLabelValues(name).Inc()
+	} else {
+		metrics.JobLastSuccess.WithLabelValues(name).SetToCurrentTime()
 	}
 	if rerr := j.q.RecordJobRun(ctx, db.RecordJobRunParams{
 		Name: name, StartedAt: toTimestamp(start), DurationMs: int32(time.Since(begun).Milliseconds()), Error: msg,

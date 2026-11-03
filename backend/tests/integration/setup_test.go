@@ -159,7 +159,7 @@ func newEnv(t *testing.T) *env {
 	cfg := &config.Config{
 		Port: "0", PublicURL: base, AppName: "Menged", Timezone: tz, Environment: "test",
 		Secret: []byte("integration-test-secret-0123456789abcdef"), SMSProvider: "mock",
-		StorageType: "local", StoragePath: t.TempDir(),
+		StorageType: "local", StoragePath: t.TempDir(), MetricsToken: metricsToken,
 	}
 	store, err := storage.New(&storage.Config{Type: "local", LocalPath: cfg.StoragePath})
 	if err != nil {
