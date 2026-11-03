@@ -1,5 +1,10 @@
 # Development database. The app itself runs on the host with `make run`.
 # DB_PORT moves it off 5434 if that port is taken.
+#
+# The project is named, or it would be named after the directory, and
+# compose would take another checkout's "backend" project for this one.
+name: menged-dev
+
 services:
   postgres:
     image: postgis/postgis:15-3.3-alpine
