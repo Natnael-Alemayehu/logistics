@@ -1,0 +1,56 @@
+{{define "content"}}{{$d := .Data}}{{$f := $d.Faults}}
+<h1>Faults</h1>
+<p class="lead">Make a provider misbehave, then watch what {{.AppName}} does about it. A fault stays on until it is turned off, and is forgotten when the sandbox stops.</p>
+{{with $d.Error}}<p class="banner bad" role="alert">{{.}}</p>{{end}}
+{{with $d.Notice}}<p class="banner ok">{{.}}</p>{{end}}
+
+<form class="faults" method="post" action="/controls">
+  <fieldset class="card">
+    <legend>Ethio telecom SMS gateway</legend>
+    <label class="fault"><input type="checkbox" name="sms_down" {{if $f.SMSDown}}checked{{end}}>
+      <span><strong>The gateway is down.</strong> Every text is answered 503. {{.AppName}} should keep the texts and try again after 1, 5 and 15 minutes; its SMS log shows them waiting.</span></label>
+    <label class="fault"><input type="checkbox" name="sms_slow" {{if $f.SMSSlow}}checked{{end}}>
+      <span><strong>The gateway is slow.</strong> It answers after 35 seconds, after {{.AppName}} stops waiting, and sends nothing. {{.AppName}} should give up on the attempt and try again later.</span></label>
+    <label class="fault"><input type="checkbox" name="sms_refuse_tokens" {{if $f.SMSRefuseTokens}}checked{{end}}>
+      <span><strong>Tokens are refused.</strong> Every text is answered 401, even after a new sign-in. {{.AppName}} should sign in again once, then leave the text for later.</span></label>
+    <label class="fault"><input type="checkbox" name="drop_reports" {{if $f.DropReports}}checked{{end}}>
+      <span><strong>Delivery reports are dropped.</strong> Texts arrive, but {{.AppName}} isn't told; its SMS log shows them sent, not delivered. Dropped reports are listed on the home page to send later.</span></label>
+    <label class="numbers">Barred numbers
+      <textarea name="barred" rows="2" placeholder="0911234567, 0922334455">{{lines $f.Barred}}</textarea>
+      <span class="small muted">Texts to them are refused for good (400). {{.AppName}} should fail them at once, without retrying.</span></label>
+    <label class="numbers">Unreachable numbers
+      <textarea name="unreachable" rows="2" placeholder="0911234567">{{lines $f.Unreachable}}</textarea>
+      <span class="small muted">Texts to them are taken, but reported undelivered: the phone is off. {{.AppName}}'s SMS log should say Not delivered.</span></label>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>telebirr</legend>
+    <label class="fault"><input type="checkbox" name="preorder_fails" {{if $f.PreOrderFails}}checked{{end}}>
+      <span><strong>Orders fail.</strong> preOrder is answered 500. {{.AppName}} should say the payment couldn't start and take no money.</span></label>
+    <label class="fault"><input type="checkbox" name="drop_notifications" {{if $f.DropNotifications}}checked{{end}}>
+      <span><strong>Notifications are dropped.</strong> The payer pays but {{.AppName}} isn't told. {{.AppName}} should find out by asking about the order (queryOrder), when its payment page opens or within a few minutes.</span></label>
+    <label class="fault"><input type="checkbox" name="duplicate_notifications" {{if $f.DuplicateNotifications}}checked{{end}}>
+      <span><strong>Notifications come twice.</strong> {{.AppName}} should record one payment and send one receipt.</span></label>
+    <label class="fault"><input type="checkbox" name="delay_notifications" {{if $f.DelayNotifications}}checked{{end}}>
+      <span><strong>Notifications are a minute late.</strong> The payer is back at {{.AppName}} first, which should wait for telebirr or ask it.</span></label>
+    <label class="fault"><input type="checkbox" name="wrong_key" {{if $f.WrongKey}}checked{{end}}>
+      <span><strong>Notifications are forged.</strong> They are signed with a key that isn't telebirr's. {{.AppName}} should refuse them with 401, and still learn the outcome by asking.</span></label>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>CBE Birr</legend>
+    <label class="fault"><input type="checkbox" name="drop_confirmations" {{if $f.DropConfirmations}}checked{{end}}>
+      <span><strong>Confirmations are dropped.</strong> The money is taken but {{.AppName}} isn't told, so the invoice stays open. Send the held confirmation from the home page: the invoice should be paid once.</span></label>
+    <label class="fault"><input type="checkbox" name="duplicate_confirmations" {{if $f.DuplicateConfirmations}}checked{{end}}>
+      <span><strong>Confirmations come twice.</strong> {{.AppName}} should record one payment.</span></label>
+  </fieldset>
+
+  <button class="btn primary" type="submit">Save faults</button>
+</form>
+
+<section class="card">
+  <h2>Tokens</h2>
+  <p>A gateway can end its tokens at any time. Expire every token now, and {{.AppName}}'s next call should be refused with 401, then made again after a new sign-in.</p>
+  <form method="post" action="/controls/tokens"><button class="btn" type="submit">Expire every token</button></form>
+</section>
+{{end}}

@@ -382,13 +382,16 @@ docker compose exec postgres psql -U logistics -c "UPDATE tenants SET trial_ends
    the period starts when the trial ends, so paying early doesn't cut the
    trial short.
 2. **Pay by mobile money.** If your email isn't confirmed yet, the invoice
-   asks you to confirm it first (receipts go there). Then choose telebirr,
-   enter a phone and **Pay**. The page waits for approval. In the terminal, a
-   `PAYMENT to 09…` block has a `/dev/payments/…` link: it plays the payer's
-   phone. Open it (a narrow window shows it as a phone would) and try
-   **Decline** first: nothing is paid, and the invoice stays open. Pay again
-   and **Approve**. The waiting page turns to **Paid** by itself, the invoice
-   is marked paid, and a receipt email is printed.
+   asks you to confirm it first (receipts go there). **Pay with telebirr**
+   takes you to telebirr's checkout, played by a page of this server
+   (`/dev/payments/…`; a narrow window shows it as a phone would). Try
+   **Cancel** first: you are back on the payment page, nothing is paid, and
+   the invoice stays open. Pay again, and **Pay** on the checkout: the
+   payment page says **Paid**, the invoice is marked paid, and a receipt
+   email is printed. With CBE Birr the payer pays from their phone, quoting
+   the invoice's reference: **Play the payer's phone** on the invoice opens a
+   page playing CBE Birr with the merchant ID and reference filled in.
+   **Next** shows what the reference owes, and **Pay** pays it.
 3. **Pay by bank transfer.** The invoice lists the bank details
    (`BILLING_BANK_DETAILS`) and asks for the invoice number as the reference.
    The operator records the transfer (section 10).
@@ -422,9 +425,9 @@ Check:
   when it has one, and VAT at 15%.
 - On a phone, the invoice table fits the screen: quantities move under each
   description, and totals line up under the amounts.
-- Approving the same prompt twice, or a notification with a wrong signature
-  or amount, changes nothing (the integration tests cover the signed
-  notification endpoint).
+- Paying at the same checkout twice, or a notification with a wrong
+  signature or amount, changes nothing (the integration tests cover the
+  signed notification endpoint).
 
 ## 10. The operator
 
@@ -460,12 +463,12 @@ unpaid and overdue invoices, and recent payments. On an unpaid invoice:
   emailed a receipt, and a read-only account is lifted at once.
 - **Cancel invoice** with a reason, which is emailed to the company.
 
-As the company, start a telebirr payment on an invoice but leave the prompt
-unanswered. As the operator, mark the same invoice paid. Then approve the
-prompt. The late payment is not applied to anything: it appears under
-**Refunds to send**, and its payment page tells the company it will be
-refunded. Record the refund with the bank's reference, and the company is
-emailed. (Two prompts approved for one invoice end the same way.)
+As the company, start a telebirr payment on an invoice but leave the
+checkout open without paying. As the operator, mark the same invoice paid.
+Then **Pay** on the checkout. The late payment is not applied to anything:
+it appears under **Refunds to send**, and its payment page tells the company
+it will be refunded. Record the refund with the bank's reference, and the
+company is emailed. (Two checkouts paid for one invoice end the same way.)
 
 ## 11. Security checks
 
@@ -490,3 +493,61 @@ emailed. (Two prompts approved for one invoice end the same way.)
 
   fails with "audit_logs is append-only". Only deleting a company removes
   them.
+
+## 12. Through the provider sandbox
+
+The same flows with the app's real SMS, telebirr and CBE Birr adapters,
+against the provider sandbox instead of the stand-ins. Stop `make run`, and
+in two terminals from `backend/`:
+
+```bash
+make sandbox       # http://localhost:8091
+make run-sandbox   # http://localhost:8080, its providers pointed at the sandbox
+```
+
+Give both the same `PORT` to move the app. Email is still printed in the
+app's terminal.
+
+1. **The sign-up code.** Sign up a new company. The code isn't printed: it
+   arrives on the sandbox's phone. Open the sandbox, open the phone by its
+   number, read the code and finish signing up. Under the text, *Delivered ·
+   Report: Taken by Menged*: the gateway's delivery report reached the app,
+   and Settings → Text messages shows the text **Delivered**.
+2. **A driver's text.** Add a driver and book a shipment for them. Their
+   phone in the sandbox shows the assignment, ending "text ET <ref> 1 to
+   6060". Send `ET <ref> 1` from the box under the thread: the text says what
+   the app made of it, the shipment is In transit, and the confirmation
+   arrives on the driver's phone.
+3. **telebirr.** Choose a plan and **Pay with telebirr**. The browser goes to
+   telebirr's checkout on the sandbox, with the amount, the invoice and the
+   merchant. Try a wrong PIN first, then pay with any number and PIN `1234`.
+   The checkout sends you back to the payment page, already paid, the
+   receipt is emailed, and the payer's phone has telebirr's receipt from 127.
+4. **CBE Birr.** On another company's invoice, follow **Pay from a sandbox
+   phone**: the phone opens with the merchant ID and reference filled in.
+   **Next** asks the app what the reference owes; enter PIN `1234` and
+   **Pay**. The invoice is paid, and the phone has CBE Birr's receipt. The
+   same reference again is turned away: the invoice is paid.
+5. **Faults.** On **Faults**, turn one on at a time:
+   - *Notifications are dropped*: pay with telebirr. The checkout sends you
+     back, and the payment page asks telebirr and finds it paid. The dropped
+     notification waits under **Held back** on the sandbox's home page, and
+     **Send now** changes nothing in the app.
+   - *Notifications are forged*: the app answers the notification 401 (see
+     **Log**), and still learns the outcome by asking telebirr.
+   - *The gateway is down*: book a shipment. Settings → Text messages shows
+     the driver's text waiting. Turn the fault off: it goes at the next try,
+     1, 5 and 15 minutes after the first.
+   - *Barred numbers*: enter a driver's number and book for them: the text
+     fails at once, without retrying. *Unreachable numbers*: it is sent, then
+     reported **Not delivered**.
+   - *Confirmations are dropped*: pay by CBE Birr. The money leaves the
+     wallet but the invoice stays open until the held confirmation is sent.
+6. **Log.** Every call in both directions, with headers and bodies, secrets
+   masked.
+
+Check:
+- **System health** (as the operator) names the providers **Sandbox**.
+- The sandbox's pages work on a phone and in dark mode.
+- `docker compose --profile sandbox up sandbox` runs the sandbox in a
+  container instead of `make sandbox`, for the app on the host.

@@ -1,6 +1,9 @@
 # Development database. The app itself runs on the host with `make run`.
 # DB_PORT moves it off 5434 if that port is taken.
 #
+# The provider sandbox, for an app on the host run with `make run-sandbox`:
+#   make sandbox-keys && docker compose --profile sandbox up sandbox
+#
 # The project is named, or it would be named after the directory, and
 # compose would take another checkout's "backend" project for this one.
 name: menged-dev
@@ -23,6 +26,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  sandbox:
+    profiles: [sandbox]
+    build:
+      context: .
+      target: sandbox
+    env_file: sandbox.env
+    environment:
+      SANDBOX_ADDR: 0.0.0.0:8091
+      SANDBOX_KEYS_DIR: /keys
+      SANDBOX_APP_URL: http://localhost:${PORT:-8080}
+      # The app is on the host, which localhost isn't from in here.
+      SANDBOX_HOST_ALIAS: host.docker.internal
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:8091:8091"
+    volumes:
+      - ./sandbox-keys:/keys:ro
 
 volumes:
   postgres_data:

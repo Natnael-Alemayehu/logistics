@@ -1,0 +1,84 @@
+{{define "content"}}{{$d := .Data}}{{$p := $d.Phone}}
+<p class="small"><a href="/">← Phones</a></p>
+<div class="phone-page">
+  <section class="handset" aria-label="Texts on {{phone $p.Number}}">
+    <header class="handset-head">
+      <strong>{{phone $p.Number}}</strong>
+      <span class="small muted">Texts from {{$d.SenderID}}, and to {{$d.ShortCode}}</span>
+    </header>
+    <ol class="thread" id="thread" data-poll="end">
+      {{range $p.Texts}}
+      <li class="bubble{{if .Mine}} mine{{end}}{{if .Failed}} failed{{end}}">
+        <div class="who small">{{if .Mine}}To {{.To}}{{else}}{{.From}}{{end}} · {{clock .At}}</div>
+        <div class="body">{{.Body}}</div>
+        {{if or .State .Report}}<div class="small state-line">{{.State}}{{if and .State .Report}} · {{end}}{{.Report}}</div>{{end}}
+      </li>
+      {{else}}
+      <li class="empty">No texts yet. {{$.AppName}}'s texts to {{phone $p.Number}} appear here.</li>
+      {{end}}
+    </ol>
+    <form class="compose" method="post" action="/phones/{{$p.Number}}/texts">
+      <label class="sr-only" for="text">Text {{$d.ShortCode}}</label>
+      <textarea id="text" name="text" rows="2" required placeholder="Text {{$d.ShortCode}}, such as ET 4821 1"></textarea>
+      <button class="btn primary" type="submit">Send</button>
+    </form>
+  </section>
+
+  <div class="side">
+    <section class="card" id="pay">
+      <h2>Pay a merchant with CBE Birr</h2>
+      {{with $d.Paid}}
+      <div class="banner ok" id="paid" data-poll>
+        <strong>Paid ETB {{birr .Amount}}</strong> for reference <span class="mono">{{.Reference}}</span>. Transaction <span class="mono">{{.TransID}}</span>.
+        <div class="small">Confirmation: {{.Confirmation}}</div>
+      </div>
+      {{end}}
+      {{with $d.Pay}}
+      {{with .Error}}<p class="banner bad" role="alert">{{.}}</p>{{end}}
+      {{if eq .Step "confirm"}}
+      <form class="stack" method="post" action="/phones/{{$p.Number}}/cbebirr">
+        <input type="hidden" name="step" value="pay">
+        <input type="hidden" name="merchant" value="{{.Merchant}}">
+        <input type="hidden" name="ref" value="{{.Ref}}">
+        <input type="hidden" name="billed" value="{{.Bill.Amount}}">
+        <input type="hidden" name="customer" value="{{.Bill.CustomerName}}">
+        <input type="hidden" name="description" value="{{.Bill.Description}}">
+        <p class="confirm">Pay <strong>ETB {{amount .Bill.Amount}}</strong> to {{$.AppName}} for {{or .Bill.Description .Ref}}?</p>
+        <dl class="facts small">
+          <div><dt>Merchant</dt><dd class="mono">{{.Merchant}}</dd></div>
+          <div><dt>Reference</dt><dd class="mono">{{.Ref}}</dd></div>
+          {{with .Bill.CustomerName}}<div><dt>Billed to</dt><dd>{{.}}</dd></div>{{end}}
+        </dl>
+        <label>Amount (ETB) <input name="amount" value="{{.Amount}}" inputmode="decimal" required></label>
+        <p class="small muted">Change it to try paying the wrong amount.</p>
+        <label>PIN <input name="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="6" required></label>
+        <div class="row">
+          <button class="btn primary" type="submit">Pay</button>
+          <a class="btn ghost" href="/phones/{{$p.Number}}#pay">Cancel</a>
+        </div>
+      </form>
+      {{else}}
+      <form class="stack" method="post" action="/phones/{{$p.Number}}/cbebirr">
+        <input type="hidden" name="step" value="query">
+        <label>Merchant ID <input name="merchant" value="{{.Merchant}}" inputmode="numeric" required></label>
+        <label>Reference <input name="ref" value="{{.Ref}}" autocomplete="off" required placeholder="The invoice's reference"></label>
+        <button class="btn primary" type="submit">Next</button>
+      </form>
+      <p class="small muted">CBE Birr looks the reference up with {{$.AppName}} and shows what it owes before you pay.</p>
+      {{end}}
+      {{end}}
+    </section>
+
+    <section class="card" id="wallets">
+      <h2>Wallets</h2>
+      {{with $d.WalletError}}<p class="banner bad" role="alert">{{.}}</p>{{end}}
+      <form class="stack" method="post" action="/phones/{{$p.Number}}/balances">
+        <label>telebirr (ETB) <input name="telebirr" value="{{birr $p.Telebirr}}" inputmode="decimal" required></label>
+        <label>CBE Birr (ETB) <input name="cbebirr" value="{{birr $p.CBEBirr}}" inputmode="decimal" required></label>
+        <button class="btn ghost" type="submit">Save balances</button>
+      </form>
+      <p class="small muted">Lower one to see a payment refused for want of money. The PIN is {{$.PIN}}.</p>
+    </section>
+  </div>
+</div>
+{{end}}
