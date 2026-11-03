@@ -31,7 +31,9 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U logistics"]
+      # Over TCP: on first start the image's set-up server answers on the
+      # socket only, and the app connects over the network.
+      test: ["CMD-SHELL", "pg_isready -U logistics -h 127.0.0.1"]
       interval: 10s
       timeout: 5s
       retries: 10
