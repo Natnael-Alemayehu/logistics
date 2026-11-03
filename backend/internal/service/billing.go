@@ -43,15 +43,22 @@ const (
 // Payment states, and the provider code of a bank transfer recorded by the
 // platform operator.
 const (
-	paymentPending = "pending"
-	paymentPaid    = "paid"
-	paymentFailed  = "failed"
-	paymentExpired = "expired"
-	providerBank   = "bank"
+	paymentPending  = "pending"
+	paymentPaid     = "paid"
+	paymentFailed   = "failed"
+	paymentExpired  = "expired"
+	paymentRefunded = "refunded"
+	providerBank    = "bank"
 
-	// paymentPromptTTL is how long a payment waits for the payer to approve
-	// the prompt on their phone. A late approval still counts.
+	// paymentPromptTTL is how long a payment waits for the payer to finish
+	// at the provider's checkout. A late payment still counts.
 	paymentPromptTTL = 30 * time.Minute
+
+	// A payment the provider hasn't reported on is asked about every
+	// paymentCheckEvery until paymentCheckWindow after it started, in case
+	// the report was lost.
+	paymentCheckEvery  = 2 * time.Minute
+	paymentCheckWindow = 2 * time.Hour
 
 	// lateRenewal is how long after a period ended the next one still
 	// follows on from it rather than starting when it is renewed.
@@ -691,8 +698,52 @@ type InvoiceDetail struct {
 	Lines      []InvoiceLine
 	Usage      *SMSUsage
 	Payments   []db.Payment
-	// Waiting is a payment prompt the payer hasn't answered yet.
+	// Waiting is a payment the payer started that the provider hasn't
+	// reported on yet.
 	Waiting *db.Payment
+}
+
+// PayReference is what a payer quotes to pay this invoice by reference.
+func (d *InvoiceDetail) PayReference() string { return PayReference(d.Invoice.Number) }
+
+// PayReference is the reference that pays an invoice from a phone: its
+// number's digits (INV-2026-00012 is 202600012), easy to key in and unique,
+// since invoice numbers are the platform's.
+func PayReference(number string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, number)
+}
+
+// invoiceNumberOf reads the invoice number in a reference a payer quoted:
+// the number (INV-2026-00012), its digits (202600012), or the digits without
+// the zeros in the middle (202612). It is "" for anything else.
+func invoiceNumberOf(ref string) string {
+	ref = strings.TrimPrefix(strings.ToUpper(strings.Join(strings.Fields(ref), "")), "INV")
+	var digits strings.Builder
+	for _, r := range ref {
+		switch {
+		case r >= '0' && r <= '9':
+			digits.WriteRune(r)
+		case r != '-':
+			return ""
+		}
+	}
+	d := digits.String()
+	if len(d) < 5 {
+		return ""
+	}
+	year, n := d[:4], strings.TrimLeft(d[4:], "0")
+	if n == "" {
+		return ""
+	}
+	if len(n) < 5 {
+		n = strings.Repeat("0", 5-len(n)) + n
+	}
+	return "INV-" + year + "-" + n
 }
 
 // Invoice loads one of the caller's company's invoices.
@@ -758,29 +809,30 @@ func (s *BillingService) invoiceDetail(ctx context.Context, inv db.Invoice, tena
 // Payments
 // ---------------------------------------------------------------------------
 
-// Pay asks a mobile-money provider to collect an invoice: the payer gets a
-// prompt on their phone, and the payment waits for the provider to report
-// the answer. The payer's email must be confirmed, since the receipt and
-// later invoices go there.
-func (s *BillingService) Pay(ctx context.Context, p *Principal, invoiceID pgtype.UUID, providerCode, payerPhone string, ci ClientInfo) (db.Payment, error) {
+// Pay starts paying an invoice with a provider that has a checkout: the
+// payment waits while the payer is at the provider's page, whose address is
+// returned, and ends when the provider reports how it went. The payer's
+// email must be confirmed, since the receipt and later invoices go there.
+func (s *BillingService) Pay(ctx context.Context, p *Principal, invoiceID pgtype.UUID, providerCode string, ci ClientInfo) (db.Payment, string, error) {
 	if !p.CanManageCompany() {
-		return db.Payment{}, ErrUnauthorized
+		return db.Payment{}, "", ErrUnauthorized
 	}
 	if !p.EmailVerified {
-		return db.Payment{}, forbidden("Confirm your email address before paying: receipts and invoices are sent there. " +
+		return db.Payment{}, "", forbidden("Confirm your email address before paying: receipts and invoices are sent there. " +
 			"Open the link we emailed you, or send it again from Your account.")
 	}
 	prov, ok := s.Provider(providerCode)
 	if !ok {
-		return db.Payment{}, invalid("provider", "Choose how to pay.")
+		return db.Payment{}, "", invalid("provider", "Choose how to pay.")
 	}
-	payer, err := phone.Normalize(payerPhone)
-	if err != nil {
-		return db.Payment{}, invalid("phone", err.Error())
+	starter, ok := prov.(payments.Starter)
+	if !ok {
+		return db.Payment{}, "", invalid("provider", "Pay with "+prov.Label()+" from your phone, quoting the invoice's reference.")
 	}
 	var pay db.Payment
 	var inv db.Invoice
-	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		var err error
 		inv, err = q.LockInvoice(ctx, db.LockInvoiceParams{ID: invoiceID, TenantID: p.TenantID})
 		if isNoRows(err) {
 			return notFound("Invoice not found.")
@@ -793,7 +845,7 @@ func (s *BillingService) Pay(ctx context.Context, p *Principal, invoiceID pgtype
 		}
 		pay, err = q.CreatePayment(ctx, db.CreatePaymentParams{
 			TenantID: p.TenantID, InvoiceID: inv.ID, Provider: prov.Code(), Reference: paymentReference(),
-			PayerPhone: &payer, AmountSantim: inv.TotalSantim, Status: paymentPending,
+			AmountSantim: inv.TotalSantim, Status: paymentPending,
 		})
 		if err != nil {
 			return err
@@ -803,22 +855,25 @@ func (s *BillingService) Pay(ctx context.Context, p *Principal, invoiceID pgtype
 		return nil
 	})
 	if err != nil {
-		return pay, err
+		return pay, "", err
 	}
-	checkout, err := prov.Start(ctx, payments.Charge{
-		Reference: pay.Reference, Amount: pay.AmountSantim, Payer: payer,
+	checkout, err := starter.Start(ctx, payments.Charge{
+		Reference: pay.Reference, Amount: pay.AmountSantim,
 		Description: fmt.Sprintf("%s invoice %s for %s", s.cfg.AppName, inv.Number, p.TenantName),
+		NotifyURL:   s.cfg.BaseURL + "/api/v1/payments/" + prov.Code() + "/notify",
+		ReturnURL:   s.cfg.BaseURL + "/app/billing/payments/" + pay.ID.String(),
+		Timeout:     paymentPromptTTL,
 	})
 	if err != nil {
 		s.log.Error().Err(err).Str("provider", prov.Code()).Msg("start payment")
 		_ = s.q.FinishPayment(ctx, db.FinishPaymentParams{ID: pay.ID, Status: paymentFailed, Note: ptr("The provider could not be reached.")})
-		return pay, conflict(prov.Label() + " could not be reached. Try again in a moment, or pay by bank transfer.")
+		return pay, "", conflict(prov.Label() + " could not be reached. Try again in a moment, or pay by bank transfer.")
 	}
 	if checkout.ProviderRef != "" {
 		_ = s.q.SetPaymentProviderRef(ctx, db.SetPaymentProviderRefParams{ID: pay.ID, ProviderRef: &checkout.ProviderRef})
 		pay.ProviderRef = &checkout.ProviderRef
 	}
-	return pay, nil
+	return pay, checkout.RedirectURL, nil
 }
 
 func payable(inv db.Invoice) error {
@@ -854,7 +909,7 @@ func (s *BillingService) Payment(ctx context.Context, p *Principal, id pgtype.UU
 }
 
 // PaymentPrompt is a payment waiting on a stand-in provider, for the page
-// that plays the payer's phone. Knowing the reference is the permission.
+// that plays its checkout. Knowing the reference is the permission.
 func (s *BillingService) PaymentPrompt(ctx context.Context, reference string) (db.GetPaymentByReferenceRow, payments.Provider, error) {
 	pay, err := s.q.GetPaymentByReference(ctx, reference)
 	if isNoRows(err) {
@@ -870,12 +925,12 @@ func (s *BillingService) PaymentPrompt(ctx context.Context, reference string) (d
 	return pay, prov, nil
 }
 
-// PaymentNotified applies a provider's report on a payment. Reports repeat
-// and arrive late, so this is idempotent: a finished payment stays as it is,
-// except that money arriving after the prompt expired still counts. Money
-// for an invoice already paid, or cancelled meanwhile, is recorded and
-// flagged for a refund.
-func (s *BillingService) PaymentNotified(ctx context.Context, providerCode string, n payments.Notification) error {
+// Settle applies a provider's report on a payment Menged started. Reports
+// repeat and arrive late, so this is idempotent: a payment that ended stays
+// as it is, except that money arriving after the checkout expired still
+// counts. Money for an invoice already paid, or cancelled meanwhile, is
+// recorded and flagged for a refund.
+func (s *BillingService) Settle(ctx context.Context, providerCode string, n payments.Notification) error {
 	return s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 		pay, err := q.LockPaymentByReference(ctx, n.Reference)
 		if isNoRows(err) {
@@ -887,27 +942,26 @@ func (s *BillingService) PaymentNotified(ctx context.Context, providerCode strin
 		if pay.Provider != providerCode {
 			return invalid("reference", "This payment was not made with this provider.")
 		}
-		if pay.Status == paymentPaid || pay.Status == paymentFailed {
+		if pay.Status != paymentPending && pay.Status != paymentExpired {
+			// Paid, failed or refunded: it has ended.
 			return nil
-		}
-		if n.Amount != pay.AmountSantim {
-			s.log.Warn().Str("reference", pay.Reference).Int64("expected", pay.AmountSantim).Int64("reported", n.Amount).
-				Msg("payment notification for the wrong amount")
-			return invalid("amount", "The amount does not match the payment.")
 		}
 		published := func() {
 			s.publish(pay.TenantID, "payment", map[string]any{"id": pay.ID.String(), "status": pay.Status})
 		}
 		raw := mustJSON(n)
 		if n.Status != payments.StatusPaid {
-			if pay.Status == paymentPending {
-				if err := q.FinishPayment(ctx, db.FinishPaymentParams{ID: pay.ID, Status: paymentFailed, ProviderRef: toText(n.ProviderRef), Raw: raw}); err != nil {
-					return err
-				}
-				pay.Status = paymentFailed
-				after.do(published)
+			if err := q.FinishPayment(ctx, db.FinishPaymentParams{ID: pay.ID, Status: paymentFailed, ProviderRef: toText(n.ProviderRef), Raw: raw}); err != nil {
+				return err
 			}
+			pay.Status = paymentFailed
+			after.do(published)
 			return nil
+		}
+		if n.Amount != pay.AmountSantim {
+			s.log.Warn().Str("reference", pay.Reference).Int64("expected", pay.AmountSantim).Int64("reported", n.Amount).
+				Msg("payment notification for the wrong amount")
+			return invalid("amount", "The amount does not match the payment.")
 		}
 		if err := q.FinishPayment(ctx, db.FinishPaymentParams{ID: pay.ID, Status: paymentPaid, ProviderRef: toText(n.ProviderRef), Raw: raw}); err != nil {
 			return err
@@ -917,6 +971,187 @@ func (s *BillingService) PaymentNotified(ctx context.Context, providerCode strin
 		after.do(published)
 		return s.applyPayment(ctx, q, after, pay, s.now(), SystemActor(pay.TenantID))
 	})
+}
+
+// Bill says what an invoice quoted by reference owes, for a provider whose
+// payers pay from their phone.
+func (s *BillingService) Bill(ctx context.Context, providerCode, reference string) (payments.Bill, error) {
+	number := invoiceNumberOf(reference)
+	if number == "" {
+		return payments.Bill{}, payments.ErrUnknownBill
+	}
+	inv, err := s.q.GetInvoiceByNumber(ctx, number)
+	if isNoRows(err) {
+		return payments.Bill{}, payments.ErrUnknownBill
+	}
+	if err != nil {
+		return payments.Bill{}, err
+	}
+	switch {
+	case inv.Status == "paid":
+		return payments.Bill{}, payments.ErrBillPaid
+	case inv.Status == "void", !inv.TenantID.Valid:
+		return payments.Bill{}, payments.ErrBillClosed
+	}
+	return payments.Bill{
+		InvoiceNumber: inv.Number, Amount: inv.TotalSantim, Customer: inv.CustomerName,
+		Description: fmt.Sprintf("%s invoice %s", s.cfg.AppName, inv.Number),
+	}, nil
+}
+
+// BillPaid records money a provider took against an invoice's reference.
+// The provider has already moved it, so it is never turned away once the
+// invoice is found: paid twice, for the wrong amount, or for an invoice
+// cancelled meanwhile, it is recorded and flagged for a refund. A repeated
+// confirmation of the same transaction changes nothing.
+func (s *BillingService) BillPaid(ctx context.Context, providerCode string, bp payments.BillPayment) error {
+	if bp.TransID == "" || len(bp.TransID) > 64 {
+		return invalid("TransID", "The transaction needs an ID of at most 64 characters.")
+	}
+	number := invoiceNumberOf(bp.Reference)
+	if number == "" {
+		return payments.ErrUnknownBill
+	}
+	reference := strings.ToUpper(providerCode) + "-" + bp.TransID
+	now := s.now()
+	paidAt := bp.PaidAt
+	if paidAt.IsZero() || paidAt.After(now) {
+		paidAt = now
+	}
+	var payer *string
+	if local, err := phone.Normalize(bp.Payer); err == nil {
+		payer = &local
+	}
+	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		found, err := q.GetInvoiceByNumber(ctx, number)
+		if isNoRows(err) {
+			return payments.ErrUnknownBill
+		}
+		if err != nil {
+			return err
+		}
+		// Company, then invoice, then payment: the order applyPayment locks
+		// them in.
+		if found.TenantID.Valid {
+			if _, err := q.GetTenantForUpdate(ctx, found.TenantID); err != nil {
+				return err
+			}
+		}
+		inv, err := q.LockInvoiceByNumber(ctx, number)
+		if err != nil {
+			return err
+		}
+		if _, err := q.LockPaymentByReference(ctx, reference); err == nil {
+			return nil
+		} else if !isNoRows(err) {
+			return err
+		}
+		pay, err := q.CreatePayment(ctx, db.CreatePaymentParams{
+			TenantID: inv.TenantID, InvoiceID: inv.ID, Provider: providerCode, Reference: reference,
+			ProviderRef: &bp.TransID, PayerPhone: payer, AmountSantim: bp.Amount, Status: paymentPaid,
+			Raw: bp.Raw, CompletedAt: toTimestamp(paidAt),
+		})
+		if err != nil {
+			return err
+		}
+		after.do(func() {
+			s.publish(pay.TenantID, "payment", map[string]any{"id": pay.ID.String(), "status": pay.Status})
+		})
+		actor := SystemActor(pay.TenantID)
+		if bp.Amount != inv.TotalSantim {
+			note := fmt.Sprintf("%s was paid, but invoice %s asks for %s, so it will be refunded.", money(bp.Amount), inv.Number, money(inv.TotalSantim))
+			if err := q.FlagRefundDue(ctx, db.FlagRefundDueParams{ID: pay.ID, Note: &note}); err != nil {
+				return err
+			}
+			s.log.Warn().Str("reference", pay.Reference).Str("invoice", inv.Number).Msg("payment for the wrong amount needs a refund")
+			s.audit(ctx, q, actor, "payment_refund_due", "invoice", inv.ID, nil,
+				map[string]any{"invoice": inv.Number, "reference": pay.Reference, "amount": payments.FormatETB(pay.AmountSantim)})
+			return nil
+		}
+		return s.applyPayment(ctx, q, after, pay, paidAt, actor)
+	})
+	if name, dup := isUniqueViolation(err); dup && name == "payments_reference_key" {
+		// A confirmation of the same transaction recorded it meanwhile.
+		return nil
+	}
+	return err
+}
+
+// CheckPayment asks the provider how one of the caller's company's waiting
+// payments went, at most every few seconds, so that coming back from the
+// provider's checkout shows the outcome even when its report is late or lost.
+func (s *BillingService) CheckPayment(ctx context.Context, p *Principal, id pgtype.UUID) {
+	if !p.CanManageCompany() {
+		return
+	}
+	pay, err := s.q.GetPayment(ctx, db.GetPaymentParams{ID: id, TenantID: p.TenantID})
+	if err != nil || pay.Status != paymentPending {
+		return
+	}
+	if err := s.check(ctx, id, 10*time.Second); err != nil {
+		s.log.Warn().Err(err).Str("reference", pay.Reference).Msg("check payment")
+	}
+}
+
+// reconcile asks the providers that can be asked how the payments they
+// haven't reported on went. It stops after a while, so a provider that
+// doesn't answer can't hold up the other jobs; the rest wait for the next run.
+func (s *BillingService) reconcile(ctx context.Context) error {
+	var codes []string
+	for _, p := range s.providers {
+		if _, ok := p.(payments.Querier); ok {
+			codes = append(codes, p.Code())
+		}
+	}
+	if len(codes) == 0 {
+		return nil
+	}
+	now := s.now()
+	due, err := s.q.ListPaymentsToCheck(ctx, db.ListPaymentsToCheckParams{
+		Providers: codes, StartedBefore: toTimestamp(now.Add(-time.Minute)),
+		StartedAfter: toTimestamp(now.Add(-paymentCheckWindow)), CheckedBefore: toTimestamp(now.Add(-paymentCheckEvery)),
+	})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	for _, pay := range due {
+		if ctx.Err() != nil {
+			break
+		}
+		if err := s.check(ctx, pay.ID, paymentCheckEvery); err != nil {
+			s.log.Warn().Err(err).Str("reference", pay.Reference).Msg("check payment")
+		}
+	}
+	return nil
+}
+
+// check asks a payment's provider how it went, unless it was asked within
+// the interval, and applies a final answer.
+func (s *BillingService) check(ctx context.Context, id pgtype.UUID, interval time.Duration) error {
+	now := s.now()
+	pay, err := s.q.ClaimPaymentCheck(ctx, db.ClaimPaymentCheckParams{
+		ID: id, Now: toTimestamp(now), CheckedBefore: toTimestamp(now.Add(-interval)),
+	})
+	if isNoRows(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	prov, _ := s.Provider(pay.Provider)
+	querier, ok := prov.(payments.Querier)
+	if !ok {
+		return nil
+	}
+	qctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	n, done, err := querier.Query(qctx, pay.Reference)
+	cancel()
+	if err != nil || !done {
+		return err
+	}
+	return s.Settle(ctx, pay.Provider, n)
 }
 
 // applyPayment settles the invoice a payment that arrived was for.
@@ -1123,9 +1358,13 @@ func (s *BillingService) MarkRefunded(ctx context.Context, p *Principal, payment
 		if !pay.TenantID.Valid {
 			return nil
 		}
+		why := fmt.Sprintf("invoice %s had already been paid or cancelled when it arrived", pay.InvoiceNumber)
+		if pay.AmountSantim != pay.InvoiceTotal {
+			why = fmt.Sprintf("it wasn't the %s invoice %s asks for", money(pay.InvoiceTotal), pay.InvoiceNumber)
+		}
 		return s.emailBilling(ctx, q, after, pay.TenantID, EmailBilling, "Refund of "+money(pay.AmountSantim),
-			fmt.Sprintf("We've sent back the %s paid on %s (reference %s): invoice %s had already been paid or cancelled when it arrived. The refund's reference is %s.",
-				money(pay.AmountSantim), s.date(pay.CompletedAt.Time), pay.Reference, pay.InvoiceNumber, reference))
+			fmt.Sprintf("We've sent back the %s paid on %s (reference %s): %s. The refund's reference is %s.",
+				money(pay.AmountSantim), s.date(pay.CompletedAt.Time), pay.Reference, why, reference))
 	})
 }
 
@@ -1331,10 +1570,13 @@ func (s *BillingService) Platform(ctx context.Context, p *Principal) (*PlatformB
 // The billing job
 // ---------------------------------------------------------------------------
 
-// Run is the billing part of the periodic jobs: payment prompts nobody
-// answered, plan invoices nobody paid, renewals, text overage and the
-// billing emails.
+// Run is the billing part of the periodic jobs: payments the provider
+// hasn't reported on, checkouts nobody finished, plan invoices nobody paid,
+// renewals, text overage and the billing emails.
 func (s *BillingService) Run(ctx context.Context) error {
+	if err := s.reconcile(ctx); err != nil {
+		return err
+	}
 	now := s.now()
 	if err := s.q.ExpirePendingPayments(ctx, toTimestamp(now.Add(-paymentPromptTTL))); err != nil {
 		return err

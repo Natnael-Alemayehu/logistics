@@ -2,7 +2,9 @@
 package config
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -73,10 +75,16 @@ type Config struct {
 	SMTPUsername string
 	SMTPPassword string
 
-	// PaymentProvider is mock (telebirr and CBE Birr stand-ins printed to the
-	// terminal) or none (bank transfer only). It defaults to none in
-	// production, since there is no real adapter yet.
+	// PaymentProvider is mock (telebirr and CBE Birr stand-ins played by
+	// pages on this server), none (bank transfer only), or the providers
+	// offered, comma-separated: telebirr, cbebirr. It defaults to none in
+	// production.
 	PaymentProvider string
+	Telebirr        TelebirrSettings
+	CBEBirr         CBEBirrSettings
+	// SandboxURL is the provider sandbox's address, set when the providers'
+	// settings point at it, so that pages can link to its simulated phones.
+	SandboxURL string
 	// BankDetails tells companies where to send a bank transfer, which the
 	// platform operator then records by hand. Empty: transfers aren't
 	// offered.
@@ -92,6 +100,28 @@ type Config struct {
 	// AllowMockProviders lets a production deployment start with stand-in
 	// SMS, email or payments, for a demo or staging site.
 	AllowMockProviders bool
+}
+
+// TelebirrSettings are a telebirr merchant's (H5 C2B web checkout). The
+// keys are files: the merchant's private key, and telebirr's public key that
+// checks its notifications.
+type TelebirrSettings struct {
+	APIURL         string
+	CheckoutURL    string
+	FabricAppID    string
+	AppSecret      string
+	MerchantAppID  string
+	MerchantCode   string
+	PrivateKeyFile string
+	PublicKeyFile  string
+}
+
+// CBEBirrSettings are a CBE Birr merchant's: the ID payers pay to, and the
+// login CBE Birr's servers use when they call Menged about a payment.
+type CBEBirrSettings struct {
+	MerchantID       string
+	CallbackUsername string
+	CallbackPassword string
 }
 
 // Load reads the environment.
@@ -134,10 +164,26 @@ func Load() (*Config, error) {
 		SMTPAddr:                getEnv("SMTP_ADDR", ""),
 		SMTPUsername:            getEnv("SMTP_USERNAME", ""),
 		SMTPPassword:            getEnv("SMTP_PASSWORD", ""),
-		PaymentProvider:         getEnv("PAYMENT_PROVIDER", ""),
-		BankDetails:             getEnv("BILLING_BANK_DETAILS", ""),
-		SupportEmail:            getEnv("SUPPORT_EMAIL", ""),
-		AllowMockProviders:      getBoolEnv("ALLOW_MOCK_PROVIDERS", false),
+		PaymentProvider:         strings.ReplaceAll(strings.ToLower(getEnv("PAYMENT_PROVIDER", "")), " ", ""),
+		Telebirr: TelebirrSettings{
+			APIURL:         getEnv("TELEBIRR_API_URL", ""),
+			CheckoutURL:    getEnv("TELEBIRR_CHECKOUT_URL", ""),
+			FabricAppID:    getEnv("TELEBIRR_FABRIC_APP_ID", ""),
+			AppSecret:      getEnv("TELEBIRR_APP_SECRET", ""),
+			MerchantAppID:  getEnv("TELEBIRR_MERCHANT_APP_ID", ""),
+			MerchantCode:   getEnv("TELEBIRR_MERCHANT_CODE", ""),
+			PrivateKeyFile: getEnv("TELEBIRR_PRIVATE_KEY_FILE", ""),
+			PublicKeyFile:  getEnv("TELEBIRR_PUBLIC_KEY_FILE", ""),
+		},
+		CBEBirr: CBEBirrSettings{
+			MerchantID:       getEnv("CBEBIRR_MERCHANT_ID", ""),
+			CallbackUsername: getEnv("CBEBIRR_CALLBACK_USERNAME", ""),
+			CallbackPassword: getEnv("CBEBIRR_CALLBACK_PASSWORD", ""),
+		},
+		SandboxURL:         strings.TrimRight(getEnv("SANDBOX_URL", ""), "/"),
+		BankDetails:        getEnv("BILLING_BANK_DETAILS", ""),
+		SupportEmail:       getEnv("SUPPORT_EMAIL", ""),
+		AllowMockProviders: getBoolEnv("ALLOW_MOCK_PROVIDERS", false),
 	}
 	if c.PublicURL == "" {
 		c.PublicURL = "http://localhost:" + c.Port
@@ -155,8 +201,8 @@ func Load() (*Config, error) {
 			c.PaymentProvider = "none"
 		}
 	}
-	if c.PaymentProvider != "mock" && c.PaymentProvider != "none" {
-		return nil, fmt.Errorf("PAYMENT_PROVIDER %q: want mock or none", c.PaymentProvider)
+	if err := c.checkPaymentProviders(); err != nil {
+		return nil, err
 	}
 	if c.SupportEmail == "" {
 		c.SupportEmail = "support@" + publicHost(c.PublicURL)
@@ -186,6 +232,9 @@ func Load() (*Config, error) {
 	} else if c.Secret, err = loadOrCreateSecret(c.SecretFile); err != nil {
 		return nil, fmt.Errorf("app secret: %w", err)
 	}
+	if c.PaymentProvider == "mock" {
+		c.CBEBirr = standInCBEBirr(c.CBEBirr, c.Secret)
+	}
 
 	if c.IsProduction() && strings.HasPrefix(c.PublicURL, "http://localhost") {
 		return nil, errors.New("PUBLIC_URL must be set in production")
@@ -194,6 +243,80 @@ func Load() (*Config, error) {
 		return nil, errors.New("BILLING_BANK_DETAILS must be set in production: without a payment provider, a bank transfer is the only way companies can pay")
 	}
 	return c, nil
+}
+
+// PaymentProviders are the providers PAYMENT_PROVIDER lists, none for mock
+// or none.
+func (c *Config) PaymentProviders() []string {
+	if c.PaymentProvider == "mock" || c.PaymentProvider == "none" {
+		return nil
+	}
+	return strings.Split(c.PaymentProvider, ",")
+}
+
+// checkPaymentProviders refuses a provider it doesn't know, or one whose
+// settings are missing, naming them.
+func (c *Config) checkPaymentProviders() error {
+	if c.PaymentProvider == "mock" || c.PaymentProvider == "none" {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, code := range c.PaymentProviders() {
+		var missing []string
+		switch code {
+		case "telebirr":
+			t := c.Telebirr
+			missing = unset(
+				"TELEBIRR_API_URL", t.APIURL, "TELEBIRR_CHECKOUT_URL", t.CheckoutURL,
+				"TELEBIRR_FABRIC_APP_ID", t.FabricAppID, "TELEBIRR_APP_SECRET", t.AppSecret,
+				"TELEBIRR_MERCHANT_APP_ID", t.MerchantAppID, "TELEBIRR_MERCHANT_CODE", t.MerchantCode,
+				"TELEBIRR_PRIVATE_KEY_FILE", t.PrivateKeyFile, "TELEBIRR_PUBLIC_KEY_FILE", t.PublicKeyFile)
+		case "cbebirr":
+			b := c.CBEBirr
+			missing = unset("CBEBIRR_MERCHANT_ID", b.MerchantID,
+				"CBEBIRR_CALLBACK_USERNAME", b.CallbackUsername, "CBEBIRR_CALLBACK_PASSWORD", b.CallbackPassword)
+		default:
+			return fmt.Errorf("PAYMENT_PROVIDER %q: want mock, none, or telebirr and cbebirr separated by commas", c.PaymentProvider)
+		}
+		if seen[code] {
+			return fmt.Errorf("PAYMENT_PROVIDER lists %s twice", code)
+		}
+		seen[code] = true
+		if len(missing) > 0 {
+			return fmt.Errorf("PAYMENT_PROVIDER offers %s, which needs %s", code, strings.Join(missing, ", "))
+		}
+	}
+	return nil
+}
+
+// unset names the settings among name, value pairs that are empty.
+func unset(pairs ...string) []string {
+	var out []string
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if strings.TrimSpace(pairs[i+1]) == "" {
+			out = append(out, pairs[i])
+		}
+	}
+	return out
+}
+
+// standInCBEBirr fills in what the stand-in CBE Birr needs. It is the real
+// adapter, called by the page that plays CBE Birr's servers, so it needs a
+// merchant ID and a login: the login is derived from the secret, so it is
+// the deployment's own.
+func standInCBEBirr(b CBEBirrSettings, secret []byte) CBEBirrSettings {
+	if b.MerchantID == "" {
+		b.MerchantID = "100100"
+	}
+	if b.CallbackUsername == "" {
+		b.CallbackUsername = "cbebirr"
+	}
+	if b.CallbackPassword == "" {
+		mac := hmac.New(sha256.New, secret)
+		mac.Write([]byte("cbebirr stand-in callbacks"))
+		b.CallbackPassword = hex.EncodeToString(mac.Sum(nil))[:32]
+	}
+	return b
 }
 
 // MockedProviders lists the services that only print to the terminal.

@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/internal/service"
@@ -174,54 +175,15 @@ func (s *Server) apiSync(w http.ResponseWriter, r *http.Request) {
 // URL or a header is the authentication; without one configured the endpoint
 // only works with the mock provider.
 func (s *Server) apiSMSInbound(w http.ResponseWriter, r *http.Request) {
-	secret := s.cfg.SMSInboundSecret
-	if secret == "" && !s.mockSMS {
-		http.NotFound(w, r)
+	if !s.smsWebhook(w, r) {
 		return
 	}
-	if secret != "" {
-		got := r.Header.Get("X-Webhook-Secret")
-		if got == "" {
-			got = r.URL.Query().Get("secret")
-		}
-		if subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
-			writeJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Bad webhook secret.")
-			return
-		}
+	fields, ok := webhookFields(w, r)
+	if !ok {
+		return
 	}
-
-	fields := map[string]string{}
-	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if ct == "application/json" {
-		var m map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-			writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Bad JSON.")
-			return
-		}
-		for k, v := range m {
-			if str, ok := v.(string); ok {
-				fields[strings.ToLower(k)] = str
-			}
-		}
-	} else {
-		if err := r.ParseForm(); err != nil {
-			writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Bad form body.")
-			return
-		}
-		for k := range r.PostForm {
-			fields[strings.ToLower(k)] = r.PostForm.Get(k)
-		}
-	}
-	pick := func(keys ...string) string {
-		for _, k := range keys {
-			if v := fields[k]; v != "" {
-				return v
-			}
-		}
-		return ""
-	}
-	from := pick("from", "phone", "msisdn", "sender")
-	body := pick("body", "message", "text", "content")
+	from := pick(fields, "from", "phone", "msisdn", "sender")
+	body := pick(fields, "body", "message", "text", "content")
 	if from == "" || body == "" {
 		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from and body are required.")
 		return
@@ -238,4 +200,98 @@ func (s *Server) apiSMSInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "outcome": res.Outcome, "detail": res.Detail, "reply": res.Reply})
+}
+
+// apiSMSStatus receives the SMS provider's delivery reports: message_id (as
+// Send returned it), status (delivered, undelivered, failed, rejected or
+// expired), error, and done_at in RFC 3339, as JSON or a form.
+func (s *Server) apiSMSStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.smsWebhook(w, r) {
+		return
+	}
+	fields, ok := webhookFields(w, r)
+	if !ok {
+		return
+	}
+	id := pick(fields, "message_id", "messageid", "messagesid", "id")
+	status := pick(fields, "status", "messagestatus")
+	if id == "" || status == "" {
+		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "message_id and status are required.")
+		return
+	}
+	at, _ := time.Parse(time.RFC3339, pick(fields, "done_at", "delivered_at", "timestamp"))
+	updated, err := s.svc.SMS.DeliveryReport(r.Context(), id, status, pick(fields, "error", "error_message", "reason"), at)
+	if err != nil {
+		s.apiError(w, r, err)
+		return
+	}
+	// A report on a text this platform didn't send is answered 200 too, or
+	// the provider would keep sending it.
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": updated})
+}
+
+// smsWebhook checks a call from the SMS provider: the shared secret, in the
+// X-Webhook-Secret header or a secret parameter. With no secret set, the
+// webhooks are open only while SMS is a stand-in. A refused call is
+// answered.
+func (s *Server) smsWebhook(w http.ResponseWriter, r *http.Request) bool {
+	secret := s.cfg.SMSInboundSecret
+	if secret == "" && !s.mockSMS {
+		http.NotFound(w, r)
+		return false
+	}
+	if secret != "" {
+		got := r.Header.Get("X-Webhook-Secret")
+		if got == "" {
+			got = r.URL.Query().Get("secret")
+		}
+		if subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
+			writeJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Bad webhook secret.")
+			return false
+		}
+	}
+	return true
+}
+
+// webhookFields reads a provider's JSON or form body as lower-case names
+// and their text, answering the call when it can't be read.
+func webhookFields(w http.ResponseWriter, r *http.Request) (map[string]string, bool) {
+	fields := map[string]string{}
+	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if ct == "application/json" {
+		var m map[string]any
+		dec := json.NewDecoder(r.Body)
+		dec.UseNumber()
+		if err := dec.Decode(&m); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Bad JSON.")
+			return nil, false
+		}
+		for k, v := range m {
+			switch v := v.(type) {
+			case string:
+				fields[strings.ToLower(k)] = v
+			case json.Number:
+				fields[strings.ToLower(k)] = v.String()
+			}
+		}
+		return fields, true
+	}
+	if err := r.ParseForm(); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Bad form body.")
+		return nil, false
+	}
+	for k := range r.PostForm {
+		fields[strings.ToLower(k)] = r.PostForm.Get(k)
+	}
+	return fields, true
+}
+
+// pick is the first of the named fields that is set.
+func pick(fields map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := fields[k]; v != "" {
+			return v
+		}
+	}
+	return ""
 }

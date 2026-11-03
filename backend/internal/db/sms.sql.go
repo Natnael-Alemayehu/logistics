@@ -30,7 +30,7 @@ WHERE id IN (
     LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at
+RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at
 `
 
 // SKIP LOCKED lets several API replicas drain the queue without sending the
@@ -62,6 +62,9 @@ func (q *Queries) ClaimQueuedSMS(ctx context.Context, limit int32) ([]SmsMessage
 			&i.NextAttemptAt,
 			&i.SentAt,
 			&i.CreatedAt,
+			&i.ProviderMessageID,
+			&i.Delivery,
+			&i.DeliveryAt,
 		); err != nil {
 			return nil, err
 		}
@@ -113,7 +116,7 @@ func (q *Queries) DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz
 const enqueueSMS = `-- name: EnqueueSMS :one
 INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status)
 VALUES ($1, $2, 'outbound', $3, $4, $5, $6, 'queued')
-RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at
+RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at
 `
 
 type EnqueueSMSParams struct {
@@ -151,6 +154,9 @@ func (q *Queries) EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMess
 		&i.NextAttemptAt,
 		&i.SentAt,
 		&i.CreatedAt,
+		&i.ProviderMessageID,
+		&i.Delivery,
+		&i.DeliveryAt,
 	)
 	return i, err
 }
@@ -167,7 +173,7 @@ func (q *Queries) IsPhoneOptedOut(ctx context.Context, phone string) (bool, erro
 }
 
 const listSMSByTenant = `-- name: ListSMSByTenant :many
-SELECT m.id, m.tenant_id, m.shipment_id, m.direction, m.phone, m.body, m.purpose, m.sensitive, m.status, m.attempts, m.last_error, m.provider, m.next_attempt_at, m.sent_at, m.created_at, s.tracking_number
+SELECT m.id, m.tenant_id, m.shipment_id, m.direction, m.phone, m.body, m.purpose, m.sensitive, m.status, m.attempts, m.last_error, m.provider, m.next_attempt_at, m.sent_at, m.created_at, m.provider_message_id, m.delivery, m.delivery_at, s.tracking_number
 FROM sms_messages m
 LEFT JOIN shipments s ON s.id = m.shipment_id
 WHERE m.tenant_id = $1
@@ -182,22 +188,25 @@ type ListSMSByTenantParams struct {
 }
 
 type ListSMSByTenantRow struct {
-	ID             pgtype.UUID        `db:"id" json:"id"`
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	Direction      string             `db:"direction" json:"direction"`
-	Phone          string             `db:"phone" json:"phone"`
-	Body           string             `db:"body" json:"body"`
-	Purpose        string             `db:"purpose" json:"purpose"`
-	Sensitive      bool               `db:"sensitive" json:"sensitive"`
-	Status         string             `db:"status" json:"status"`
-	Attempts       int32              `db:"attempts" json:"attempts"`
-	LastError      *string            `db:"last_error" json:"last_error"`
-	Provider       *string            `db:"provider" json:"provider"`
-	NextAttemptAt  pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
-	SentAt         pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	TrackingNumber *string            `db:"tracking_number" json:"tracking_number"`
+	ID                pgtype.UUID        `db:"id" json:"id"`
+	TenantID          pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID        pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	Direction         string             `db:"direction" json:"direction"`
+	Phone             string             `db:"phone" json:"phone"`
+	Body              string             `db:"body" json:"body"`
+	Purpose           string             `db:"purpose" json:"purpose"`
+	Sensitive         bool               `db:"sensitive" json:"sensitive"`
+	Status            string             `db:"status" json:"status"`
+	Attempts          int32              `db:"attempts" json:"attempts"`
+	LastError         *string            `db:"last_error" json:"last_error"`
+	Provider          *string            `db:"provider" json:"provider"`
+	NextAttemptAt     pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	SentAt            pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ProviderMessageID *string            `db:"provider_message_id" json:"provider_message_id"`
+	Delivery          *string            `db:"delivery" json:"delivery"`
+	DeliveryAt        pgtype.Timestamptz `db:"delivery_at" json:"delivery_at"`
+	TrackingNumber    *string            `db:"tracking_number" json:"tracking_number"`
 }
 
 func (q *Queries) ListSMSByTenant(ctx context.Context, arg ListSMSByTenantParams) ([]ListSMSByTenantRow, error) {
@@ -225,6 +234,9 @@ func (q *Queries) ListSMSByTenant(ctx context.Context, arg ListSMSByTenantParams
 			&i.NextAttemptAt,
 			&i.SentAt,
 			&i.CreatedAt,
+			&i.ProviderMessageID,
+			&i.Delivery,
+			&i.DeliveryAt,
 			&i.TrackingNumber,
 		); err != nil {
 			return nil, err
@@ -276,19 +288,21 @@ const markSMSSent = `-- name: MarkSMSSent :exec
 UPDATE sms_messages
 SET status = 'sent',
     sent_at = NOW(),
-    provider = $2,
+    provider = $1,
+    provider_message_id = $2,
     last_error = NULL,
     body = CASE WHEN sensitive THEN '[redacted]' ELSE body END
-WHERE id = $1
+WHERE id = $3
 `
 
 type MarkSMSSentParams struct {
-	ID       pgtype.UUID `db:"id" json:"id"`
-	Provider *string     `db:"provider" json:"provider"`
+	Provider          *string     `db:"provider" json:"provider"`
+	ProviderMessageID *string     `db:"provider_message_id" json:"provider_message_id"`
+	ID                pgtype.UUID `db:"id" json:"id"`
 }
 
 func (q *Queries) MarkSMSSent(ctx context.Context, arg MarkSMSSentParams) error {
-	_, err := q.db.Exec(ctx, markSMSSent, arg.ID, arg.Provider)
+	_, err := q.db.Exec(ctx, markSMSSent, arg.Provider, arg.ProviderMessageID, arg.ID)
 	return err
 }
 
@@ -313,7 +327,7 @@ func (q *Queries) MarkSMSSkipped(ctx context.Context, arg MarkSMSSkippedParams) 
 const recordSMS = `-- name: RecordSMS :one
 INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, status, last_error)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at
+RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at
 `
 
 type RecordSMSParams struct {
@@ -357,8 +371,46 @@ func (q *Queries) RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessag
 		&i.NextAttemptAt,
 		&i.SentAt,
 		&i.CreatedAt,
+		&i.ProviderMessageID,
+		&i.Delivery,
+		&i.DeliveryAt,
 	)
 	return i, err
+}
+
+const recordSMSDelivery = `-- name: RecordSMSDelivery :execrows
+UPDATE sms_messages
+SET delivery = $1,
+    delivery_at = $2,
+    last_error = $3
+WHERE provider = $4 AND provider_message_id = $5
+  AND direction = 'outbound' AND (delivery IS NULL OR delivery = 'undelivered')
+`
+
+type RecordSMSDeliveryParams struct {
+	Delivery          *string            `db:"delivery" json:"delivery"`
+	DeliveryAt        pgtype.Timestamptz `db:"delivery_at" json:"delivery_at"`
+	LastError         *string            `db:"last_error" json:"last_error"`
+	Provider          *string            `db:"provider" json:"provider"`
+	ProviderMessageID *string            `db:"provider_message_id" json:"provider_message_id"`
+}
+
+// A provider's delivery report. Its message IDs are unique per provider, so
+// this finds one company's text. Delivered is final; a text reported
+// undelivered may still arrive when the network tries again. The error is
+// the report's reason, none once delivered.
+func (q *Queries) RecordSMSDelivery(ctx context.Context, arg RecordSMSDeliveryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordSMSDelivery,
+		arg.Delivery,
+		arg.DeliveryAt,
+		arg.LastError,
+		arg.Provider,
+		arg.ProviderMessageID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const removeSMSOptOut = `-- name: RemoveSMSOptOut :exec

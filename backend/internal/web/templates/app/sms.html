@@ -44,7 +44,7 @@
     <td>{{if eq .Direction "inbound"}}<span class="badge s-assigned">In</span>{{else}}<span class="badge">Out</span>{{end}}</td>
     <td class="nowrap">{{maskPhone .Phone}}</td>
     <td>{{if .Sensitive}}<span class="muted">Code or password (hidden){{if $.App.MockSMS}} · printed in the server terminal{{end}}</span>{{else}}{{.Body}}{{end}}{{with .TrackingNumber}}<div class="small"><span class="mono">{{.}}</span></div>{{end}}</td>
-    <td>{{if eq .Status "sent"}}<span class="text-good">Sent</span>{{else if eq .Status "failed"}}<span class="text-bad" title="{{str .LastError}}">Failed</span>{{else if eq .Status "received"}}Received{{else}}<span class="text-warn">{{title .Status}}{{if gt .Attempts 0}} (try {{.Attempts}}){{end}}</span>{{end}}</td>
+    <td>{{if eq .Status "sent"}}{{if eq (str .Delivery) "delivered"}}<span class="text-good" title="{{when .DeliveryAt}}">Delivered</span>{{else if eq (str .Delivery) "undelivered"}}<span class="text-bad" title="{{str .LastError}}">Not delivered</span>{{else}}<span class="text-good">Sent</span>{{end}}{{else if eq .Status "failed"}}<span class="text-bad" title="{{str .LastError}}">Failed</span>{{else if eq .Status "received"}}Received{{else}}<span class="text-warn">{{title .Status}}{{if gt .Attempts 0}} (try {{.Attempts}}){{end}}</span>{{end}}</td>
   </tr>
   {{else}}
   <tr><td colspan="5" class="muted">No messages yet.</td></tr>

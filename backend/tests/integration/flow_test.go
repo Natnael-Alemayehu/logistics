@@ -3,6 +3,8 @@
 package integration
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -220,6 +222,43 @@ func TestDriverSMSCommands(t *testing.T) {
 	webhook(phoneNumber(), "ET "+ref+" 3")
 	if got := scalar[string](t, `SELECT status FROM shipments WHERE id = $1`, shipmentID); got != "delayed" {
 		t.Errorf("unknown sender changed the status to %q", got)
+	}
+
+	// The provider's delivery report marks a reply delivered.
+	var sent string
+	for deadline := time.Now().Add(5 * time.Second); sent == "" && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		sent = scalar[string](t, `SELECT COALESCE(MIN(provider_message_id), '') FROM sms_messages WHERE phone = $1 AND direction = 'outbound' AND status = 'sent'`, phone)
+	}
+	if sent == "" {
+		t.Fatal("no reply was sent with the provider's message id")
+	}
+	report := func(id, status string) bool {
+		t.Helper()
+		body, _ := json.Marshal(map[string]string{"message_id": id, "status": status, "done_at": time.Now().Format(time.RFC3339)})
+		res, err := http.Post(e.srv.URL+"/api/v1/sms/status", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var out struct{ Updated bool }
+		if err := json.NewDecoder(res.Body).Decode(&out); err != nil || res.StatusCode != http.StatusOK {
+			t.Fatalf("delivery report %s %s: status %d, %v", id, status, res.StatusCode, err)
+		}
+		return out.Updated
+	}
+	if !report(sent, "DELIVRD") {
+		t.Error("the delivery report changed nothing")
+	}
+	if got := scalar[string](t, `SELECT COALESCE(delivery, '') FROM sms_messages WHERE provider_message_id = $1`, sent); got != "delivered" {
+		t.Errorf("after the delivery report the text is %q", got)
+	}
+	// Delivered is final, and a report on a text the platform didn't send
+	// is answered all the same.
+	if report(sent, "failed") || report("NO-SUCH-TEXT", "delivered") {
+		t.Error("a late failure, or a report on an unknown text, changed a text")
+	}
+	if p := office.get("/app/settings/sms"); !strings.Contains(p.Body, "Delivered") {
+		t.Error("the SMS log doesn't show the text delivered")
 	}
 }
 

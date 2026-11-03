@@ -151,8 +151,12 @@ func migrate(ctx context.Context, pool *pgxpool.Pool, log zerolog.Logger) error 
 type smsSender struct{ p sms.SMSProvider }
 
 func (s smsSender) Name() string { return s.p.Name() }
-func (s smsSender) Send(ctx context.Context, to, body string) error {
-	return s.p.Send(ctx, to, body, sms.MessageTypeNotification)
+func (s smsSender) Send(ctx context.Context, to, body string) (string, error) {
+	id, err := s.p.Send(ctx, to, body, sms.MessageTypeNotification)
+	if errors.Is(err, sms.ErrRejected) {
+		err = fmt.Errorf("%w: %w", service.ErrSMSRejected, err)
+	}
+	return id, err
 }
 
 // mailSender adapts the mail package to the service's outbox.
@@ -174,24 +178,70 @@ func (s smsLog) Debug(msg string, kv ...interface{}) { s.l.Debug().Fields(kv).Ms
 // terminal is where the stand-in providers print what they would have sent.
 var terminal = console.New(os.Stdout)
 
-// paymentProviders are the mobile-money methods offered. There are no real
-// adapters yet: the stand-ins print each payment request with a link to a
-// page that approves or declines it.
-func paymentProviders(cfg *config.Config) []payments.Provider {
-	if cfg.PaymentProvider != "mock" {
-		return nil
+// paymentProviders are the mobile-money methods offered. The stand-ins are
+// a telebirr whose checkout is a page on this server, and the real CBE Birr
+// adapter, which only answers calls, called by a page playing CBE Birr.
+func paymentProviders(cfg *config.Config) ([]payments.Provider, error) {
+	cbe := payments.CBEBirrConfig{
+		MerchantID: cfg.CBEBirr.MerchantID, Username: cfg.CBEBirr.CallbackUsername, Password: cfg.CBEBirr.CallbackPassword,
 	}
-	prompt := func(reference string) string { return cfg.PublicURL + "/dev/payments/" + reference }
-	return []payments.Provider{
-		payments.NewMock("telebirr", "telebirr", cfg.Secret, prompt, terminal),
-		payments.NewMock("cbebirr", "CBE Birr", cfg.Secret, prompt, terminal),
+	switch cfg.PaymentProvider {
+	case "none":
+		return nil, nil
+	case "mock":
+		checkout := func(reference string) string { return cfg.PublicURL + "/dev/payments/" + reference }
+		cbe.StandIn = true
+		standIn, err := payments.NewCBEBirr(cbe)
+		if err != nil {
+			return nil, fmt.Errorf("cbebirr: %w", err)
+		}
+		return []payments.Provider{payments.NewMock("telebirr", "telebirr", cfg.Secret, checkout), standIn}, nil
 	}
+	var out []payments.Provider
+	for _, code := range cfg.PaymentProviders() {
+		var p payments.Provider
+		var err error
+		switch code {
+		case "telebirr":
+			p, err = telebirr(cfg.Telebirr)
+		case "cbebirr":
+			p, err = payments.NewCBEBirr(cbe)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", code, err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func telebirr(t config.TelebirrSettings) (*payments.Telebirr, error) {
+	key, err := os.ReadFile(t.PrivateKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("TELEBIRR_PRIVATE_KEY_FILE: %w", err)
+	}
+	pub, err := os.ReadFile(t.PublicKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("TELEBIRR_PUBLIC_KEY_FILE: %w", err)
+	}
+	return payments.NewTelebirr(payments.TelebirrConfig{
+		APIURL: t.APIURL, CheckoutURL: t.CheckoutURL, FabricAppID: t.FabricAppID, AppSecret: t.AppSecret,
+		MerchantAppID: t.MerchantAppID, MerchantCode: t.MerchantCode, PrivateKey: key, PublicKey: pub,
+	})
 }
 
 func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher, log zerolog.Logger) (*service.Services, error) {
 	if mocked := cfg.MockedProviders(); cfg.IsProduction() && len(mocked) > 0 && !cfg.AllowMockProviders {
-		return nil, fmt.Errorf("%s would only be printed to the terminal in production: configure real providers, "+
+		return nil, fmt.Errorf("%s would be stand-ins in production, sending nothing and taking no money: configure real providers, "+
 			"or set ALLOW_MOCK_PROVIDERS=true for a demo site", strings.Join(mocked, ", "))
+	}
+	if cfg.IsProduction() && cfg.SandboxURL != "" && !cfg.AllowMockProviders {
+		return nil, errors.New("SANDBOX_URL is set, so the providers are the sandbox, which sends no texts and takes no money: " +
+			"unset it in production, or set ALLOW_MOCK_PROVIDERS=true for a demo site")
+	}
+	providers, err := paymentProviders(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("payments: %w", err)
 	}
 	store, err := storage.New(&storage.Config{
 		Type: cfg.StorageType, LocalPath: cfg.StoragePath,
@@ -220,7 +270,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher
 	}
 	return service.New(service.Deps{
 		Pool: pool, Log: log, Publisher: pub, Storage: store, SMS: smsSender{provider}, Mail: mailSender{mailer},
-		Payments: paymentProviders(cfg),
+		Payments: providers,
 		Settings: service.Settings{
 			AppName: cfg.AppName, BaseURL: cfg.PublicURL, Location: cfg.Timezone,
 			Secret: cfg.Secret, SMSNumber: cfg.SMSNumber,
@@ -273,8 +323,21 @@ func serve(ctx context.Context, cfg *config.Config, log zerolog.Logger) error {
 	go func() {
 		log.Info().Str("addr", httpSrv.Addr).Str("url", cfg.PublicURL).Str("sms", svc.SMS.ProviderName()).
 			Str("email", svc.Mail.ProviderName()).Str("payments", cfg.PaymentProvider).Msg(cfg.AppName + " is running")
-		if mocked := cfg.MockedProviders(); len(mocked) > 0 {
-			log.Info().Msgf("Stand-ins for %s: what they would send is printed here", strings.Join(mocked, ", "))
+		var printed []string
+		if svc.SMS.ProviderName() == "mock" {
+			printed = append(printed, "SMS")
+		}
+		if svc.Mail.ProviderName() == "mock" {
+			printed = append(printed, "email")
+		}
+		if len(printed) > 0 {
+			log.Info().Msgf("Stand-ins for %s: what they would send is printed here", strings.Join(printed, " and "))
+		}
+		if cfg.PaymentProvider == "mock" {
+			log.Info().Msg("Payments are simulated: the providers' pages are pages of this server, and no money moves")
+		}
+		if cfg.SandboxURL != "" {
+			log.Info().Str("sandbox", cfg.SandboxURL).Msg("The providers are the sandbox's: no text reaches a phone and no money moves")
 		}
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err

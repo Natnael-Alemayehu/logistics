@@ -17,11 +17,17 @@ import (
 )
 
 // SMSSender is an SMS provider. It receives numbers in local form and is
-// responsible for any conversion its API needs.
+// responsible for any conversion its API needs. Send returns the provider's
+// ID for the message, which its delivery reports name, and an error wrapping
+// ErrSMSRejected for a message the provider will never take.
 type SMSSender interface {
 	Name() string
-	Send(ctx context.Context, to, body string) error
+	Send(ctx context.Context, to, body string) (string, error)
 }
+
+// ErrSMSRejected is a message the provider refused for good, such as one to
+// a number it doesn't serve. It fails at once instead of being retried.
+var ErrSMSRejected = errors.New("rejected by the SMS provider")
 
 // Message purposes. Sensitive ones carry credentials or codes: their body is
 // redacted once sent and they bypass opt-out, since the recipient asked for
@@ -156,18 +162,27 @@ func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
 	}
 
 	sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	err := s.sender.Send(sendCtx, m.Phone, m.Body)
+	id, err := s.sender.Send(sendCtx, m.Phone, m.Body)
 	cancel()
 	if err == nil {
 		metrics.Messages.WithLabelValues("sms", provider, "sent").Inc()
-		if err := s.q.MarkSMSSent(ctx, db.MarkSMSSentParams{ID: m.ID, Provider: &provider}); err != nil {
+		sent := db.MarkSMSSentParams{ID: m.ID, Provider: &provider, ProviderMessageID: toText(id)}
+		err := s.q.MarkSMSSent(ctx, sent)
+		if _, dup := isUniqueViolation(err); dup {
+			// The provider reused an ID. The text went, which matters more
+			// than matching its delivery report.
+			s.log.Warn().Str("provider", provider).Str("message_id", id).Msg("sms provider reused a message id")
+			sent.ProviderMessageID = nil
+			err = s.q.MarkSMSSent(ctx, sent)
+		}
+		if err != nil {
 			s.log.Error().Err(err).Msg("mark sms sent")
 		}
 		return
 	}
 
 	msg := truncate(err.Error(), 300)
-	if int(m.Attempts) > len(smsBackoff) {
+	if errors.Is(err, ErrSMSRejected) || int(m.Attempts) > len(smsBackoff) {
 		metrics.Messages.WithLabelValues("sms", provider, "failed").Inc()
 		s.log.Warn().Err(err).Str("purpose", m.Purpose).Msg("sms failed permanently")
 		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: &msg})
@@ -176,6 +191,45 @@ func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
 	metrics.Messages.WithLabelValues("sms", provider, "retry").Inc()
 	next := s.now().Add(smsBackoff[m.Attempts-1])
 	_ = s.q.MarkSMSRetry(ctx, db.MarkSMSRetryParams{ID: m.ID, LastError: &msg, NextAttemptAt: toTimestamp(next)})
+}
+
+// DeliveryReport records what the provider says became of a text it
+// accepted. Status is the provider's word for it: delivered, or undelivered,
+// failed, rejected or expired with detail saying why. Anything else (queued,
+// sent to the network) is not final and is ignored, as are reports naming a
+// message this platform didn't send. It reports whether a message changed.
+func (s *SMSService) DeliveryReport(ctx context.Context, messageID, status, detail string, at time.Time) (bool, error) {
+	if s.sender == nil || messageID == "" {
+		return false, nil
+	}
+	var delivery string
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "delivered", "delivrd":
+		delivery = "delivered"
+		detail = ""
+	case "undelivered", "undeliv", "failed", "rejected", "rejectd", "expired":
+		delivery = "undelivered"
+		if detail == "" {
+			detail = "the network could not deliver it"
+		}
+	default:
+		return false, nil
+	}
+	if now := s.now(); at.IsZero() || at.After(now) {
+		at = now
+	}
+	provider := s.sender.Name()
+	n, err := s.q.RecordSMSDelivery(ctx, db.RecordSMSDeliveryParams{
+		Provider: &provider, ProviderMessageID: &messageID,
+		Delivery: &delivery, DeliveryAt: toTimestamp(at), LastError: toText(truncate(detail, 300)),
+	})
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		metrics.SMSDeliveries.WithLabelValues(provider, delivery).Inc()
+	}
+	return n > 0, nil
 }
 
 // Log returns a page of a tenant's SMS history.

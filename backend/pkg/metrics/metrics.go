@@ -50,6 +50,13 @@ var (
 		Help: "Texts and emails handed to a provider, by channel, provider and result.",
 	}, []string{"channel", "provider", "result"})
 
+	// SMSDeliveries counts the provider's delivery reports for texts it
+	// accepted: result is delivered or undelivered.
+	SMSDeliveries = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "menged_sms_delivery_reports_total",
+		Help: "Delivery reports from the SMS provider, by provider and result.",
+	}, []string{"provider", "result"})
+
 	OutboxWaiting = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "menged_outbox_waiting",
 		Help: "Texts and emails waiting to be sent, by channel. Set by the server running the jobs.",

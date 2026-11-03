@@ -1,10 +1,18 @@
 package web
 
 import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -65,20 +73,59 @@ func (s *Server) invoicePage(w http.ResponseWriter, r *http.Request) {
 	s.renderInvoice(w, r, d, false)
 }
 
+// payOption is a way to pay an invoice, as its page offers it.
+type payOption struct {
+	Code, Label string
+	// Checkout providers take the payer to their page.
+	Checkout bool
+	// Otherwise the payer pays MerchantID from their phone, quoting the
+	// invoice's reference.
+	MerchantID string
+	// Simulated is the page that plays the payer's side, when it is played.
+	Simulated string
+}
+
+func (s *Server) payOptions(r *http.Request, d *service.InvoiceDetail) []payOption {
+	var out []payOption
+	for _, p := range s.svc.Billing.Providers() {
+		o := payOption{Code: p.Code(), Label: p.Label()}
+		switch prov := p.(type) {
+		case payments.Starter:
+			o.Checkout = true
+		case payments.Referenced:
+			o.MerchantID = prov.MerchantID()
+			ref := url.Values{"merchant": {o.MerchantID}, "ref": {d.PayReference()}}
+			switch {
+			case p.Mock():
+				o.Simulated = "/dev/" + p.Code() + "?" + ref.Encode()
+			case s.cfg.SandboxURL != "":
+				msisdn := "0911000000"
+				if me := principal(r); me != nil && me.Phone != "" {
+					msisdn = me.Phone
+				}
+				o.Simulated = s.cfg.SandboxURL + "/phones/" + url.PathEscape(msisdn) + "?" + ref.Encode()
+			}
+		default:
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
 func (s *Server) renderInvoice(w http.ResponseWriter, r *http.Request, d *service.InvoiceDetail, platform bool) {
 	nav := "billing"
 	if platform {
 		nav = "platform-billing"
 	}
+	labels := map[string]string{"bank": "Bank transfer"}
+	for _, p := range s.svc.Billing.Providers() {
+		labels[p.Code()] = p.Label()
+	}
 	v := s.view(w, r, "Invoice "+d.Invoice.Number, nav, map[string]any{
-		"D": d, "Platform": platform, "Providers": s.svc.Billing.Providers(), "VAT": model.VATPercent,
+		"D": d, "Platform": platform, "Options": s.payOptions(r, d), "Labels": labels,
+		"Sandbox": s.cfg.SandboxURL, "VAT": model.VATPercent,
 	})
-	if p := principal(r); p != nil {
-		v.Form = url.Values{"phone": {p.Phone}}
-	}
-	if len(s.svc.Billing.Providers()) > 0 {
-		v.Form.Set("provider", s.svc.Billing.Providers()[0].Code())
-	}
 	s.render(w, r, http.StatusOK, "app/invoice", v)
 }
 
@@ -88,22 +135,26 @@ func (s *Server) invoicePay(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	pay, err := s.svc.Billing.Pay(r.Context(), principal(r), id, r.PostFormValue("provider"), r.PostFormValue("phone"), clientInfo(r))
+	_, checkout, err := s.svc.Billing.Pay(r.Context(), principal(r), id, r.PostFormValue("provider"), clientInfo(r))
 	if err != nil {
 		s.actionResult(w, r, "/app/billing/invoices/"+id.String(), err, "")
 		return
 	}
-	http.Redirect(w, r, "/app/billing/payments/"+pay.ID.String(), http.StatusSeeOther)
+	// To the provider's checkout, which sends the payer back to the payment
+	// page. The CSP's form-action lets this redirect through.
+	http.Redirect(w, r, checkout, http.StatusSeeOther)
 }
 
-// paymentPage waits for the payer to approve the prompt on their phone. It
-// reloads itself until the provider reports back.
+// paymentPage is where the provider's checkout sends the payer back to. It
+// reloads itself until the provider reports how the payment went, and asks
+// the provider in case its report is lost.
 func (s *Server) paymentPage(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r, "id")
 	if err != nil {
 		s.notFound(w, r)
 		return
 	}
+	s.svc.Billing.CheckPayment(r.Context(), principal(r), id)
 	pay, err := s.svc.Billing.Payment(r.Context(), principal(r), id)
 	if err != nil {
 		s.fail(w, r, err)
@@ -121,30 +172,23 @@ func (s *Server) paymentPage(w http.ResponseWriter, r *http.Request) {
 // Payment providers
 // ---------------------------------------------------------------------------
 
-// apiPaymentNotify receives a provider's report on a payment. The provider
-// signs it; anything unsigned or unknown is refused, and repeats are
-// harmless.
-func (s *Server) apiPaymentNotify(w http.ResponseWriter, r *http.Request) {
-	prov, ok := s.svc.Billing.Provider(chi.URLParam(r, "provider"))
-	if !ok {
-		writeJSONError(w, http.StatusNotFound, "NOT_FOUND", "Unknown payment provider.")
-		return
-	}
-	n, err := prov.Verify(r)
-	if err != nil {
-		s.log.Warn().Err(err).Str("provider", prov.Code()).Msg("payment notification refused")
-		writeJSONError(w, http.StatusUnauthorized, "BAD_SIGNATURE", "The notification could not be verified.")
-		return
-	}
-	if err := s.svc.Billing.PaymentNotified(r.Context(), prov.Code(), n); err != nil {
+// paymentFail answers a payment provider's call that failed: one that isn't
+// signed or logged in gets 401, one that can't be read 400, and billing's
+// refusals their usual status.
+func (s *Server) paymentFail(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, payments.ErrBadSignature), errors.Is(err, payments.ErrUnauthorized):
+		s.log.Warn().Err(err).Str("path", r.RequestURI).Msg("payment provider call refused")
+		writeJSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "The call could not be verified.")
+	case errors.Is(err, payments.ErrMalformed):
+		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "The call could not be read.")
+	default:
 		s.apiError(w, r, err)
-		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// devPaymentPage stands in for the payment prompt on the payer's phone
-// while payments are simulated. The terminal prints its link.
+// devPaymentPage stands in for a checkout provider's payment page while
+// payments are simulated. Pay sends Menged its signed notification.
 func (s *Server) devPaymentPage(w http.ResponseWriter, r *http.Request) {
 	pay, prov, err := s.svc.Billing.PaymentPrompt(r.Context(), chi.URLParam(r, "reference"))
 	if err != nil {
@@ -155,9 +199,9 @@ func (s *Server) devPaymentPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "public/pay_prompt", v)
 }
 
-// devPaymentAnswer approves or declines a simulated payment the way the
-// provider would: a signed notification, checked and applied by the same
-// code that handles a real provider's.
+// devPaymentAnswer pays or cancels a simulated payment the way the provider
+// would: a signed notification to the handler a real provider's reaches,
+// then back to the payment page.
 func (s *Server) devPaymentAnswer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pay, prov, err := s.svc.Billing.PaymentPrompt(ctx, chi.URLParam(r, "reference"))
@@ -165,9 +209,7 @@ func (s *Server) devPaymentAnswer(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	signer, ok := prov.(interface {
-		Sign(payments.Notification) string
-	})
+	mock, ok := prov.(*payments.Mock)
 	if !ok {
 		s.notFound(w, r)
 		return
@@ -178,29 +220,148 @@ func (s *Server) devPaymentAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 	form := url.Values{
 		"reference": {n.Reference}, "provider_ref": {n.ProviderRef}, "status": {n.Status},
-		"amount": {strconv.FormatInt(n.Amount, 10)}, "signature": {signer.Sign(n)},
+		"amount": {strconv.FormatInt(n.Amount, 10)}, "signature": {mock.Sign(n)},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/payments/"+prov.Code()+"/notify", strings.NewReader(form.Encode()))
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	verified, err := prov.Verify(req)
-	if err == nil {
-		err = s.svc.Billing.PaymentNotified(ctx, prov.Code(), verified)
+	res, err := call(ctx, mock.Handler(s.svc.Billing, s.paymentFail), "/notify", "application/x-www-form-urlencoded",
+		[]byte(form.Encode()), nil)
+	if err == nil && res.code != http.StatusOK {
+		err = fmt.Errorf("the notification was answered %d: %s", res.code, res.body.String())
 	}
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	pay, _, err = s.svc.Billing.PaymentPrompt(ctx, pay.Reference)
-	if err != nil {
-		s.fail(w, r, err)
+	http.Redirect(w, r, "/app/billing/payments/"+pay.ID.String(), http.StatusSeeOther)
+}
+
+// devCBEBirr plays CBE Birr while it is a stand-in: the payer keying in the
+// merchant ID and the invoice's reference, and CBE Birr's servers making
+// their calls to the real handler, logged in as CBE Birr would be.
+func (s *Server) devCBEBirr(w http.ResponseWriter, r *http.Request) {
+	prov, ok := s.svc.Billing.Provider("cbebirr")
+	cbe, isCBE := prov.(*payments.CBEBirr)
+	if !ok || !isCBE || !prov.Mock() {
+		s.notFound(w, r)
 		return
 	}
-	v := s.view(w, r, prov.Label()+" payment", "", map[string]any{"Pay": pay, "Label": prov.Label(), "Answered": true})
-	s.render(w, r, http.StatusOK, "public/pay_prompt", v)
+	in := url.Values{"merchant": {r.FormValue("merchant")}, "ref": {r.FormValue("ref")}, "phone": {r.FormValue("phone")}}
+	if in.Get("merchant") == "" {
+		in.Set("merchant", cbe.MerchantID())
+	}
+	if in.Get("phone") == "" {
+		in.Set("phone", "0911000000")
+		if me := principal(r); me != nil && me.Phone != "" {
+			in.Set("phone", me.Phone)
+		}
+	}
+	data := map[string]any{"Label": prov.Label()}
+	if r.Method == http.MethodPost {
+		step, bill, result, problem := s.cbeStep(r.Context(), cbe, r.PostFormValue("step"), in)
+		data["Step"], data["Result"], data["Error"] = step, result, problem
+		if bill != nil {
+			data["Bill"] = bill
+			data["Amount"], _ = payments.ParseDecimal(bill.Amount)
+		}
+	}
+	v := s.view(w, r, prov.Label()+" payment", "", data)
+	v.Form = in
+	s.render(w, r, http.StatusOK, "public/cbebirr_dev", v)
+}
+
+// cbeStep makes the calls of one step on the CBE Birr page: look the
+// reference up, or pay it (validation, then confirmation).
+func (s *Server) cbeStep(ctx context.Context, cbe *payments.CBEBirr, step string, in url.Values) (string, *payments.CBEBirrBill, *payments.CBEBirrResult, string) {
+	h := cbe.Handler(s.svc.Billing, s.paymentFail)
+	msisdn := in.Get("phone")
+	if len(msisdn) == 10 && msisdn[0] == '0' {
+		msisdn = "251" + msisdn[1:]
+	}
+	var bill payments.CBEBirrBill
+	q := payments.CBEBirrQuery{BillRefNumber: strings.TrimSpace(in.Get("ref")), BusinessShortCode: strings.TrimSpace(in.Get("merchant")), MSISDN: msisdn}
+	if err := s.cbeCall(ctx, h, "/query", q, &bill); err != nil {
+		return "query", nil, nil, err.Error()
+	}
+	if bill.ResultCode != payments.CBEBirrOK || step != "pay" {
+		return "query", &bill, nil, ""
+	}
+	id := make([]byte, 5)
+	_, _ = rand.Read(id)
+	tx := payments.CBEBirrTransaction{
+		TransType: "Pay Bill", TransID: "CB" + strings.ToUpper(hex.EncodeToString(id)),
+		TransTime:   time.Now().In(time.FixedZone("EAT", 3*60*60)).Format("20060102150405"),
+		TransAmount: bill.Amount, BusinessShortCode: q.BusinessShortCode, BillRefNumber: q.BillRefNumber, MSISDN: msisdn,
+	}
+	var res payments.CBEBirrResult
+	if err := s.cbeCall(ctx, h, "/validation", tx, &res); err != nil {
+		return "pay", &bill, nil, err.Error()
+	}
+	if res.ResultCode == payments.CBEBirrOK {
+		if err := s.cbeCall(ctx, h, "/confirmation", tx, &res); err != nil {
+			return "pay", &bill, nil, err.Error()
+		}
+		res.ThirdPartyTransID = tx.TransID
+	}
+	return "pay", &bill, &res, ""
+}
+
+// cbeCall makes one of CBE Birr's calls to its handler, in-process.
+func (s *Server) cbeCall(ctx context.Context, h http.Handler, path string, body, out any) error {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	login := func(req *http.Request) {
+		req.SetBasicAuth(s.cfg.CBEBirr.CallbackUsername, s.cfg.CBEBirr.CallbackPassword)
+	}
+	res, err := call(ctx, h, path, "application/json", b, login)
+	if err != nil {
+		return err
+	}
+	if res.code != http.StatusOK {
+		return fmt.Errorf("%s was answered %d: %s", path, res.code, strings.TrimSpace(res.body.String()))
+	}
+	return json.Unmarshal(res.body.Bytes(), out)
+}
+
+// call posts to a provider's handler in-process, for the pages that play
+// the provider, and keeps its answer.
+func call(ctx context.Context, h http.Handler, path, contentType string, body []byte, prepare func(*http.Request)) (*recorder, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	if prepare != nil {
+		prepare(req)
+	}
+	res := &recorder{header: http.Header{}}
+	h.ServeHTTP(res, req)
+	if res.code == 0 {
+		res.code = http.StatusOK
+	}
+	return res, nil
+}
+
+// recorder is an http.ResponseWriter that keeps the answer.
+type recorder struct {
+	header http.Header
+	code   int
+	body   bytes.Buffer
+}
+
+func (r *recorder) Header() http.Header { return r.header }
+
+func (r *recorder) Write(b []byte) (int, error) {
+	if r.code == 0 {
+		r.code = http.StatusOK
+	}
+	return r.body.Write(b)
+}
+
+func (r *recorder) WriteHeader(code int) {
+	if r.code == 0 {
+		r.code = code
+	}
 }
 
 // ---------------------------------------------------------------------------

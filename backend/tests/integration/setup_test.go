@@ -23,6 +23,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -124,14 +125,23 @@ func migrate(ctx context.Context) error {
 // fakeSMS and fakeMail stand in for the providers, keeping what they would
 // send on a console the tests read, as a developer reads the terminal. The
 // name "mock" makes the app treat SMS as simulated, which also opens the
-// inbound webhook without a secret.
+// webhooks without a secret.
 type fakeSMS struct{ c *console.Console }
 
+var fakeSMSID atomic.Int64
+
 func (fakeSMS) Name() string { return "mock" }
-func (f fakeSMS) Send(_ context.Context, to, body string) error {
+func (f fakeSMS) Send(_ context.Context, to, body string) (string, error) {
 	f.c.Print(console.Item{Kind: "sms", To: to, Body: body})
-	return nil
+	return fmt.Sprintf("FAKE%d", fakeSMSID.Add(1)), nil
 }
+
+// The stand-in CBE Birr's merchant ID, and the login its servers use.
+const (
+	cbeMerchant = "100100"
+	cbeUser     = "cbebirr"
+	cbePassword = "integration-cbebirr-password"
+)
 
 type fakeMail struct{ c *console.Console }
 
@@ -159,7 +169,8 @@ func newEnv(t *testing.T) *env {
 	cfg := &config.Config{
 		Port: "0", PublicURL: base, AppName: "Menged", Timezone: tz, Environment: "test",
 		Secret: []byte("integration-test-secret-0123456789abcdef"), SMSProvider: "mock",
-		StorageType: "local", StoragePath: t.TempDir(), MetricsToken: metricsToken,
+		StorageType: "local", StoragePath: t.TempDir(), MetricsToken: metricsToken, PaymentProvider: "mock",
+		CBEBirr: config.CBEBirrSettings{MerchantID: cbeMerchant, CallbackUsername: cbeUser, CallbackPassword: cbePassword},
 	}
 	store, err := storage.New(&storage.Config{Type: "local", LocalPath: cfg.StoragePath})
 	if err != nil {
@@ -172,13 +183,14 @@ func newEnv(t *testing.T) *env {
 	hub := websocket.NewHub(log)
 	go hub.Run()
 	inbox := console.New(nil)
-	prompt := func(reference string) string { return base + "/dev/payments/" + reference }
+	checkout := func(reference string) string { return base + "/dev/payments/" + reference }
+	cbe, err := payments.NewCBEBirr(payments.CBEBirrConfig{MerchantID: cbeMerchant, Username: cbeUser, Password: cbePassword, StandIn: true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	svc := service.New(service.Deps{
 		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: fakeSMS{inbox}, Mail: fakeMail{inbox},
-		Payments: []payments.Provider{
-			payments.NewMock("telebirr", "telebirr", cfg.Secret, prompt, inbox),
-			payments.NewMock("cbebirr", "CBE Birr", cfg.Secret, prompt, inbox),
-		},
+		Payments: []payments.Provider{payments.NewMock("telebirr", "telebirr", cfg.Secret, checkout), cbe},
 		Settings: service.Settings{
 			AppName: cfg.AppName, BaseURL: base, Location: tz, Secret: cfg.Secret, SMSNumber: "6060",
 			SupportEmail: "support@menged.test", BankDetails: "Test Bank, account 123",

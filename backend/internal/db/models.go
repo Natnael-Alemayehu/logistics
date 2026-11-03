@@ -146,6 +146,7 @@ type Payment struct {
 	RecordedBy      pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CheckedAt       pgtype.Timestamptz `db:"checked_at" json:"checked_at"`
 }
 
 type PendingSignup struct {
@@ -278,21 +279,24 @@ type ShipmentEvent struct {
 }
 
 type SmsMessage struct {
-	ID            pgtype.UUID        `db:"id" json:"id"`
-	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID    pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	Direction     string             `db:"direction" json:"direction"`
-	Phone         string             `db:"phone" json:"phone"`
-	Body          string             `db:"body" json:"body"`
-	Purpose       string             `db:"purpose" json:"purpose"`
-	Sensitive     bool               `db:"sensitive" json:"sensitive"`
-	Status        string             `db:"status" json:"status"`
-	Attempts      int32              `db:"attempts" json:"attempts"`
-	LastError     *string            `db:"last_error" json:"last_error"`
-	Provider      *string            `db:"provider" json:"provider"`
-	NextAttemptAt pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
-	SentAt        pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ID                pgtype.UUID        `db:"id" json:"id"`
+	TenantID          pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID        pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	Direction         string             `db:"direction" json:"direction"`
+	Phone             string             `db:"phone" json:"phone"`
+	Body              string             `db:"body" json:"body"`
+	Purpose           string             `db:"purpose" json:"purpose"`
+	Sensitive         bool               `db:"sensitive" json:"sensitive"`
+	Status            string             `db:"status" json:"status"`
+	Attempts          int32              `db:"attempts" json:"attempts"`
+	LastError         *string            `db:"last_error" json:"last_error"`
+	Provider          *string            `db:"provider" json:"provider"`
+	NextAttemptAt     pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	SentAt            pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ProviderMessageID *string            `db:"provider_message_id" json:"provider_message_id"`
+	Delivery          *string            `db:"delivery" json:"delivery"`
+	DeliveryAt        pgtype.Timestamptz `db:"delivery_at" json:"delivery_at"`
 }
 
 type SmsOptOut struct {
