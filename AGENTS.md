@@ -19,6 +19,9 @@ One Go application in `backend/`. It serves the dispatcher dashboard
 There is no separate frontend or mobile codebase. The Next.js and Expo apps
 were retired and live only in git history.
 
+- `internal/app`: builds the app from its settings (providers, services, web
+  server, background workers). `cmd/server` and the integration tests both
+  use it, so new wiring goes here, not in `main.go`.
 - `internal/web`: routes (`server.go`), middleware, handlers (`app_*.go`,
   `public.go`, `api_driver.go`), templates and static files
 - `internal/service`: all business rules. Handlers stay thin.

@@ -10,13 +10,16 @@ import (
 )
 
 // MockProvider stands in for a gateway: messages are kept, and printed to
-// Console when one is set, instead of being sent.
+// Console when one is set, instead of being sent. It keeps the most recent
+// mockKeep, as a demo site may run for months.
 type MockProvider struct {
 	Console  *console.Console
 	logger   Logger
 	messages []MockMessage
 	mutex    sync.RWMutex
 }
+
+const mockKeep = 1000
 
 type MockMessage struct {
 	ID        string
@@ -56,6 +59,9 @@ func (m *MockProvider) Send(ctx context.Context, to, message string, msgType Mes
 
 	m.mutex.Lock()
 	m.messages = append(m.messages, msg)
+	if len(m.messages) > mockKeep {
+		m.messages = append(m.messages[:0:0], m.messages[len(m.messages)-mockKeep:]...)
+	}
 	m.mutex.Unlock()
 
 	if m.Console != nil {

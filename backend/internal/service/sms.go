@@ -128,25 +128,48 @@ func (s *SMSService) Run(ctx context.Context) {
 	}
 }
 
+// drain sends what is due. Told to stop, it finishes the message in hand and
+// hands back the rest of its batch.
 func (s *SMSService) drain(ctx context.Context) {
 	for ctx.Err() == nil {
-		batch, err := s.q.ClaimQueuedSMS(ctx, 20)
+		// A claim isn't cut short: one cancelled after the database made
+		// it would leave its messages waiting out the lease.
+		batch, err := s.q.ClaimQueuedSMS(context.WithoutCancel(ctx), 20)
 		if err != nil {
-			if ctx.Err() == nil {
-				s.log.Error().Err(err).Msg("claim queued sms")
-			}
+			s.log.Error().Err(err).Msg("claim queued sms")
 			return
 		}
 		if len(batch) == 0 {
 			return
 		}
-		for _, m := range batch {
+		for i, m := range batch {
+			if ctx.Err() != nil {
+				s.release(batch[i:])
+				return
+			}
 			s.deliver(ctx, m)
 		}
 	}
 }
 
+// release hands back messages claimed but not attempted.
+func (s *SMSService) release(batch []db.SmsMessage) {
+	ids := make([]pgtype.UUID, len(batch))
+	for i, m := range batch {
+		ids[i] = m.ID
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.q.ReleaseSMS(ctx, ids); err != nil {
+		s.log.Warn().Err(err).Int("messages", len(ids)).Msg("hand back claimed sms")
+	}
+}
+
 func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
+	// A message taken is seen through by a worker told to stop: a send cut
+	// short could reach the phone yet stay recorded as sending, and go
+	// again after the lease.
+	ctx = context.WithoutCancel(ctx)
 	if s.sender == nil {
 		metrics.Messages.WithLabelValues("sms", "none", "skipped").Inc()
 		_ = s.q.MarkSMSSkipped(ctx, db.MarkSMSSkippedParams{ID: m.ID, LastError: ptr("no SMS provider configured")})

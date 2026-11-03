@@ -413,6 +413,19 @@ func (q *Queries) RecordSMSDelivery(ctx context.Context, arg RecordSMSDeliveryPa
 	return result.RowsAffected(), nil
 }
 
+const releaseSMS = `-- name: ReleaseSMS :exec
+UPDATE sms_messages
+SET status = 'queued', attempts = attempts - 1, next_attempt_at = NOW()
+WHERE id = ANY($1::uuid[]) AND status = 'sending'
+`
+
+// Hands back messages claimed but not yet attempted when the process stops,
+// so the next one sends them at once instead of after the lease.
+func (q *Queries) ReleaseSMS(ctx context.Context, ids []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, releaseSMS, ids)
+	return err
+}
+
 const removeSMSOptOut = `-- name: RemoveSMSOptOut :exec
 DELETE FROM sms_opt_outs WHERE phone = $1
 `

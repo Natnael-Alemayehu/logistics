@@ -348,6 +348,11 @@ type Querier interface {
 	// the report's reason, none once delivered.
 	RecordSMSDelivery(ctx context.Context, arg RecordSMSDeliveryParams) (int64, error)
 	RecordSuccessfulLogin(ctx context.Context, id pgtype.UUID) error
+	// As ReleaseSMS.
+	ReleaseEmails(ctx context.Context, ids []pgtype.UUID) error
+	// Hands back messages claimed but not yet attempted when the process stops,
+	// so the next one sends them at once instead of after the lease.
+	ReleaseSMS(ctx context.Context, ids []pgtype.UUID) error
 	RemoveSMSOptOut(ctx context.Context, phone string) error
 	// Why shipments were cancelled, and how many of them after the cargo had
 	// left: a refused or returned load cost a trip.

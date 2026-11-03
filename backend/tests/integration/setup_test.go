@@ -23,7 +23,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -36,14 +35,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/natnael-alemayehu/logistics/internal/app"
 	"github.com/natnael-alemayehu/logistics/internal/config"
 	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/internal/web"
 	"github.com/natnael-alemayehu/logistics/migrations"
 	"github.com/natnael-alemayehu/logistics/pkg/console"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
-	"github.com/natnael-alemayehu/logistics/pkg/storage"
-	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 )
 
 var pool *pgxpool.Pool
@@ -122,20 +118,6 @@ func migrate(ctx context.Context) error {
 	return goose.UpContext(ctx, db, ".")
 }
 
-// fakeSMS and fakeMail stand in for the providers, keeping what they would
-// send on a console the tests read, as a developer reads the terminal. The
-// name "mock" makes the app treat SMS as simulated, which also opens the
-// webhooks without a secret.
-type fakeSMS struct{ c *console.Console }
-
-var fakeSMSID atomic.Int64
-
-func (fakeSMS) Name() string { return "mock" }
-func (f fakeSMS) Send(_ context.Context, to, body string) (string, error) {
-	f.c.Print(console.Item{Kind: "sms", To: to, Body: body})
-	return fmt.Sprintf("FAKE%d", fakeSMSID.Add(1)), nil
-}
-
 // The stand-in CBE Birr's merchant ID, and the login its servers use.
 const (
 	cbeMerchant = "100100"
@@ -143,19 +125,13 @@ const (
 	cbePassword = "integration-cbebirr-password"
 )
 
-type fakeMail struct{ c *console.Console }
-
-func (fakeMail) Name() string { return "mock" }
-func (f fakeMail) Send(_ context.Context, to, subject, body string) error {
-	f.c.Print(console.Item{Kind: "email", To: to, Title: subject, Body: body})
-	return nil
-}
-
 // env is one running copy of the app.
 type env struct {
 	t     *testing.T
 	srv   *httptest.Server
+	app   *app.App
 	svc   *service.Services
+	stop  func() // stops the background workers, once they finish what they hold
 	inbox *console.Console
 	// texts, when set, are the texts a phone has received, for an app whose
 	// texts go to phones other than the inbox's.
@@ -164,16 +140,19 @@ type env struct {
 	files string               // where uploaded images are stored
 }
 
-// setup is what a test can change before the app starts: its settings and
-// its providers. base is the app's address.
+// setup is what a test can change before the app starts: its settings, and
+// where its texts can be read. base is the app's address.
 type setup struct {
-	base     string
-	cfg      *config.Config
-	sms      service.SMSSender
-	payments []payments.Provider
-	texts    func(phone string) []console.Item
+	base  string
+	cfg   *config.Config
+	texts func(phone string) []console.Item
 }
 
+// newEnv starts the app as the server command does, with the stand-in
+// providers. They print what they would send to the inbox, which the tests
+// read as a developer reads the terminal; with SMS a stand-in, the SMS
+// webhooks take no secret, as in development. The periodic jobs run only
+// when a test calls them, as every app shares the database.
 func newEnv(t *testing.T, options ...func(*setup)) *env {
 	t.Helper()
 	ts := httptest.NewUnstartedServer(nil)
@@ -181,53 +160,47 @@ func newEnv(t *testing.T, options ...func(*setup)) *env {
 	tz, _ := time.LoadLocation("Africa/Addis_Ababa")
 	cfg := &config.Config{
 		Port: "0", PublicURL: base, AppName: "Menged", Timezone: tz, Environment: "test",
-		Secret: []byte("integration-test-secret-0123456789abcdef"), SMSProvider: "mock",
+		Secret: []byte("integration-test-secret-0123456789abcdef"), SMSProvider: "mock", SMSNumber: "6060", MailProvider: "mock",
 		StorageType: "local", StoragePath: t.TempDir(), MetricsToken: metricsToken, PaymentProvider: "mock",
-		CBEBirr: config.CBEBirrSettings{MerchantID: cbeMerchant, CallbackUsername: cbeUser, CallbackPassword: cbePassword},
+		CBEBirr:      config.CBEBirrSettings{MerchantID: cbeMerchant, CallbackUsername: cbeUser, CallbackPassword: cbePassword},
+		SupportEmail: "support@menged.test", BankDetails: "Test Bank, account 123",
 	}
-	store, err := storage.New(&storage.Config{Type: "local", LocalPath: cfg.StoragePath})
-	if err != nil {
-		t.Fatal(err)
+	s := &setup{base: base, cfg: cfg}
+	for _, o := range options {
+		o(s)
 	}
 	log := zerolog.Nop()
 	if os.Getenv("TEST_LOG") != "" { // the server's log, to see why a request failed
 		log = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
 	}
-	hub := websocket.NewHub(log)
-	go hub.Run()
 	inbox := console.New(nil)
-	checkout := func(reference string) string { return base + "/dev/payments/" + reference }
-	cbe, err := payments.NewCBEBirr(payments.CBEBirrConfig{MerchantID: cbeMerchant, Username: cbeUser, Password: cbePassword, StandIn: true})
+	a, err := app.New(cfg, pool, log, app.Options{Console: inbox, NoJobs: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &setup{
-		base: base, cfg: cfg, sms: fakeSMS{inbox},
-		payments: []payments.Provider{payments.NewMock("telebirr", "telebirr", cfg.Secret, checkout), cbe},
-	}
-	for _, o := range options {
-		o(s)
-	}
-	svc := service.New(service.Deps{
-		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: s.sms, Mail: fakeMail{inbox},
-		Payments: s.payments,
-		Settings: service.Settings{
-			AppName: cfg.AppName, BaseURL: base, Location: tz, Secret: cfg.Secret, SMSNumber: "6060",
-			SupportEmail: "support@menged.test", BankDetails: "Test Bank, account 123",
-		},
-	})
-	ctx, stop := context.WithCancel(context.Background())
-	t.Cleanup(stop)
-	go svc.SMS.Run(ctx)
-	go svc.Mail.Run(ctx)
-	app, err := web.New(cfg, svc, pool, hub, log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ts.Config.Handler = app.Handler()
+	e := &env{t: t, srv: ts, app: a, svc: a.Services, inbox: inbox, texts: s.texts, seen: map[string]time.Time{}, files: cfg.StoragePath}
+	// Cleanups run last first: the server stops, then the workers finish
+	// what they hold, before the next test starts.
+	e.work()
+	t.Cleanup(func() { e.stop() })
+	ts.Config.Handler = a.Handler()
 	ts.Start()
 	t.Cleanup(ts.Close)
-	return &env{t: t, srv: ts, svc: svc, inbox: inbox, texts: s.texts, seen: map[string]time.Time{}, files: cfg.StoragePath}
+	return e
+}
+
+// work starts the app's background workers, as the server does on start.
+func (e *env) work() {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		e.app.Run(ctx)
+		close(done)
+	}()
+	e.stop = func() {
+		cancel()
+		<-done
+	}
 }
 
 // received waits for an SMS or email to a recipient that mentions text and

@@ -168,6 +168,18 @@ func (q *Queries) MarkEmailSent(ctx context.Context, arg MarkEmailSentParams) er
 	return err
 }
 
+const releaseEmails = `-- name: ReleaseEmails :exec
+UPDATE emails
+SET status = 'queued', attempts = attempts - 1, next_attempt_at = NOW()
+WHERE id = ANY($1::uuid[]) AND status = 'sending'
+`
+
+// As ReleaseSMS.
+func (q *Queries) ReleaseEmails(ctx context.Context, ids []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, releaseEmails, ids)
+	return err
+}
+
 const requeueStuckEmails = `-- name: RequeueStuckEmails :exec
 UPDATE emails
 SET status = 'queued'

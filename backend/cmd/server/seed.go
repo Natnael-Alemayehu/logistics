@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
+	"github.com/natnael-alemayehu/logistics/internal/app"
 	"github.com/natnael-alemayehu/logistics/internal/config"
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/geo"
@@ -81,10 +82,11 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	if exists {
 		return errors.New("demo data is already loaded (demo@menged.et exists)")
 	}
-	svc, err := buildServices(cfg, pool, nil, log)
+	a, err := app.New(cfg, pool, log, app.Options{})
 	if err != nil {
 		return err
 	}
+	svc := a.Services
 	ci := service.ClientInfo{IP: "127.0.0.1", UserAgent: "seed"}
 	rng := rand.New(rand.NewPCG(2026, 10))
 	now := time.Now()
