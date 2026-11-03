@@ -4,6 +4,8 @@
 #   docker compose -f deployments/docker-compose.prod.yml --env-file .env up -d
 #
 # Add `--profile monitoring` for Prometheus and Grafana.
+name: menged
+
 services:
   app:
     build:
