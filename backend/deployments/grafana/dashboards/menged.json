@@ -119,7 +119,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(menged_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(menged_http_requests_total[5m])), 1e-9)",
+          "expr": "(sum(rate(menged_http_requests_total{status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(menged_http_requests_total[5m])), 1e-9)",
           "legendFormat": "",
           "refId": "A"
         }
@@ -780,7 +780,7 @@
       "gridPos": {
         "x": 0,
         "y": 32,
-        "w": 10,
+        "w": 9,
         "h": 8
       },
       "targets": [
@@ -904,9 +904,9 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 10,
+        "x": 9,
         "y": 32,
-        "w": 4,
+        "w": 5,
         "h": 8
       },
       "targets": [
