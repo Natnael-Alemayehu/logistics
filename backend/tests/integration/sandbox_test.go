@@ -14,7 +14,6 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,11 +27,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/natnael-alemayehu/logistics/internal/config"
 	"github.com/natnael-alemayehu/logistics/internal/sandbox"
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/pkg/console"
 	"github.com/natnael-alemayehu/logistics/pkg/payments"
-	"github.com/natnael-alemayehu/logistics/pkg/sms"
 )
 
 // What the app and the sandbox agree on, as both read it from sandbox.env.
@@ -93,6 +92,14 @@ func sandboxed(t *testing.T, change ...func(*sandbox.Config)) (*env, *providers)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The app reads its keys from files, as in production.
+	dir := t.TempDir()
+	private, public := filepath.Join(dir, sandbox.MerchantPrivateKey), filepath.Join(dir, sandbox.TelebirrPublicKey)
+	for file, pem := range map[string][]byte{private: keys.private, public: keys.public} {
+		if err := os.WriteFile(file, pem, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	p := &providers{t: t}
 	e := newEnv(t, func(s *setup) {
 		cfg := sandbox.Config{
@@ -118,45 +125,17 @@ func sandboxed(t *testing.T, change ...func(*sandbox.Config)) (*env, *providers)
 		p.url = srv.URL
 
 		s.cfg.SMSProvider, s.cfg.SMSInboundSecret, s.cfg.SandboxURL = "ethiotelecom", smsSecret, srv.URL
+		s.cfg.EthioTelecomAPIURL, s.cfg.EthioTelecomAPIKey, s.cfg.EthioTelecomSenderID = srv.URL+"/ethiotelecom", smsKey, senderID
 		s.cfg.PaymentProvider = "telebirr,cbebirr"
-		s.sms = smsSender{sms.NewEthioTelecomProvider(srv.URL+"/ethiotelecom", smsKey, senderID, quietLog{})}
-		telebirr, err := payments.NewTelebirr(payments.TelebirrConfig{
+		s.cfg.Telebirr = config.TelebirrSettings{
 			APIURL: srv.URL + "/telebirr", CheckoutURL: srv.URL + "/telebirr/checkout",
 			FabricAppID: fabricAppID, AppSecret: telebirrSecret, MerchantAppID: merchantAppID, MerchantCode: merchantCode,
-			PrivateKey: keys.private, PublicKey: keys.public,
-		})
-		if err != nil {
-			t.Fatal(err)
+			PrivateKeyFile: private, PublicKeyFile: public,
 		}
-		cbe, err := payments.NewCBEBirr(payments.CBEBirrConfig{MerchantID: cbeMerchant, Username: cbeUser, Password: cbePassword})
-		if err != nil {
-			t.Fatal(err)
-		}
-		s.payments = []payments.Provider{telebirr, cbe}
 		s.texts = p.texts
 	})
 	return e, p
 }
-
-// smsSender adapts the provider package to the service's outbox, as the
-// server does.
-type smsSender struct{ p sms.SMSProvider }
-
-func (s smsSender) Name() string { return s.p.Name() }
-func (s smsSender) Send(ctx context.Context, to, body string) (string, error) {
-	id, err := s.p.Send(ctx, to, body, sms.MessageTypeNotification)
-	if errors.Is(err, sms.ErrRejected) {
-		err = fmt.Errorf("%w: %w", service.ErrSMSRejected, err)
-	}
-	return id, err
-}
-
-type quietLog struct{}
-
-func (quietLog) Info(string, ...interface{})  {}
-func (quietLog) Error(string, ...interface{}) {}
-func (quietLog) Warn(string, ...interface{})  {}
-func (quietLog) Debug(string, ...interface{}) {}
 
 // ---------------------------------------------------------------------------
 // The sandbox's API and pages

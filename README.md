@@ -141,6 +141,7 @@ delivery and SMS reporting don't depend on GPS.
 backend/
   cmd/server/          main: serve, migrate, seed
   cmd/sandbox/         the provider sandbox: serve, keys
+  internal/app/        builds the app from its settings: providers, services, web, workers
   internal/web/        HTTP: routes, middleware, handlers, templates/, static/
   internal/service/    shipments, status rules, sync, auth, SMS, email, billing, alerts, reports, jobs
   internal/model/      statuses, transitions, reasons, roles, plans and prices

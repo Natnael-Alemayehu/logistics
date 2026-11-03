@@ -122,21 +122,37 @@ func (s *MailService) Run(ctx context.Context) {
 	}
 }
 
+// drain sends what is due, stopping as SMSService.drain does.
 func (s *MailService) drain(ctx context.Context) {
 	for ctx.Err() == nil {
-		batch, err := s.q.ClaimQueuedEmails(ctx, 20)
+		batch, err := s.q.ClaimQueuedEmails(context.WithoutCancel(ctx), 20)
 		if err != nil {
-			if ctx.Err() == nil {
-				s.log.Error().Err(err).Msg("claim queued email")
-			}
+			s.log.Error().Err(err).Msg("claim queued email")
 			return
 		}
 		if len(batch) == 0 {
 			return
 		}
-		for _, m := range batch {
+		for i, m := range batch {
+			if ctx.Err() != nil {
+				s.release(batch[i:])
+				return
+			}
 			s.deliver(ctx, m)
 		}
+	}
+}
+
+// release hands back email claimed but not attempted.
+func (s *MailService) release(batch []db.Email) {
+	ids := make([]pgtype.UUID, len(batch))
+	for i, m := range batch {
+		ids[i] = m.ID
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.q.ReleaseEmails(ctx, ids); err != nil {
+		s.log.Warn().Err(err).Int("emails", len(ids)).Msg("hand back claimed email")
 	}
 }
 
@@ -145,6 +161,7 @@ func (s *MailService) drain(ctx context.Context) {
 var emailBackoff = []time.Duration{time.Minute, 10 * time.Minute, time.Hour, 6 * time.Hour}
 
 func (s *MailService) deliver(ctx context.Context, m db.Email) {
+	ctx = context.WithoutCancel(ctx) // seen through, as SMSService.deliver
 	if s.sender == nil {
 		metrics.Messages.WithLabelValues("email", "none", "failed").Inc()
 		_ = s.q.MarkEmailFailed(ctx, db.MarkEmailFailedParams{ID: m.ID, LastError: ptr("no email provider configured")})

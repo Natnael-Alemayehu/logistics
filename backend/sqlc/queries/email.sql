@@ -37,6 +37,12 @@ SET status = 'failed',
     body = CASE WHEN sensitive THEN '[redacted]' ELSE body END
 WHERE id = $1;
 
+-- name: ReleaseEmails :exec
+-- As ReleaseSMS.
+UPDATE emails
+SET status = 'queued', attempts = attempts - 1, next_attempt_at = NOW()
+WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND status = 'sending';
+
 -- name: RequeueStuckEmails :exec
 UPDATE emails
 SET status = 'queued'

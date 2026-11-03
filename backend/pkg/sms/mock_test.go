@@ -2,6 +2,7 @@ package sms
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -232,5 +233,24 @@ func TestMockProvider_MessageCreatedAt(t *testing.T) {
 
 	if messages[0].CreatedAt.IsZero() {
 		t.Error("message.CreatedAt should be set")
+	}
+}
+
+func TestMockProvider_KeepsTheMostRecent(t *testing.T) {
+	provider := NewMockProvider(&mockLogger{})
+	for i := range mockKeep + 5 {
+		if _, err := provider.Send(context.Background(), "0911234567", fmt.Sprintf("message %d", i), MessageTypeNotification); err != nil {
+			t.Fatal(err)
+		}
+	}
+	messages := provider.GetMessages()
+	if len(messages) != mockKeep {
+		t.Fatalf("kept %d messages, want %d", len(messages), mockKeep)
+	}
+	if want := fmt.Sprintf("message %d", mockKeep+4); messages[len(messages)-1].Message != want {
+		t.Errorf("newest message %q, want %q", messages[len(messages)-1].Message, want)
+	}
+	if want := "message 5"; messages[0].Message != want {
+		t.Errorf("oldest message %q, want %q", messages[0].Message, want)
 	}
 }

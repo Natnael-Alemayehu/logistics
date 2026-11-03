@@ -67,6 +67,13 @@ SET status = 'skipped',
     body = CASE WHEN sensitive THEN '[redacted]' ELSE body END
 WHERE id = $1;
 
+-- name: ReleaseSMS :exec
+-- Hands back messages claimed but not yet attempted when the process stops,
+-- so the next one sends them at once instead of after the lease.
+UPDATE sms_messages
+SET status = 'queued', attempts = attempts - 1, next_attempt_at = NOW()
+WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND status = 'sending';
+
 -- name: RequeueStuckSMS :exec
 -- A process that died mid-send leaves rows in 'sending' past their lease.
 UPDATE sms_messages
