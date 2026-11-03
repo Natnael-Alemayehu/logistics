@@ -201,14 +201,13 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher
 	if err != nil {
 		return nil, fmt.Errorf("storage: %w", err)
 	}
-	// Opt-outs and pacing live in the service's outbox, so the provider gets
-	// neither store.
+	// Opt-outs and pacing live in the service's outbox.
 	provider, err := sms.NewProvider(sms.Config{
 		Provider:         sms.ProviderType(cfg.SMSProvider),
 		TwilioAccountSID: cfg.TwilioAccountSID, TwilioAuthToken: cfg.TwilioAuthToken, TwilioFromNumber: cfg.TwilioFromNumber,
 		EthioTelecomAPIURL: cfg.EthioTelecomAPIURL, EthioTelecomAPIKey: cfg.EthioTelecomAPIKey, EthioTelecomSenderID: cfg.EthioTelecomSenderID,
 		Console: terminal,
-	}, smsLog{log.With().Str("component", "sms").Logger()}, nil, nil)
+	}, smsLog{log.With().Str("component", "sms").Logger()})
 	if err != nil {
 		return nil, fmt.Errorf("sms: %w", err)
 	}

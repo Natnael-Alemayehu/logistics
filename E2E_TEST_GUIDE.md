@@ -478,7 +478,9 @@ emailed. (Two prompts approved for one invoice end the same way.)
 - One company's IDs in another company's URLs return 404.
 - Forms posted from another site are refused (cross-origin protection).
 - `/metrics` returns 404 unless `METRICS_TOKEN` is set and sent as a bearer
-  token.
+  token. With it, `curl -H "Authorization: Bearer $METRICS_TOKEN"
+  localhost:8080/metrics` lists the `menged_*` metrics, with requests labelled
+  by route pattern (`route="/app/shipments/{id}"`) and no IDs.
 - The audit log and shipment histories can't be changed or deleted, even in
   the database:
 

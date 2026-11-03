@@ -323,6 +323,9 @@ type Querier interface {
 	NextInvoiceNumber(ctx context.Context, year int32) (int32, error)
 	// Texts and emails waiting, and those sent or failed in the last day.
 	OutboxHealth(ctx context.Context) ([]OutboxHealthRow, error)
+	// Texts and emails waiting to be sent, for /metrics. Read off the partial
+	// queue indexes, so it is cheap to run every minute.
+	OutboxWaiting(ctx context.Context) ([]OutboxWaitingRow, error)
 	RecordJobRun(ctx context.Context, arg RecordJobRunParams) error
 	// For messages that are logged rather than sent through the queue: inbound
 	// messages and outbound ones skipped for opt-out.

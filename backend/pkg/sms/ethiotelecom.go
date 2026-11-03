@@ -17,8 +17,6 @@ type EthioTelecomProvider struct {
 	senderID    string
 	client      *http.Client
 	logger      Logger
-	rateLimiter RateLimiter
-	optOutStore OptOutStore
 	token       string
 	tokenExpiry time.Time
 	tokenMutex  sync.RWMutex
@@ -58,15 +56,13 @@ type ethioTelecomBatchResponse struct {
 	} `json:"results"`
 }
 
-func NewEthioTelecomProvider(apiURL, apiKey, senderID string, logger Logger, rateLimiter RateLimiter, optOutStore OptOutStore) *EthioTelecomProvider {
+func NewEthioTelecomProvider(apiURL, apiKey, senderID string, logger Logger) *EthioTelecomProvider {
 	return &EthioTelecomProvider{
-		apiURL:      apiURL,
-		apiKey:      apiKey,
-		senderID:    senderID,
-		client:      &http.Client{Timeout: 30 * time.Second},
-		logger:      logger,
-		rateLimiter: rateLimiter,
-		optOutStore: optOutStore,
+		apiURL:   apiURL,
+		apiKey:   apiKey,
+		senderID: senderID,
+		client:   &http.Client{Timeout: 30 * time.Second},
+		logger:   logger,
 	}
 }
 
@@ -81,24 +77,10 @@ func (e *EthioTelecomProvider) Send(ctx context.Context, to, message string, msg
 		return err
 	}
 
-	if e.optOutStore != nil && e.optOutStore.IsOptedOut(normalizedPhone) {
-		e.logger.Warn("recipient opted out", "phone", normalizedPhone)
-		return ErrOptedOut
-	}
-
-	if e.rateLimiter != nil && !e.rateLimiter.Allow(normalizedPhone) {
-		e.logger.Warn("rate limit exceeded", "phone", normalizedPhone)
-		return ErrRateLimited
-	}
-
 	msgID, err := e.sendWithRetry(ctx, normalizedPhone, message, 3)
 	if err != nil {
 		e.logger.Error("failed to send SMS", "phone", normalizedPhone, "error", err, "type", msgType)
 		return err
-	}
-
-	if e.rateLimiter != nil {
-		e.rateLimiter.Record(normalizedPhone)
 	}
 
 	e.logger.Info("SMS sent successfully", "message_id", msgID, "phone", normalizedPhone, "type", msgType, "provider", "ethiotelecom")
@@ -115,17 +97,6 @@ func (e *EthioTelecomProvider) SendBatch(ctx context.Context, recipients []strin
 			errors = append(errors, fmt.Errorf("%s: invalid phone", recipient))
 			continue
 		}
-
-		if e.optOutStore != nil && e.optOutStore.IsOptedOut(normalizedPhone) {
-			e.logger.Warn("recipient opted out, skipping", "phone", normalizedPhone)
-			continue
-		}
-
-		if e.rateLimiter != nil && !e.rateLimiter.Allow(normalizedPhone) {
-			errors = append(errors, fmt.Errorf("%s: rate limited", normalizedPhone))
-			continue
-		}
-
 		validRecipients = append(validRecipients, normalizedPhone)
 	}
 
@@ -157,9 +128,6 @@ func (e *EthioTelecomProvider) SendBatch(ctx context.Context, recipients []strin
 	for _, result := range resp.Results {
 		if result.Status != "success" && result.Status != "accepted" {
 			errors = append(errors, fmt.Errorf("%s: %s", result.To, result.Error))
-		}
-		if e.rateLimiter != nil {
-			e.rateLimiter.Record(result.To)
 		}
 		e.logger.Info("batch SMS result", "to", result.To, "status", result.Status, "message_id", result.MessageID)
 	}
@@ -400,31 +368,6 @@ func (e *EthioTelecomProvider) CheckStatus(ctx context.Context, messageID string
 	}
 
 	return result.Status, nil
-}
-
-func (e *EthioTelecomProvider) HandleOptOutMessage(body string, from string) {
-	upperBody := normalizeOptOutBody(body)
-	normalized, err := NormalizeEthiopianPhone(from)
-	if err != nil {
-		return
-	}
-
-	if e.optOutStore == nil {
-		return
-	}
-
-	switch upperBody {
-	case "STOP", "UNSUBSCRIBE", "CANCEL", "QUIT":
-		e.optOutStore.AddOptOut(normalized)
-		e.logger.Info("phone opted out", "phone", normalized)
-	case "START", "YES", "UNSTOP", "SUBSCRIBE":
-		e.optOutStore.RemoveOptOut(normalized)
-		e.logger.Info("phone opted back in", "phone", normalized)
-	}
-}
-
-func normalizeOptOutBody(body string) string {
-	return bytes.NewBufferString(body).String()
 }
 
 func isAuthError(err error) bool {

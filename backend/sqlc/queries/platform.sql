@@ -108,3 +108,12 @@ FROM emails
 WHERE status IN ('queued', 'sending') OR created_at > NOW() - INTERVAL '24 hours'
 GROUP BY status
 ORDER BY 1, 2;
+
+-- name: OutboxWaiting :many
+-- Texts and emails waiting to be sent, for /metrics. Read off the partial
+-- queue indexes, so it is cheap to run every minute.
+SELECT 'sms'::text AS channel, COUNT(*)::bigint AS waiting, MIN(created_at)::timestamptz AS oldest
+FROM sms_messages WHERE status = 'queued'
+UNION ALL
+SELECT 'email'::text, COUNT(*)::bigint, MIN(created_at)::timestamptz
+FROM emails WHERE status = 'queued';

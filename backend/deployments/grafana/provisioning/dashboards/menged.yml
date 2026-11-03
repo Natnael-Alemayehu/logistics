@@ -1,0 +1,10 @@
+# Loads the dashboards in /etc/grafana/dashboards (deployments/grafana/dashboards).
+apiVersion: 1
+providers:
+  - name: menged
+    folder: Menged
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

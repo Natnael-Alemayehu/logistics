@@ -13,27 +13,23 @@ import (
 )
 
 type TwilioProvider struct {
-	accountSID  string
-	authToken   string
-	fromNumber  string
-	apiURL      string
-	client      *http.Client
-	logger      Logger
-	rateLimiter RateLimiter
-	optOutStore OptOutStore
-	mutex       sync.RWMutex
+	accountSID string
+	authToken  string
+	fromNumber string
+	apiURL     string
+	client     *http.Client
+	logger     Logger
+	mutex      sync.RWMutex
 }
 
-func NewTwilioProvider(accountSID, authToken, fromNumber string, logger Logger, rateLimiter RateLimiter, optOutStore OptOutStore) *TwilioProvider {
+func NewTwilioProvider(accountSID, authToken, fromNumber string, logger Logger) *TwilioProvider {
 	return &TwilioProvider{
-		accountSID:  accountSID,
-		authToken:   authToken,
-		fromNumber:  fromNumber,
-		apiURL:      fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", accountSID),
-		client:      &http.Client{Timeout: 30 * time.Second},
-		logger:      logger,
-		rateLimiter: rateLimiter,
-		optOutStore: optOutStore,
+		accountSID: accountSID,
+		authToken:  authToken,
+		fromNumber: fromNumber,
+		apiURL:     fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", accountSID),
+		client:     &http.Client{Timeout: 30 * time.Second},
+		logger:     logger,
 	}
 }
 
@@ -48,24 +44,10 @@ func (t *TwilioProvider) Send(ctx context.Context, to, message string, msgType M
 		return err
 	}
 
-	if t.optOutStore != nil && t.optOutStore.IsOptedOut(normalizedPhone) {
-		t.logger.Warn("recipient opted out", "phone", normalizedPhone)
-		return ErrOptedOut
-	}
-
-	if t.rateLimiter != nil && !t.rateLimiter.Allow(normalizedPhone) {
-		t.logger.Warn("rate limit exceeded", "phone", normalizedPhone)
-		return ErrRateLimited
-	}
-
 	msgID, err := t.sendWithRetry(ctx, normalizedPhone, message, 3)
 	if err != nil {
 		t.logger.Error("failed to send SMS", "phone", normalizedPhone, "error", err, "type", msgType)
 		return err
-	}
-
-	if t.rateLimiter != nil {
-		t.rateLimiter.Record(normalizedPhone)
 	}
 
 	t.logger.Info("SMS sent successfully", "message_id", msgID, "phone", normalizedPhone, "type", msgType, "provider", "twilio")
@@ -195,23 +177,6 @@ func (t *TwilioProvider) CheckStatus(ctx context.Context, messageSid string) (st
 	return result.Status, nil
 }
 
-func (t *TwilioProvider) HandleOptOut(body string, from string) {
-	upperBody := strings.ToUpper(strings.TrimSpace(body))
-	if upperBody == "STOP" || upperBody == "UNSUBSCRIBE" || upperBody == "CANCEL" {
-		normalized, err := NormalizeEthiopianPhone(from)
-		if err == nil && t.optOutStore != nil {
-			t.optOutStore.AddOptOut(normalized)
-			t.logger.Info("phone opted out", "phone", normalized)
-		}
-	} else if upperBody == "START" || upperBody == "YES" || upperBody == "UNSTOP" {
-		normalized, err := NormalizeEthiopianPhone(from)
-		if err == nil && t.optOutStore != nil {
-			t.optOutStore.RemoveOptOut(normalized)
-			t.logger.Info("phone opted back in", "phone", normalized)
-		}
-	}
-}
-
 func isTwilioErrorRetryable(code int) bool {
 	retryableCodes := map[int]bool{
 		20429: true,
@@ -224,44 +189,4 @@ func isTwilioErrorRetryable(code int) bool {
 		return retryable
 	}
 	return code >= 500
-}
-
-func (t *TwilioProvider) HandleWebhook(body []byte) error {
-	var webhook struct {
-		MessageSid string `json:"MessageSid"`
-		From       string `json:"From"`
-		Body       string `json:"Body"`
-		SmsStatus  string `json:"SmsStatus"`
-	}
-
-	if err := json.Unmarshal(body, &webhook); err != nil {
-		values, err := url.ParseQuery(string(body))
-		if err != nil {
-			return err
-		}
-		webhook.MessageSid = values.Get("MessageSid")
-		webhook.From = values.Get("From")
-		webhook.Body = values.Get("Body")
-		webhook.SmsStatus = values.Get("SmsStatus")
-	}
-
-	t.HandleOptOut(webhook.Body, webhook.From)
-
-	t.logger.Info("twilio webhook received", "sid", webhook.MessageSid, "status", webhook.SmsStatus, "from", webhook.From)
-	return nil
-}
-
-func parseTwilioWebhookBody(body []byte) (map[string]string, error) {
-	values, err := url.ParseQuery(string(body))
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]string)
-	for key, vals := range values {
-		if len(vals) > 0 {
-			result[key] = vals[0]
-		}
-	}
-	return result, nil
 }

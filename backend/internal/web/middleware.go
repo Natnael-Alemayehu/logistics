@@ -14,12 +14,15 @@ import (
 	"net/url"
 	"path"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 type ctxKey int
@@ -95,11 +98,22 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 	})
 }
 
+// logRequests logs each request and counts it for /metrics.
 func (s *Server) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
+		// A WebSocket stays open as long as its page: it is counted in
+		// menged_websocket_connections instead.
+		counted := r.Header.Get("Upgrade") == ""
+		if counted {
+			metrics.HTTPInFlight.Inc()
+			defer metrics.HTTPInFlight.Dec()
+		}
 		next.ServeHTTP(ww, r)
+		if counted {
+			observeRequest(r, ww.Status(), time.Since(start))
+		}
 		quiet := strings.HasPrefix(r.URL.Path, "/static/") || r.URL.Path == "/healthz" || r.URL.Path == "/readyz"
 		ev := s.log.Info()
 		if quiet && ww.Status() < 400 {
@@ -112,6 +126,22 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 			Int("bytes", ww.BytesWritten()).Dur("duration", time.Since(start)).
 			Str("ip", remoteIP(r)).Str("request_id", chimw.GetReqID(r.Context())).Msg("request")
 	})
+}
+
+// observeRequest counts a request under its route pattern, such as
+// /app/shipments/{id}, so that IDs in paths don't each become a series.
+func observeRequest(r *http.Request, status int, took time.Duration) {
+	route := "unmatched"
+	if rc := chi.RouteContext(r.Context()); rc != nil {
+		if p := rc.RoutePattern(); p != "" {
+			route = p
+		}
+	}
+	if status == 0 {
+		status = http.StatusOK
+	}
+	metrics.HTTPRequests.WithLabelValues(route, r.Method, strconv.Itoa(status)).Inc()
+	metrics.HTTPDuration.WithLabelValues(route, r.Method).Observe(took.Seconds())
 }
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {

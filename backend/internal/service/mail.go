@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 // MailSender is an email provider.
@@ -145,24 +146,29 @@ var emailBackoff = []time.Duration{time.Minute, 10 * time.Minute, time.Hour, 6 *
 
 func (s *MailService) deliver(ctx context.Context, m db.Email) {
 	if s.sender == nil {
+		metrics.Messages.WithLabelValues("email", "none", "failed").Inc()
 		_ = s.q.MarkEmailFailed(ctx, db.MarkEmailFailedParams{ID: m.ID, LastError: ptr("no email provider configured")})
 		return
 	}
+	provider := s.sender.Name()
 	sendCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	err := s.sender.Send(sendCtx, m.ToAddress, m.Subject, m.Body)
 	cancel()
 	if err == nil {
-		if err := s.q.MarkEmailSent(ctx, db.MarkEmailSentParams{ID: m.ID, Provider: ptr(s.sender.Name())}); err != nil {
+		metrics.Messages.WithLabelValues("email", provider, "sent").Inc()
+		if err := s.q.MarkEmailSent(ctx, db.MarkEmailSentParams{ID: m.ID, Provider: &provider}); err != nil {
 			s.log.Error().Err(err).Msg("mark email sent")
 		}
 		return
 	}
 	msg := truncate(err.Error(), 300)
 	if int(m.Attempts) > len(emailBackoff) {
+		metrics.Messages.WithLabelValues("email", provider, "failed").Inc()
 		s.log.Warn().Err(err).Str("purpose", m.Purpose).Msg("email failed permanently")
 		_ = s.q.MarkEmailFailed(ctx, db.MarkEmailFailedParams{ID: m.ID, LastError: &msg})
 		return
 	}
+	metrics.Messages.WithLabelValues("email", provider, "retry").Inc()
 	next := s.now().Add(emailBackoff[m.Attempts-1])
 	_ = s.q.MarkEmailRetry(ctx, db.MarkEmailRetryParams{ID: m.ID, LastError: &msg, NextAttemptAt: toTimestamp(next)})
 }

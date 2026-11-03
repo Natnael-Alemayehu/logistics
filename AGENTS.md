@@ -6,7 +6,8 @@ Menged: offline-first shipment tracking and proof of delivery for Ethiopian
 trucking companies. See `README.md` for what it does and how it fits together.
 
 - `functional_requirements.md`: the original requirements (FR numbers are
-  referenced in code comments)
+  referenced in code comments). Appendix D records where the product
+  deliberately differs; add to it when you depart from a requirement.
 - `logistics.md`: background on the problem
 - `E2E_TEST_GUIDE.md`: manual walkthrough of every flow
 
@@ -44,6 +45,8 @@ make vet
 - The CSP is `script-src 'self'`, so no inline scripts. Pass data to JS through
   `<script type="application/json">` blocks or `data-` attributes.
 - Every query is scoped by tenant. Keep it that way in new queries.
+- Metrics live in `pkg/metrics`. Label them by route pattern or another short
+  fixed list, never by company, user or shipment ID.
 - `audit_logs` and `shipment_events` are append-only: a trigger rejects
   UPDATE, DELETE and TRUNCATE. Code that must remove them (company deletion,
   retention) runs inside `purgeTx` in `internal/service/data.go`, which sets

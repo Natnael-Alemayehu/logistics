@@ -524,6 +524,42 @@ func (q *Queries) OutboxHealth(ctx context.Context) ([]OutboxHealthRow, error) {
 	return items, nil
 }
 
+const outboxWaiting = `-- name: OutboxWaiting :many
+SELECT 'sms'::text AS channel, COUNT(*)::bigint AS waiting, MIN(created_at)::timestamptz AS oldest
+FROM sms_messages WHERE status = 'queued'
+UNION ALL
+SELECT 'email'::text, COUNT(*)::bigint, MIN(created_at)::timestamptz
+FROM emails WHERE status = 'queued'
+`
+
+type OutboxWaitingRow struct {
+	Channel string             `db:"channel" json:"channel"`
+	Waiting int64              `db:"waiting" json:"waiting"`
+	Oldest  pgtype.Timestamptz `db:"oldest" json:"oldest"`
+}
+
+// Texts and emails waiting to be sent, for /metrics. Read off the partial
+// queue indexes, so it is cheap to run every minute.
+func (q *Queries) OutboxWaiting(ctx context.Context) ([]OutboxWaitingRow, error) {
+	rows, err := q.db.Query(ctx, outboxWaiting)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OutboxWaitingRow{}
+	for rows.Next() {
+		var i OutboxWaitingRow
+		if err := rows.Scan(&i.Channel, &i.Waiting, &i.Oldest); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordJobRun = `-- name: RecordJobRun :exec
 INSERT INTO job_runs (name, started_at, duration_ms, error, last_ok_at, runs, failures)
 VALUES ($1, $2, $3, $4,
