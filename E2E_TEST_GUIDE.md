@@ -328,6 +328,41 @@ SMS: the email appears in the server terminal.
   address must be confirmed again: a link goes to it, and reset links sent to
   the old address stop working.
 
+### Help and your data
+
+- **Help** holds questions to the Menged team. **Ask a question** with a
+  subject and a message. The team is emailed (an `EMAIL to admin@menged.et`
+  block in the terminal). Its answer shows on the question's page and is
+  emailed to whoever asked. Reply to carry on, or **Close** the question when
+  it's settled; writing again reopens it. **Ask for an offer** under
+  Enterprise on the Billing page starts a question with the subject filled
+  in.
+- **Settings → Your data → Download all data** gives one ZIP file: shipments,
+  their history, deliveries, people and vehicles as CSV files (Excel opens
+  them with Amharic intact), and each delivery's signature and photos under
+  `deliveries/<tracking number>/`. `README.txt` explains the files. GPS
+  points aren't included: they are kept for 90 days, and a shipment's route
+  downloads from its page. The download is recorded in the audit log.
+- **Removing someone's details.** Deactivate a driver or team member, then
+  choose **Remove details** on their page. They become "Former driver" or
+  "Former staff member", and their phone, email, sign-in, phone data and the
+  texts and emails sent to them are deleted. Shipments, deliveries and the
+  audit log still show what they did, under the new name. It can't be
+  undone, and it isn't offered for someone still active.
+- **Old customer details go by themselves.** Once a delivered or cancelled
+  shipment is older than `RETAIN_SHIPMENT_DAYS` (365 days by default, at
+  least 30), the hourly cleanup removes the customer's name, phone and
+  addresses, notes, the delivery's signature and photos, and the texts about
+  it. Dates, cities, statuses, reasons, the driver and the cargo stay, so
+  reports still add up. The shipment page says what was removed, and it can't
+  be reopened or booked again. To try it, backdate a delivered shipment
+  (replace the tracking number), then restart `make run`: the cleanup runs at
+  start.
+
+  ```bash
+  docker compose exec postgres psql -U logistics -c "UPDATE shipments SET actual_delivery = NOW() - INTERVAL '400 days', status_changed_at = NOW() - INTERVAL '400 days' WHERE tracking_number = 'ET-…'"
+  ```
+
 ## 9. Paying for the product
 
 As the company's admin, open **Billing**. It shows the trial's days left, the
@@ -393,14 +428,31 @@ Check:
 
 ## 10. The operator
 
-Sign in as `admin@menged.et`. **Platform** lists every company with plan,
+Sign in as `admin@menged.et`. **Companies** lists every company with plan,
 drivers, activity and billing state. Company pages such as `/app/shipments`
-send the operator back to this list. From a company's row:
+send the operator back to this list. A company's row opens its page: usage,
+plan, invoices and questions, and these actions:
 - **Extend trial** by a number of days.
 - **Offer Enterprise**: a monthly price, driver limit and text allowance. The
   company is emailed the terms and chooses Enterprise on its billing page.
 - **Suspend** the company: its users are signed out at once and can't sign
   back in until it is restored.
+- **Delete** the company, by typing its name exactly. Its people, vehicles,
+  shipments, deliveries, photos and audit log go for good, and its users are
+  signed out. Its invoices stay, without the company, and open ones are
+  cancelled. A payment that arrives afterwards is set aside as a refund (see
+  below). The platform's audit log keeps one entry recording the deletion.
+
+**Support** lists every company's questions, those waiting for an answer
+first; the menu shows how many are waiting. Answering emails whoever asked.
+
+**Audit log** searches every company's log by company, action, date and IP
+address. Clicking an address shows everything done from it.
+
+**System health** shows the database's response time and schema version, each
+background job's last run, how long it took and its last error, the SMS and
+email queues, live dashboard connections and free disk space. A job that
+hasn't run for three of its intervals shows **Not running**.
 
 **Billing** shows monthly recurring revenue, money collected this month,
 unpaid and overdue invoices, and recent payments. On an unpaid invoice:
@@ -427,3 +479,12 @@ emailed. (Two prompts approved for one invoice end the same way.)
 - Forms posted from another site are refused (cross-origin protection).
 - `/metrics` returns 404 unless `METRICS_TOKEN` is set and sent as a bearer
   token.
+- The audit log and shipment histories can't be changed or deleted, even in
+  the database:
+
+  ```bash
+  docker compose exec postgres psql -U logistics -c "DELETE FROM audit_logs"
+  ```
+
+  fails with "audit_logs is append-only". Only deleting a company removes
+  them.

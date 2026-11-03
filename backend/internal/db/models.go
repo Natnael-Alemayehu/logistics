@@ -118,6 +118,16 @@ type InvoiceCounter struct {
 	Last int32 `db:"last" json:"last"`
 }
 
+type JobRun struct {
+	Name       string             `db:"name" json:"name"`
+	StartedAt  pgtype.Timestamptz `db:"started_at" json:"started_at"`
+	DurationMs int32              `db:"duration_ms" json:"duration_ms"`
+	Error      *string            `db:"error" json:"error"`
+	LastOkAt   pgtype.Timestamptz `db:"last_ok_at" json:"last_ok_at"`
+	Runs       int64              `db:"runs" json:"runs"`
+	Failures   int64              `db:"failures" json:"failures"`
+}
+
 type Payment struct {
 	ID              pgtype.UUID        `db:"id" json:"id"`
 	TenantID        pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
@@ -240,6 +250,7 @@ type Shipment struct {
 	CustomerFeedback    *string            `db:"customer_feedback" json:"customer_feedback"`
 	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
 	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
+	AnonymisedAt        pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
 }
 
 type ShipmentEvent struct {
@@ -287,6 +298,29 @@ type SmsMessage struct {
 type SmsOptOut struct {
 	Phone     string             `db:"phone" json:"phone"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type SupportMessage struct {
+	ID           pgtype.UUID        `db:"id" json:"id"`
+	TicketID     pgtype.UUID        `db:"ticket_id" json:"ticket_id"`
+	TenantID     pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	AuthorID     pgtype.UUID        `db:"author_id" json:"author_id"`
+	AuthorName   string             `db:"author_name" json:"author_name"`
+	FromPlatform bool               `db:"from_platform" json:"from_platform"`
+	Body         string             `db:"body" json:"body"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type SupportTicket struct {
+	ID        pgtype.UUID        `db:"id" json:"id"`
+	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Number    int64              `db:"number" json:"number"`
+	Subject   string             `db:"subject" json:"subject"`
+	Status    string             `db:"status" json:"status"`
+	OpenedBy  pgtype.UUID        `db:"opened_by" json:"opened_by"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ClosedAt  pgtype.Timestamptz `db:"closed_at" json:"closed_at"`
 }
 
 type SyncMetadatum struct {
@@ -383,6 +417,7 @@ type User struct {
 	Language              *string            `db:"language" json:"language"`
 	AppBatterySaver       bool               `db:"app_battery_saver" json:"app_battery_saver"`
 	AppVibrate            bool               `db:"app_vibrate" json:"app_vibrate"`
+	AnonymisedAt          pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
 }
 
 type Vehicle struct {

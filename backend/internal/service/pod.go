@@ -313,6 +313,9 @@ func (s *ShipmentService) AcceptHeldPOD(ctx context.Context, a Actor, id, podID 
 		if err != nil {
 			return err
 		}
+		if cur.AnonymisedAt.Valid {
+			return errShipmentAnonymised
+		}
 		pod, err := q.GetHeldPOD(ctx, db.GetHeldPODParams{ID: podID, ShipmentID: id, TenantID: a.TenantID})
 		if isNoRows(err) {
 			return conflict("This delivery record has already been reviewed.")

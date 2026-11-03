@@ -24,6 +24,22 @@ type Querier interface {
 	AddBillingNotice(ctx context.Context, arg AddBillingNoticeParams) (int64, error)
 	AddBroadcastRecipient(ctx context.Context, arg AddBroadcastRecipientParams) error
 	AddSMSOptOut(ctx context.Context, phone string) error
+	AddSupportMessage(ctx context.Context, arg AddSupportMessageParams) (SupportMessage, error)
+	// Lets this transaction change the append-only audit log and shipment
+	// timeline (see the append_only trigger).
+	AllowLogRewrite(ctx context.Context) error
+	AnonymiseActorName(ctx context.Context, arg AnonymiseActorNameParams) error
+	AnonymisePODs(ctx context.Context, ids []pgtype.UUID) error
+	// Notes, positions and details may name the recipient; a customer's own
+	// confirmation carries their name.
+	AnonymiseShipmentEvents(ctx context.Context, ids []pgtype.UUID) error
+	// What reports count stays: dates, statuses, reasons, cities, driver,
+	// vehicle and cargo.
+	AnonymiseShipments(ctx context.Context, ids []pgtype.UUID) error
+	AnonymiseSupportAuthor(ctx context.Context, arg AnonymiseSupportAuthorParams) error
+	// A person who has left: what identifies them goes, their history stays
+	// (AC-041.6).
+	AnonymiseUser(ctx context.Context, arg AnonymiseUserParams) (pgtype.UUID, error)
 	// The same five-minute lease as ClaimQueuedSMS.
 	ClaimQueuedEmails(ctx context.Context, limit int32) ([]Email, error)
 	// SKIP LOCKED lets several API replicas drain the queue without sending the
@@ -52,6 +68,7 @@ type Querier interface {
 	CountUnreadAlerts(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountVerificationCodesSince(ctx context.Context, arg CountVerificationCodesSinceParams) (int64, error)
+	CountWaitingTickets(ctx context.Context) (int64, error)
 	// An open alert for the same subject and type already covers this one, and
 	// an alert of the same episode was raised before, even if dismissed since:
 	// the unique indexes turn either duplicate into a no-op and no row returns.
@@ -67,6 +84,7 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error)
 	CreateShipmentEvent(ctx context.Context, arg CreateShipmentEventParams) (ShipmentEvent, error)
+	CreateSupportTicket(ctx context.Context, arg CreateSupportTicketParams) (SupportTicket, error)
 	// A slug already taken returns no row, so the caller can try another
 	// without aborting its transaction.
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
@@ -80,6 +98,8 @@ type Querier interface {
 	DeleteExpiredPendingSignups(ctx context.Context, expiresAt pgtype.Timestamptz) error
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteExpiredVerificationCodes(ctx context.Context) error
+	// Texts and emails that went to the person, with their number or address.
+	DeleteMessagesToPerson(ctx context.Context, arg DeleteMessagesToPersonParams) error
 	DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldBroadcasts(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldEmailTokens(ctx context.Context, createdAt pgtype.Timestamptz) error
@@ -87,17 +107,29 @@ type Querier interface {
 	DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldTrackingEvents(ctx context.Context, recordedAt pgtype.Timestamptz) error
 	DeletePendingSignup(ctx context.Context, id pgtype.UUID) error
+	DeletePersonDeviceData(ctx context.Context, driverID pgtype.UUID) error
 	DeleteSavedFilter(ctx context.Context, arg DeleteSavedFilterParams) (int64, error)
+	DeleteShipmentTexts(ctx context.Context, ids []pgtype.UUID) error
+	DeleteTenant(ctx context.Context, id pgtype.UUID) error
+	DeleteTenantAuditLogs(ctx context.Context, tenantID pgtype.UUID) error
 	EnqueueEmail(ctx context.Context, arg EnqueueEmailParams) (Email, error)
 	EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMessage, error)
 	// Once a reset link is used, the others sent to that person stop working.
 	ExpireEmailTokens(ctx context.Context, arg ExpireEmailTokensParams) error
 	// A prompt nobody answered. A late approval is still honoured.
 	ExpirePendingPayments(ctx context.Context, createdAt pgtype.Timestamptz) error
+	ExportPODs(ctx context.Context, tenantID pgtype.UUID) ([]ExportPODsRow, error)
+	ExportPeople(ctx context.Context, tenantID pgtype.UUID) ([]ExportPeopleRow, error)
+	ExportShipmentEvents(ctx context.Context, tenantID pgtype.UUID) ([]ExportShipmentEventsRow, error)
+	// Data rights: a company's export, removing personal data after the keeping
+	// period or on request, and deleting a company (FR-041, AC-049.3).
+	ExportShipments(ctx context.Context, tenantID pgtype.UUID) ([]ExportShipmentsRow, error)
+	ExportVehicles(ctx context.Context, tenantID pgtype.UUID) ([]ExportVehiclesRow, error)
 	FinishPayment(ctx context.Context, arg FinishPaymentParams) error
 	FlagRefundDue(ctx context.Context, arg FlagRefundDueParams) error
 	GetActiveSessionByTokenHash(ctx context.Context, arg GetActiveSessionByTokenHashParams) (Session, error)
 	GetActiveVerificationCode(ctx context.Context, arg GetActiveVerificationCodeParams) (VerificationCode, error)
+	GetCompanyTicket(ctx context.Context, arg GetCompanyTicketParams) (GetCompanyTicketRow, error)
 	GetDriverDeliveryCounts(ctx context.Context, arg GetDriverDeliveryCountsParams) (GetDriverDeliveryCountsRow, error)
 	// One driver's record over a period, for the driver page.
 	GetDriverPerformance(ctx context.Context, arg GetDriverPerformanceParams) (GetDriverPerformanceRow, error)
@@ -140,6 +172,8 @@ type Querier interface {
 	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
 	// Subscriptions, invoices and payments (FR-043 to FR-045).
 	GetTenantForUpdate(ctx context.Context, id pgtype.UUID) (Tenant, error)
+	// Only for the platform admin, who answers every company.
+	GetTicketForPlatform(ctx context.Context, id pgtype.UUID) (GetTicketForPlatformRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	GetUserByPhone(ctx context.Context, phone *string) (User, error)
@@ -166,6 +200,7 @@ type Querier interface {
 	// notices go to those who confirmed theirs.
 	ListBillingContacts(ctx context.Context, tenantID pgtype.UUID) ([]ListBillingContactsRow, error)
 	ListBroadcasts(ctx context.Context, arg ListBroadcastsParams) ([]ListBroadcastsRow, error)
+	ListCompanyTickets(ctx context.Context, tenantID pgtype.UUID) ([]ListCompanyTicketsRow, error)
 	// Messages to every driver on the road that reached this driver.
 	ListDriverBroadcastsSince(ctx context.Context, arg ListDriverBroadcastsSinceParams) ([]ListDriverBroadcastsSinceRow, error)
 	// Notes and messages a dispatcher addressed to this driver.
@@ -177,6 +212,7 @@ type Querier interface {
 	// are, and when their device last talked to the server.
 	ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error)
 	ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]Invoice, error)
+	ListJobRuns(ctx context.Context) ([]JobRun, error)
 	// Unpaid renewal and usage invoices past their due date, until the company
 	// has been told it is read-only.
 	ListOverdueDebts(ctx context.Context, dueAt pgtype.Timestamptz) ([]Invoice, error)
@@ -184,9 +220,15 @@ type Querier interface {
 	// Only loads on the road can be late; one not yet collected is caught by
 	// ListPickupOverdue. The episode identifies the ETA the alert is about.
 	ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error)
+	ListPODMediaForShipments(ctx context.Context, ids []pgtype.UUID) ([]ListPODMediaForShipmentsRow, error)
 	ListPaymentsByInvoice(ctx context.Context, arg ListPaymentsByInvoiceParams) ([]Payment, error)
 	// Loads still waiting to be collected well after their planned pickup.
 	ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error)
+	ListPlatformAdmins(ctx context.Context) ([]ListPlatformAdminsRow, error)
+	// The people running Menged: every company's audit log, support tickets
+	// and the background jobs (FR-042 AC-042.7, FR-049).
+	// A company's own rows and the platform's actions on it.
+	ListPlatformAudit(ctx context.Context, arg ListPlatformAuditParams) ([]ListPlatformAuditRow, error)
 	ListPublicShipmentEvents(ctx context.Context, shipmentID pgtype.UUID) ([]ListPublicShipmentEventsRow, error)
 	ListRecentPayments(ctx context.Context, limit int32) ([]ListRecentPaymentsRow, error)
 	// Who signed for each customer's deliveries in the last year, newest first,
@@ -223,6 +265,10 @@ type Querier interface {
 	// sync anything changed since the cursor is included as well, so a
 	// cancellation or a dispatcher edit reaches the device.
 	ListShipmentsForDriverSync(ctx context.Context, arg ListShipmentsForDriverSyncParams) ([]Shipment, error)
+	// Shipments that finished before the keeping period ended and still hold
+	// customer and delivery details (AC-041.2, AC-041.3). Across companies: the
+	// retention job runs for all of them.
+	ListShipmentsToAnonymise(ctx context.Context, arg ListShipmentsToAnonymiseParams) ([]pgtype.UUID, error)
 	// Shipments taken away from a driver since their last sync and not handed
 	// back. Their device should stop showing them.
 	ListShipmentsUnassignedFromDriverSince(ctx context.Context, arg ListShipmentsUnassignedFromDriverSinceParams) ([]pgtype.UUID, error)
@@ -231,7 +277,10 @@ type Querier interface {
 	// status change, so a driver reporting by SMS counts as in touch and one who
 	// never installed the app is still caught.
 	ListStaleActiveDrivers(ctx context.Context, lastSyncAt pgtype.Timestamptz) ([]ListStaleActiveDriversRow, error)
+	// Every company's tickets for the platform: waiting for an answer first.
+	ListSupportInbox(ctx context.Context, status *string) ([]ListSupportInboxRow, error)
 	ListTenantActivity(ctx context.Context, arg ListTenantActivityParams) ([]ListTenantActivityRow, error)
+	ListTenantPODMedia(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantPODMediaRow, error)
 	// Companies with a finished month whose texts are not yet settled.
 	ListTenantsForUsageBilling(ctx context.Context, smsBilledMonth pgtype.Date) ([]Tenant, error)
 	// Companies using 80% or more of their driver places or of the month's
@@ -243,6 +292,7 @@ type Querier interface {
 	// Paid periods that have ended, unless the last renewal is still unpaid.
 	ListTenantsToRenew(ctx context.Context, periodEnd pgtype.Timestamptz) ([]Tenant, error)
 	ListTenantsWithStats(ctx context.Context) ([]ListTenantsWithStatsRow, error)
+	ListTicketMessages(ctx context.Context, arg ListTicketMessagesParams) ([]SupportMessage, error)
 	// Trials ending before $1 whose end hasn't been announced yet. The episode
 	// is the end time, so an extended trial is announced again.
 	ListTrialsEnding(ctx context.Context, trialEndsAt pgtype.Timestamptz) ([]Tenant, error)
@@ -271,6 +321,9 @@ type Querier interface {
 	// Moves the year's counter within the caller's transaction, so numbers have
 	// no gaps.
 	NextInvoiceNumber(ctx context.Context, year int32) (int32, error)
+	// Texts and emails waiting, and those sent or failed in the last day.
+	OutboxHealth(ctx context.Context) ([]OutboxHealthRow, error)
+	RecordJobRun(ctx context.Context, arg RecordJobRunParams) error
 	// For messages that are logged rather than sent through the queue: inbound
 	// messages and outbound ones skipped for opt-out.
 	RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessage, error)
@@ -340,11 +393,13 @@ type Querier interface {
 	// A new cause for the status a shipment is already in, such as a second
 	// delay. When the status was entered is unchanged.
 	SetShipmentStatusDetail(ctx context.Context, arg SetShipmentStatusDetailParams) (Shipment, error)
+	SetSupportTicketStatus(ctx context.Context, arg SetSupportTicketStatusParams) error
 	SetTenantActive(ctx context.Context, arg SetTenantActiveParams) error
 	SetTrialEnd(ctx context.Context, arg SetTrialEndParams) error
 	SetUserActive(ctx context.Context, arg SetUserActiveParams) error
 	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
 	SumPaidSince(ctx context.Context, completedAt pgtype.Timestamptz) (int64, error)
+	TenantForDeletion(ctx context.Context, id pgtype.UUID) (TenantForDeletionRow, error)
 	// Sliding expiry: a session in use is pushed out, never pulled in.
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdatePIN(ctx context.Context, arg UpdatePINParams) error
@@ -362,6 +417,8 @@ type Querier interface {
 	VoidLapsedPlanInvoices(ctx context.Context, dueAt pgtype.Timestamptz) ([]VoidLapsedPlanInvoicesRow, error)
 	// A new plan choice replaces one not yet paid for.
 	VoidOpenPlanInvoices(ctx context.Context, tenantID pgtype.UUID) error
+	// Invoices outlive a deleted company; those still open are cancelled.
+	VoidTenantInvoices(ctx context.Context, tenantID pgtype.UUID) ([]string, error)
 	// Whether a driver ever had the shipment, for a proof of delivery sent after
 	// it was handed to someone else.
 	WasAssignedTo(ctx context.Context, arg WasAssignedToParams) (bool, error)

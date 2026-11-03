@@ -362,9 +362,17 @@ func (s *Server) funcs() template.FuncMap {
 			}
 			return def
 		},
-		"add": func(a, b int) int { return a + b },
-		"sub": func(a, b int) int { return a - b },
-		"mul": func(a, b float64) float64 { return a * b },
+		"bytes": func(v any) string { return humanBytes(toFloat(v)) },
+		"millis": func(d time.Duration) string {
+			if d < 10*time.Millisecond {
+				return fmt.Sprintf("%.1f ms", float64(d.Microseconds())/1000)
+			}
+			return fmt.Sprintf("%d ms", d.Milliseconds())
+		},
+		"span": span,
+		"add":  func(a, b int) int { return a + b },
+		"sub":  func(a, b int) int { return a - b },
+		"mul":  func(a, b float64) float64 { return a * b },
 		"div": func(a, b float64) float64 {
 			if b == 0 {
 				return 0
@@ -510,6 +518,13 @@ func toFloat(v any) float64 {
 		return float64(n)
 	case int64:
 		return float64(n)
+	case uint64:
+		return float64(n)
+	case *int32:
+		if n == nil {
+			return 0
+		}
+		return float64(*n)
 	case *float64:
 		if n == nil {
 			return 0
@@ -523,6 +538,20 @@ func toFloat(v any) float64 {
 		return f.Float64
 	}
 	return 0
+}
+
+// humanBytes is a size for people: "820 MB", "12.4 GB".
+func humanBytes(n float64) string {
+	units := []string{"bytes", "KB", "MB", "GB", "TB"}
+	i := 0
+	for n >= 1024 && i < len(units)-1 {
+		n /= 1024
+		i++
+	}
+	if i == 0 || n >= 100 {
+		return fmt.Sprintf("%.0f %s", n, units[i])
+	}
+	return fmt.Sprintf("%.1f %s", n, units[i])
 }
 
 func grouped(n int64) string {

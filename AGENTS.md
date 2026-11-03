@@ -44,6 +44,10 @@ make vet
 - The CSP is `script-src 'self'`, so no inline scripts. Pass data to JS through
   `<script type="application/json">` blocks or `data-` attributes.
 - Every query is scoped by tenant. Keep it that way in new queries.
+- `audit_logs` and `shipment_events` are append-only: a trigger rejects
+  UPDATE, DELETE and TRUNCATE. Code that must remove them (company deletion,
+  retention) runs inside `purgeTx` in `internal/service/data.go`, which sets
+  `menged.purge` for its transaction only.
 - The driver app's status rules come from `/api/v1/driver/config`, which is
   derived from `model.AllowedTransitions`. Change the rules there, not in JS.
 - Live updates: an element with `data-live-region` and an `id` is fetched

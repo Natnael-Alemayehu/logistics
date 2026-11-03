@@ -1,0 +1,116 @@
+{{define "content"}}{{$d := .Data}}{{$t := $d.T}}{{$id := uuid $t.ID}}{{$back := printf "/app/platform/tenants/%s" $id}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/platform">Companies</a></p>
+    <h1>{{$t.Name}}{{if not $t.IsActive}} <span class="badge s-issue">Suspended</span>{{end}}</h1>
+    <p class="muted">{{$t.RegionCity}} · since {{date $t.CreatedAt}}{{with $t.ContactPhone}} · {{.}}{{end}}{{with $t.ContactEmail}} · <a href="mailto:{{.}}">{{.}}</a>{{end}}{{with $t.Tin}} · TIN {{.}}{{end}}</p>
+  </div>
+  <div class="actions"><a class="btn" href="/app/platform/audit?company={{$id}}">{{template "icon" "shield"}} Audit log</a></div>
+</div>
+
+<section class="kpis">
+  <div class="kpi"><span class="kpi-n">{{$t.Drivers}}<span class="kpi-of"> of {{$t.MaxDrivers}}</span></span><span class="kpi-l">Active drivers</span></div>
+  <div class="kpi"><span class="kpi-n">{{$t.Staff}}</span><span class="kpi-l">Office staff</span></div>
+  <div class="kpi"><span class="kpi-n">{{grouped $t.Shipments30d}}</span><span class="kpi-l">Shipments, last 30 days</span>{{if $t.LastShipmentAt.Valid}}<span class="small muted">Latest {{ago $t.LastShipmentAt}}</span>{{end}}</div>
+  <div class="kpi"><span class="kpi-n">{{grouped $d.Usage.SMSThisMonth}}<span class="kpi-of"> of {{grouped $d.Usage.SMSIncluded}}</span></span><span class="kpi-l">Texts this month</span></div>
+</section>
+
+<div class="grid-detail">
+<div class="col-main">
+  <section class="card">
+    <div class="card-head"><h2>Plan</h2><span class="badge">{{planName $t.Plan}}</span></div>
+    <dl class="facts">
+      {{if eq $t.Plan "trial"}}
+      <div><dt>Free trial</dt><dd>{{if $t.TrialEndsAt.Valid}}{{if past $t.TrialEndsAt}}<span class="text-bad">Ended {{date $t.TrialEndsAt}}</span>{{else}}Ends {{date $t.TrialEndsAt}}{{end}}{{else}}—{{end}}</dd></div>
+      {{else if $t.PeriodEnd.Valid}}
+      <div><dt>Billed</dt><dd>{{cycleName $t.BillingCycle}}, renews {{date $t.PeriodEnd}}{{with $t.PendingPlan}} as {{planName .}}{{end}}</dd></div>
+      {{end}}
+      {{if $t.DebtDueAt.Valid}}<div><dt>Unpaid invoice</dt><dd class="{{if past $t.DebtDueAt}}text-bad{{end}}">{{if past $t.DebtDueAt}}Overdue since{{else}}Due{{end}} {{date $t.DebtDueAt}}</dd></div>{{end}}
+      {{with $t.EnterprisePriceSantim}}<div><dt>Enterprise terms</dt><dd>{{etb (i64 .)}} a month{{with $t.EnterpriseMaxDrivers}}, {{.}} drivers{{end}}{{with $t.EnterpriseSmsQuota}}, {{grouped .}} texts{{end}}</dd></div>{{end}}
+    </dl>
+  </section>
+
+  <section class="card card-flush">
+    <div class="card-head"><h2>Invoices</h2></div>
+    {{if $d.Invoices}}
+    <div class="table-wrap">
+    <table class="table rows-link">
+      <thead><tr><th>Invoice</th><th>For</th><th class="num">Total</th><th>Status</th></tr></thead>
+      <tbody>
+      {{range $d.Invoices}}{{$href := printf "/app/platform/invoices/%s" (uuid .ID)}}
+      <tr data-href="{{$href}}">
+        <td><a class="mono" href="{{$href}}">{{.Number}}</a><div class="small muted">Issued {{date .IssuedAt}}</div></td>
+        <td>{{invoiceKind .Kind}}<div class="small muted">{{planName .Plan}}</div></td>
+        <td class="num">{{birr .TotalSantim}}</td>
+        <td>{{if eq .Status "paid"}}<span class="badge s-delivered">Paid</span>{{else if eq .Status "void"}}<span class="badge">Cancelled</span>{{else if past .DueAt}}<span class="badge s-issue">Overdue</span>{{else}}<span class="badge s-delayed">Due {{date .DueAt}}</span>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p class="muted card-pad">No invoices yet.</p>{{end}}
+  </section>
+
+  <section class="card card-flush">
+    <div class="card-head"><h2>Questions</h2></div>
+    {{if $d.Tickets}}
+    <div class="table-wrap">
+    <table class="table rows-link">
+      <thead><tr><th>Question</th><th>Status</th><th class="num">Last update</th></tr></thead>
+      <tbody>
+      {{range $d.Tickets}}{{$href := printf "/app/platform/support/%s" (uuid .ID)}}
+      <tr data-href="{{$href}}">
+        <td><a href="{{$href}}">{{.Subject}}</a><div class="small muted">#{{.Number}}{{with .OpenedByName}} · {{.}}{{end}}</div></td>
+        <td>{{template "ticket-status" .Status}}</td>
+        <td class="num nowrap">{{ago .UpdatedAt}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p class="muted card-pad">No questions from this company.</p>{{end}}
+  </section>
+</div>
+
+<aside class="col-side">
+  {{if eq $t.Plan "trial"}}
+  <form method="post" action="/app/platform/tenants/{{$id}}/trial" class="card stack">
+    <h2>Free trial</h2>
+    <input type="hidden" name="back" value="{{$back}}">
+    <label>Extend it by
+      <select name="days"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option></select>
+    </label>
+    <button class="btn btn-primary" type="submit">Extend trial</button>
+  </form>
+  {{end}}
+
+  <form method="post" action="/app/platform/tenants/{{$id}}/offer" class="card stack">
+    <h2>Enterprise terms</h2>
+    <input type="hidden" name="back" value="{{$back}}">
+    <label>Price a month, in birr, before VAT <input name="price" inputmode="numeric" value="{{wholeBirr $t.EnterprisePriceSantim}}" placeholder="e.g. 30000"></label>
+    <div class="row-2">
+      <label>Drivers <input name="max_drivers" type="number" min="1" max="10000" value="{{with $t.EnterpriseMaxDrivers}}{{.}}{{else}}500{{end}}"></label>
+      <label>Texts a month <input name="sms_quota" type="number" min="0" max="1000000" value="{{with $t.EnterpriseSmsQuota}}{{.}}{{else}}10000{{end}}"></label>
+    </div>
+    <button class="btn" type="submit">{{if $t.EnterprisePriceSantim}}Update terms{{else}}Offer Enterprise{{end}}</button>
+    <p class="hint">The company is emailed the terms and chooses Enterprise on its billing page. Clear the price to withdraw them.</p>
+  </form>
+
+  <form method="post" action="/app/platform/tenants/{{$id}}/active" class="card stack">
+    <h2>{{if $t.IsActive}}Suspend{{else}}Restore{{end}}</h2>
+    <input type="hidden" name="back" value="{{$back}}">
+    <input type="hidden" name="active" value="{{if $t.IsActive}}false{{else}}true{{end}}">
+    <p class="small">{{if $t.IsActive}}Everyone in the company is signed out and can't sign in until it is restored. Nothing is deleted.{{else}}Let the company's people sign in again.{{end}}</p>
+    <button class="btn {{if $t.IsActive}}btn-danger-ghost{{else}}btn-primary{{end}}" type="submit">{{if $t.IsActive}}Suspend company{{else}}Restore company{{end}}</button>
+  </form>
+
+  <form method="post" action="/app/platform/tenants/{{$id}}/delete" class="card stack card-danger">
+    <h2>Delete</h2>
+    <input type="hidden" name="back" value="{{$back}}">
+    <p class="small">Removes the company's people, vehicles, shipments, deliveries and photos for good. Its invoices stay for the accounts, the open ones cancelled. Suspend it instead if it may come back.</p>
+    <label><span>Type <strong>{{$t.Name}}</strong> to confirm</span> <input name="confirm" autocomplete="off" required></label>
+    <button class="btn btn-danger" type="submit">Delete for good</button>
+  </form>
+</aside>
+</div>
+{{end}}

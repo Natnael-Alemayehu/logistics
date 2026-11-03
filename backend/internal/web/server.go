@@ -42,6 +42,7 @@ type Server struct {
 	// mockPay is set when payments only pretend to take money, which opens
 	// the page standing in for the payer's phone.
 	mockPay bool
+	started time.Time
 }
 
 // New builds the server.
@@ -59,7 +60,7 @@ func New(cfg *config.Config, svc *service.Services, pool *pgxpool.Pool, hub *web
 		return nil, err
 	}
 	s := &Server{
-		cfg: cfg, svc: svc, log: log, hub: hub, pool: pool, assets: assets,
+		cfg: cfg, svc: svc, log: log, hub: hub, pool: pool, assets: assets, started: time.Now(),
 		mockSMS: svc.SMS.ProviderName() == "mock", mockMail: svc.Mail.ProviderName() == "mock",
 	}
 	for _, p := range svc.Billing.Providers() {
@@ -200,6 +201,14 @@ func (s *Server) Handler() http.Handler {
 				r.Post("/platform/invoices/{id}/paid", s.platformMarkPaid)
 				r.Post("/platform/invoices/{id}/void", s.platformVoid)
 				r.Post("/platform/payments/{id}/refunded", s.platformRefunded)
+				r.Get("/platform/tenants/{id}", s.platformTenant)
+				r.Post("/platform/tenants/{id}/delete", s.platformTenantDelete)
+				r.Get("/platform/support", s.supportInbox)
+				r.Get("/platform/support/{id}", s.ticketPage)
+				r.Post("/platform/support/{id}/reply", s.ticketReply)
+				r.Post("/platform/support/{id}/close", s.ticketClose)
+				r.Get("/platform/audit", s.platformAudit)
+				r.Get("/platform/health", s.platformHealth)
 			})
 
 			// A company's own pages. The platform admin runs the service, not
@@ -244,6 +253,12 @@ func (s *Server) Handler() http.Handler {
 				r.Get("/reports", s.reports)
 				r.Get("/vehicles", s.vehicleList)
 				r.Get("/vehicles/{id}", s.vehicleDetail)
+				r.Get("/help", s.helpList)
+				r.Get("/help/new", s.helpNew)
+				r.Post("/help", s.helpCreate)
+				r.Get("/help/{id}", s.ticketPage)
+				r.Post("/help/{id}/reply", s.ticketReply)
+				r.Post("/help/{id}/close", s.ticketClose)
 
 				r.Group(func(r chi.Router) {
 					r.Use(s.requireFleetManager)
@@ -278,6 +293,9 @@ func (s *Server) Handler() http.Handler {
 					r.Get("/settings/sms", s.smsLog)
 					r.Post("/settings/sms/simulate", s.smsSimulate)
 					r.Get("/audit", s.auditLog)
+					r.Post("/settings/export", s.exportData)
+					r.Post("/drivers/{id}/anonymise", s.personAnonymise)
+					r.Post("/team/{id}/anonymise", s.personAnonymise)
 				})
 			})
 		})

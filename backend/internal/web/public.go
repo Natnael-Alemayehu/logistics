@@ -68,7 +68,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if p := principal(r); p != nil {
-		_ = s.svc.Auth.Logout(r.Context(), p)
+		_ = s.svc.Auth.Logout(r.Context(), p, clientInfo(r))
 	}
 	s.clearSessionCookie(w)
 	s.setFlash(w, "info", "You're signed out.")

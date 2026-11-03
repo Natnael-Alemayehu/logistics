@@ -439,7 +439,10 @@ func (s *Server) settingsData(r *http.Request) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"Tenant": tenant, "Usage": usage, "Towns": geo.Places()}, nil
+	return map[string]any{
+		"Tenant": tenant, "Usage": usage, "Towns": geo.Places(),
+		"RetainDays": int(s.svc.Data.RetainShipments().Hours() / 24),
+	}, nil
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -699,6 +702,10 @@ var auditActions = map[string]string{
 	"enterprise_offer_set":       "Set Enterprise terms",
 	"enterprise_offer_withdrawn": "Withdrew Enterprise terms",
 	"drivers_messaged":           "Messaged every driver on the road",
+	"logout":                     "Signed out",
+	"user_anonymised":            "Removed a former member's details",
+	"data_exported":              "Downloaded the company's data",
+	"tenant_deleted":             "Deleted a company",
 }
 
 func (s *Server) userNames(ctx context.Context, tenantID pgtype.UUID) map[pgtype.UUID]string {
@@ -800,6 +807,46 @@ func (s *Server) platform(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, "app/platform", v)
 }
 
+// platformTenant is one company as the platform admin manages it: its plan
+// and invoices, questions, and the actions on it (AC-049.3).
+func (s *Server) platformTenant(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	p := principal(r)
+	tenants, err := s.svc.Tenants.All(r.Context(), p)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	i := slices.IndexFunc(tenants, func(t db.ListTenantsWithStatsRow) bool { return t.ID == id })
+	if i < 0 || id == p.TenantID {
+		s.notFound(w, r)
+		return
+	}
+	invoices, err := s.svc.Billing.CompanyInvoices(r.Context(), p, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	tickets, err := s.svc.Support.ForCompany(r.Context(), p, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	usage, err := s.svc.Tenants.Usage(r.Context(), id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	v := s.view(w, r, tenants[i].Name, "platform", map[string]any{
+		"T": tenants[i], "Invoices": invoices, "Tickets": tickets, "Usage": usage,
+	})
+	s.render(w, r, http.StatusOK, "app/platform_tenant", v)
+}
+
 func (s *Server) platformTenantActive(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r, "id")
 	if err != nil {
@@ -814,3 +861,6 @@ func (s *Server) platformTenantActive(w http.ResponseWriter, r *http.Request) {
 	}
 	s.actionResult(w, r, "/app/platform", err, msg)
 }
+
+// tenantPath is a company's page for the platform admin.
+func tenantPath(id pgtype.UUID) string { return "/app/platform/tenants/" + id.String() }

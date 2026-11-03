@@ -211,7 +211,7 @@ func (c *core) planTerms(t db.Tenant, code string) (terms, error) {
 	tm := terms{plan: p, monthly: p.MonthlyETB * 100, drivers: p.MaxDrivers, smsQuota: p.SMSIncluded}
 	if code == model.PlanEnterprise {
 		if t.EnterprisePriceSantim == nil {
-			return terms{}, invalid("plan", "Enterprise is priced for each company. Write to "+c.cfg.SupportEmail+" for an offer.")
+			return terms{}, invalid("plan", "Enterprise is priced for each company. Ask for an offer on the Help page.")
 		}
 		tm.monthly = *t.EnterprisePriceSantim
 		if t.EnterpriseMaxDrivers != nil {
@@ -731,6 +731,14 @@ func (s *BillingService) PlatformInvoice(ctx context.Context, p *Principal, id p
 	}, row.TenantName)
 }
 
+// CompanyInvoices is one company's latest invoices, for the platform admin.
+func (s *BillingService) CompanyInvoices(ctx context.Context, p *Principal, tenantID pgtype.UUID) ([]db.Invoice, error) {
+	if !p.IsPlatformAdmin() {
+		return nil, ErrUnauthorized
+	}
+	return s.q.ListInvoices(ctx, db.ListInvoicesParams{TenantID: tenantID, Limit: 24})
+}
+
 func (s *BillingService) invoiceDetail(ctx context.Context, inv db.Invoice, tenantName string) (*InvoiceDetail, error) {
 	d := &InvoiceDetail{Invoice: inv, TenantName: tenantName, Lines: InvoiceLines(inv.Lines), Usage: InvoiceUsage(inv.Usage)}
 	var err error
@@ -914,7 +922,15 @@ func (s *BillingService) PaymentNotified(ctx context.Context, providerCode strin
 // applyPayment settles the invoice a payment that arrived was for.
 func (s *BillingService) applyPayment(ctx context.Context, q *db.Queries, after *afterCommit, pay db.Payment, paidAt time.Time, a Actor) error {
 	if !pay.TenantID.Valid {
-		return nil // the company was deleted; the payment stays on record
+		// The company was deleted while the money was on its way.
+		note := "The company was deleted before this payment arrived, so it will be refunded."
+		if err := q.FlagRefundDue(ctx, db.FlagRefundDueParams{ID: pay.ID, Note: &note}); err != nil {
+			return err
+		}
+		s.log.Warn().Str("reference", pay.Reference).Msg("payment for a deleted company needs a refund")
+		s.audit(ctx, q, a, "payment_refund_due", "payment", pay.ID, nil,
+			map[string]any{"reference": pay.Reference, "amount": payments.FormatETB(pay.AmountSantim)})
+		return nil
 	}
 	t, err := q.GetTenantForUpdate(ctx, pay.TenantID)
 	if err != nil {

@@ -174,6 +174,9 @@ func (s *UserService) UpdateDriver(ctx context.Context, p *Principal, id pgtype.
 		if cur.Role != model.RoleDriver {
 			return notFound("Driver not found.")
 		}
+		if cur.AnonymisedAt.Valid {
+			return errAnonymised
+		}
 		vehicle, err := s.ownVehicle(ctx, q, p.TenantID, in.VehicleID)
 		if err != nil {
 			return err
@@ -311,6 +314,9 @@ func (s *UserService) UpdateStaff(ctx context.Context, p *Principal, id pgtype.U
 		if cur.Role == model.RoleDriver {
 			return notFound("Staff member not found.")
 		}
+		if cur.AnonymisedAt.Valid {
+			return errAnonymised
+		}
 		out, err = q.UpdateUserProfile(ctx, db.UpdateUserProfileParams{ID: id, TenantID: p.TenantID, FullName: v.name, Phone: v.phone, Email: v.email})
 		if err != nil {
 			return duplicateUser(err)
@@ -373,6 +379,9 @@ func (s *UserService) SetActive(ctx context.Context, p *Principal, id pgtype.UUI
 		}
 		if u.IsActive == active {
 			return nil
+		}
+		if active && u.AnonymisedAt.Valid {
+			return errAnonymised
 		}
 		if !active {
 			if u.Role == model.RoleDriver {

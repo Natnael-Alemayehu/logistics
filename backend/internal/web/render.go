@@ -91,6 +91,9 @@ type View struct {
 	App    AppInfo
 	Flash  *Flash
 	Unread int64
+	// Waiting counts support tickets waiting for an answer, for the
+	// platform admin.
+	Waiting int64
 	// Form holds submitted values to redisplay after a validation error.
 	Form   url.Values
 	Errors map[string]string
@@ -184,6 +187,8 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 		}
 		if !v.Me.IsPlatformAdmin() {
 			v.Standing = v.Me.Standing(v.Now)
+		} else if n, err := s.svc.Support.Waiting(r.Context()); err == nil {
+			v.Waiting = n
 		}
 	}
 	return v
@@ -246,7 +251,11 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	s.log.Error().Err(err).Str("path", r.URL.Path).Msg("request failed")
-	s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", "We couldn't complete that. Please try again; if it keeps happening, contact support.")
+	detail := "We couldn't complete that. Please try again."
+	if p := principal(r); p != nil && !p.IsPlatformAdmin() && strings.HasPrefix(r.URL.Path, "/app") {
+		detail += " If it keeps happening, tell us on the Help page."
+	}
+	s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", detail)
 }
 
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {

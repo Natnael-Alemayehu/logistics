@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -36,6 +37,37 @@ func (c *core) audit(ctx context.Context, q *db.Queries, a Actor, action, entity
 func (s *AuditService) List(ctx context.Context, tenantID pgtype.UUID, page, perPage int) ([]db.AuditLog, error) {
 	limit, offset := pageBounds(page, perPage)
 	return s.q.ListAuditLogsByTenant(ctx, db.ListAuditLogsByTenantParams{TenantID: tenantID, Limit: limit, Offset: offset})
+}
+
+// AuditFilter narrows the platform's audit view. Zero fields match all.
+type AuditFilter struct {
+	// TenantID matches a company's own rows and the platform's actions on it.
+	TenantID     pgtype.UUID
+	Action, IP   string
+	Since, Until time.Time
+}
+
+// Platform returns a page of every company's audit log for the platform
+// admin's investigations, newest first (AC-042.7).
+func (s *AuditService) Platform(ctx context.Context, p *Principal, f AuditFilter, page, perPage int) ([]db.ListPlatformAuditRow, error) {
+	if !p.IsPlatformAdmin() {
+		return nil, ErrUnauthorized
+	}
+	limit, offset := pageBounds(page, perPage)
+	arg := db.ListPlatformAuditParams{TenantID: f.TenantID, MaxRows: limit, Skip: offset}
+	if f.Action != "" {
+		arg.Action = &f.Action
+	}
+	if f.IP != "" {
+		arg.Ip = &f.IP
+	}
+	if !f.Since.IsZero() {
+		arg.Since = toTimestamp(f.Since)
+	}
+	if !f.Until.IsZero() {
+		arg.Until = toTimestamp(f.Until)
+	}
+	return s.q.ListPlatformAudit(ctx, arg)
 }
 
 // pageBounds converts a 1-based page into LIMIT/OFFSET, bounding the page size.

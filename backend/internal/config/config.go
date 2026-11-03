@@ -81,8 +81,13 @@ type Config struct {
 	// platform operator then records by hand. Empty: transfers aren't
 	// offered.
 	BankDetails string
-	// SupportEmail is where companies write to the platform operator.
+	// SupportEmail is shown on invoices and is the sender companies see for
+	// support answers.
 	SupportEmail string
+
+	// RetainShipmentDays is how long a delivered or cancelled shipment keeps
+	// its customer details, signatures and photos (FR-041).
+	RetainShipmentDays int
 
 	// AllowMockProviders lets a production deployment start with stand-in
 	// SMS, email or payments, for a demo or staging site.
@@ -160,6 +165,12 @@ func Load() (*Config, error) {
 		c.BankDetails = "Commercial Bank of Ethiopia, account 1000000000000, " + c.AppName +
 			" (example details: set BILLING_BANK_DETAILS)"
 	}
+
+	days, err := strconv.Atoi(getEnv("RETAIN_SHIPMENT_DAYS", "365"))
+	if err != nil || days < 30 {
+		return nil, errors.New("RETAIN_SHIPMENT_DAYS must be a number of days, at least 30")
+	}
+	c.RetainShipmentDays = days
 
 	tz, err := time.LoadLocation(getEnv("APP_TIMEZONE", "Africa/Addis_Ababa"))
 	if err != nil {

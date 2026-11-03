@@ -364,6 +364,9 @@ func (s *ShipmentService) Reopen(ctx context.Context, a Actor, id pgtype.UUID) (
 		if !model.CanReopen(cur.Status) {
 			return conflict("Only a cancelled shipment can be reopened.")
 		}
+		if cur.AnonymisedAt.Valid {
+			return errShipmentAnonymised
+		}
 		to := model.StatusPending
 		if cur.DriverID.Valid {
 			if d, err := q.GetUserByID(ctx, db.GetUserByIDParams{ID: cur.DriverID, TenantID: a.TenantID}); err == nil && d.IsActive {

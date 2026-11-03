@@ -164,7 +164,7 @@ func (s *AuthService) verify(ctx context.Context, u db.User, stored *string, can
 			return err
 		}
 		if !t.IsActive {
-			return ErrCompanySuspended
+			return s.suspended()
 		}
 	}
 	if err := s.q.RecordSuccessfulLogin(ctx, u.ID); err != nil {
@@ -225,7 +225,7 @@ func (s *AuthService) Authenticate(ctx context.Context, token, kind string) (*Pr
 		return nil, ErrAccountInactive
 	}
 	if !row.TenantActive && row.Role != model.RolePlatformAdmin {
-		return nil, ErrCompanySuspended
+		return nil, s.suspended()
 	}
 
 	now := s.now()
@@ -264,8 +264,16 @@ func (s *AuthService) Authenticate(ctx context.Context, token, kind string) (*Pr
 }
 
 // Logout ends the current session.
-func (s *AuthService) Logout(ctx context.Context, p *Principal) error {
-	return s.q.RevokeSession(ctx, p.SessionID)
+func (s *AuthService) Logout(ctx context.Context, p *Principal, ci ClientInfo) error {
+	if err := s.q.RevokeSession(ctx, p.SessionID); err != nil {
+		return err
+	}
+	source := SourceDashboard
+	if p.IsDriver() {
+		source = SourceApp
+	}
+	s.audit(ctx, s.q, p.Actor(source, ci.IP, ci.UserAgent), "logout", "user", p.UserID, nil, nil)
+	return nil
 }
 
 // Sessions lists the caller's active sessions.
@@ -407,6 +415,9 @@ func (s *AuthService) ResetCredential(ctx context.Context, p *Principal, userID 
 	}
 	if u.Role == model.RoleDriver && !p.CanManageFleet() || u.Role != model.RoleDriver && !p.CanManageCompany() {
 		return "", false, ErrUnauthorized
+	}
+	if u.AnonymisedAt.Valid {
+		return "", false, errAnonymised
 	}
 
 	var body string

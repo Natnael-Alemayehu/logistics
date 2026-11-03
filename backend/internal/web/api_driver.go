@@ -91,7 +91,7 @@ func (s *Server) apiDriverLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiDriverLogout(w http.ResponseWriter, r *http.Request) {
-	if err := s.svc.Auth.Logout(r.Context(), principal(r)); err != nil {
+	if err := s.svc.Auth.Logout(r.Context(), principal(r), clientInfo(r)); err != nil {
 		s.apiError(w, r, err)
 		return
 	}

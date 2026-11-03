@@ -19,12 +19,12 @@ perfect coverage. Drivers with feature phones report by SMS instead
 
 | For | Where | What they get |
 |---|---|---|
-| Dispatchers, fleet managers, admins | `/app` | A live fleet map with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences |
+| Dispatchers, fleet managers, admins | `/app` | A live fleet map with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences; a download of all the company's data; questions to the Menged team on the Help page |
 | Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) with a warning away from the drop-off, distance and direction to the drop-off, battery saver, settings that follow the driver to a new phone, and a sync indicator that shows what is still waiting to send and when the signal is weak |
 | Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
 | Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
 | Company admins | `/app/billing` | The plan and this month's usage, plan changes, printable invoices, payment by telebirr or CBE Birr, or bank transfer details |
-| The operator | `/app/platform` | Every company with its plan and activity, trial extensions, Enterprise terms, suspension; unpaid invoices, bank transfers to record, refunds to send, monthly recurring revenue |
+| The operator | `/app/platform` | Every company with its plan and activity, trial extensions, Enterprise terms, suspension and deletion; unpaid invoices, bank transfers to record, refunds to send, monthly recurring revenue; the companies' questions; every company's audit log; system health (database, background jobs, message queues, disk) |
 
 Companies sign up on their own, confirming the admin's phone with an SMS code,
 and either start a 14-day free trial or choose a plan and pay at once. Staff
@@ -68,6 +68,23 @@ suspend a company, which signs everyone out.
 Money that arrives for an invoice already paid or cancelled is not kept: the
 operator sees it under **Refunds to send** and records the refund once it is
 sent back.
+
+### Data
+
+- **Export.** A company admin downloads everything as one ZIP from
+  Settings: CSV files of shipments, their history, deliveries, people and
+  vehicles, with each delivery's signature and photos.
+- **Removing a person.** Once a driver or staff member is deactivated, an
+  admin can remove their details: the name becomes "Former driver" and the
+  phone, email and sign-in are erased, while their history stays.
+- **Retention.** Customer details, delivery photos and signatures are removed
+  from shipments that finished more than `RETAIN_SHIPMENT_DAYS` ago (365 by
+  default); the dates, route, driver and cargo stay for reports. GPS points
+  are kept 90 days, alerts 90 days, and texts and emails 180 days.
+- **Audit.** The audit log and shipment histories are append-only: a database
+  trigger rejects changes and deletions. Deleting a company, which only the
+  operator can do, is the exception: its data and media go, its invoices stay,
+  and one entry in the platform's own log records it.
 
 ## Architecture
 
