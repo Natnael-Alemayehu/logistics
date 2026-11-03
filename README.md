@@ -121,8 +121,12 @@ One Go binary serves everything:
   losing it. Customers can text STOP to opt out.
 - **Outside services have stand-ins.** SMS, email and payments default to
   providers that print what they would send in the server's terminal: codes,
-  links, invoices and payment prompts. A production deployment refuses to
-  start with them unless `ALLOW_MOCK_PROVIDERS=true`.
+  links and invoices, and to pages of the server that play telebirr's
+  checkout and CBE Birr. A production deployment refuses to start with them
+  unless `ALLOW_MOCK_PROVIDERS=true`.
+- **A provider sandbox** (`cmd/sandbox`) plays Ethio telecom's SMS gateway,
+  telebirr and CBE Birr as a separate service, so the real adapters can be
+  run against something that answers like the providers, faults included.
 - **Everything is embedded**: templates, static files and migrations are in the
   binary, which migrates the database on start.
 
@@ -136,12 +140,15 @@ delivery and SMS reporting don't depend on GPS.
 ```
 backend/
   cmd/server/          main: serve, migrate, seed
+  cmd/sandbox/         the provider sandbox: serve, keys
   internal/web/        HTTP: routes, middleware, handlers, templates/, static/
   internal/service/    shipments, status rules, sync, auth, SMS, email, billing, alerts, reports, jobs
   internal/model/      statuses, transitions, reasons, roles, plans and prices
   internal/db/         sqlc-generated queries (from sqlc/queries)
   internal/geo/        Ethiopian towns, distances, transit-time estimates
   internal/phone/      Ethiopian phone number normalisation
+  internal/sandbox/    the providers' side of the SMS, telebirr and CBE Birr contracts, with
+                       phones, wallets and faults (standard library only)
   migrations/          goose migrations, embedded
   pkg/                 SMS, email and payment providers, terminal stand-ins, storage (local or S3),
                        websocket hub, hashing
@@ -178,6 +185,47 @@ feature-phone driver, open Settings → Text messages and send
 `make dev` rebuilds on Go changes (with [air](https://github.com/air-verse/air)).
 Templates and static files are reloaded from disk on every request either way.
 
+### The provider sandbox
+
+The stand-ins live inside the app. The provider sandbox is a separate
+service that plays Ethio telecom's SMS gateway, telebirr and CBE Birr over
+HTTP, so the app runs its real adapters: tokens, signatures, callbacks,
+retries and lost notifications happen as they would with the providers. It
+plays the people too: phones that receive texts and reply, wallets with a
+balance, and payers who pay or cancel. No text reaches a phone and no money
+moves.
+
+```bash
+make sandbox       # terminal 1: the sandbox on http://localhost:8091
+make run-sandbox   # terminal 2: the app on :8080, its providers pointed at the sandbox
+```
+
+Give both the same `PORT` to move the app. They read `backend/sandbox.env`,
+so they agree on keys and logins, and the first run writes throwaway telebirr
+key pairs to `backend/sandbox-keys/`. Email is still printed in the app's
+terminal. Then:
+
+- Sign up, and read the code on the sandbox's phone page (`/phones/09…`).
+- Book a shipment for a driver, open the driver's phone and reply
+  `ET <ref> 1`.
+- **Pay with telebirr** on an invoice: the app sends you to telebirr's
+  checkout on the sandbox (any number, PIN `1234`), which brings you back.
+  Pay another invoice by reference from its **Pay from a sandbox phone** link.
+- On **Faults**, make the gateway go down or slow, bar numbers or put them
+  out of reach, and drop, repeat, delay or forge notifications and
+  confirmations. Calls a fault held back wait on the home page to be sent.
+- **Log** shows every call in both directions with its headers and bodies,
+  secrets masked.
+
+`docker compose --profile sandbox up sandbox` runs the sandbox in a container
+instead, for an app on the host. Tests and scripts drive it through a JSON
+API (faults, phones, texts, payments, held calls and the log; see
+`internal/sandbox/api.go`).
+
+The sandbox shares no code with the app: each side implements the contracts
+on its own, so a mistake on either side shows up as a refused call rather
+than two copies agreeing.
+
 ### Tests
 
 ```bash
@@ -186,9 +234,10 @@ make test-integration   # end-to-end: signup → book → driver sync → POD �
                         # replayed syncs, conflicts, tenant isolation, roles, SMS commands,
                         # accounts, billing from trial to renewal, upgrade and refund, and
                         # dispatch tools: bulk assign, saved views, broadcasts, alert emails,
-                        # route deviation, location history and report filters, and the
+                        # route deviation, location history and report filters, the
                         # driver app: settings across phones, deliveries away from the
-                        # drop-off, suggested recipients
+                        # drop-off, suggested recipients, and the real SMS, telebirr and
+                        # CBE Birr adapters against the provider sandbox, with its faults
 ```
 
 The integration tests create a scratch database on the server from `make db`
@@ -218,11 +267,40 @@ The maps' satellite view uses Esri World Imagery, which needs an ArcGIS
 licence for commercial use. Point `MAP_SATELLITE_URL` at your own imagery
 provider, or set it to `off`.
 
-Point your SMS provider's inbound webhook at
-`https://DOMAIN/api/v1/sms/inbound?secret=SMS_INBOUND_SECRET`. Back up with
-`scripts/backup.sh`.
+Point your SMS provider's webhooks at `https://DOMAIN/api/v1/sms/inbound`
+(texts from phones) and `https://DOMAIN/api/v1/sms/status` (delivery
+reports), with `SMS_INBOUND_SECRET` in an `X-Webhook-Secret` header or a
+`secret` parameter. Back up with `scripts/backup.sh`.
 
 Health checks: `/healthz` (process up) and `/readyz` (database reachable).
+
+### Connecting the real providers
+
+The adapters follow what each provider publishes, and the sandbox plays the
+same contract. What to settle when the credentials arrive:
+
+| Provider | Contract | Settle at onboarding |
+|---|---|---|
+| telebirr | H5 C2B web checkout as published: token, preOrder, checkout, notify, queryOrder | the signature (RSA-PSS with SHA-256 is assumed, as in the maintained SDKs), the `order_status` values queryOrder returns (one table in `pkg/payments/telebirr.go`), and whether notifications are retried |
+| CBE Birr | none published: pay by reference, with query, validation and confirmation callbacks behind Basic authentication, as in `pkg/payments/cbebirr.go` | the field names, result codes and login, or adapt that file to CBE's |
+| Ethio telecom | none published: token, send, delivery reports and inbound texts, as in `pkg/sms/ethiotelecom.go` | the whole contract |
+
+Then:
+
+1. Set the providers' settings (see `.env.example`): telebirr's API and
+   checkout URLs, app and merchant IDs, app secret and the two key files;
+   CBE Birr's merchant ID and callback login; Ethio telecom's API URL, key
+   and sender ID. Unset `SANDBOX_URL`.
+2. Give the providers the app's addresses: telebirr is sent
+   `https://DOMAIN/api/v1/payments/telebirr/notify` with each order; CBE
+   Birr calls `https://DOMAIN/api/v1/payments/cbebirr/query`, `/validation`
+   and `/confirmation`; Ethio telecom posts to the SMS webhooks above.
+3. Where a provider's contract differs from ours, change the adapter and the
+   sandbox's side (`internal/sandbox/sms.go`, `telebirr.go`, `cbebirr.go`)
+   together, and run `make test-integration`: its sandbox tests run the real
+   adapters against the sandbox.
+4. Pay a small invoice with each provider, and send a text to a driver's
+   phone, before opening sign-ups.
 
 ## Documents
 

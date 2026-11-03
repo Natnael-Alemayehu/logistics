@@ -157,11 +157,24 @@ type env struct {
 	srv   *httptest.Server
 	svc   *service.Services
 	inbox *console.Console
+	// texts, when set, are the texts a phone has received, for an app whose
+	// texts go to phones other than the inbox's.
+	texts func(phone string) []console.Item
 	seen  map[string]time.Time // newest message received, by kind and recipient
 	files string               // where uploaded images are stored
 }
 
-func newEnv(t *testing.T) *env {
+// setup is what a test can change before the app starts: its settings and
+// its providers. base is the app's address.
+type setup struct {
+	base     string
+	cfg      *config.Config
+	sms      service.SMSSender
+	payments []payments.Provider
+	texts    func(phone string) []console.Item
+}
+
+func newEnv(t *testing.T, options ...func(*setup)) *env {
 	t.Helper()
 	ts := httptest.NewUnstartedServer(nil)
 	base := "http://" + ts.Listener.Addr().String()
@@ -188,9 +201,16 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s := &setup{
+		base: base, cfg: cfg, sms: fakeSMS{inbox},
+		payments: []payments.Provider{payments.NewMock("telebirr", "telebirr", cfg.Secret, checkout), cbe},
+	}
+	for _, o := range options {
+		o(s)
+	}
 	svc := service.New(service.Deps{
-		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: fakeSMS{inbox}, Mail: fakeMail{inbox},
-		Payments: []payments.Provider{payments.NewMock("telebirr", "telebirr", cfg.Secret, checkout), cbe},
+		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: s.sms, Mail: fakeMail{inbox},
+		Payments: s.payments,
 		Settings: service.Settings{
 			AppName: cfg.AppName, BaseURL: base, Location: tz, Secret: cfg.Secret, SMSNumber: "6060",
 			SupportEmail: "support@menged.test", BankDetails: "Test Bank, account 123",
@@ -207,7 +227,7 @@ func newEnv(t *testing.T) *env {
 	ts.Config.Handler = app.Handler()
 	ts.Start()
 	t.Cleanup(ts.Close)
-	return &env{t: t, srv: ts, svc: svc, inbox: inbox, seen: map[string]time.Time{}, files: cfg.StoragePath}
+	return &env{t: t, srv: ts, svc: svc, inbox: inbox, texts: s.texts, seen: map[string]time.Time{}, files: cfg.StoragePath}
 }
 
 // received waits for an SMS or email to a recipient that mentions text and
@@ -217,7 +237,11 @@ func (e *env) received(kind, to, text string) console.Item {
 	key := kind + " " + to
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		for _, it := range e.inbox.Items() {
+		items := e.inbox.Items()
+		if kind == "sms" && e.texts != nil {
+			items = e.texts(to)
+		}
+		for _, it := range items {
 			if it.Kind == kind && it.To == to && it.At.After(e.seen[key]) && strings.Contains(it.Title+"\n"+it.Body, text) {
 				e.seen[key] = it.At
 				return it

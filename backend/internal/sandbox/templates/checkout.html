@@ -1,0 +1,34 @@
+{{define "content"}}{{$d := .Data}}{{$o := $d.Order}}
+<div class="checkout">
+  <div class="checkout-card">
+    <p class="provider"><span class="wordmark">telebirr</span> <span class="badge">Sandbox</span></p>
+    {{if $d.Problem}}
+    <h1>This payment can't be opened</h1>
+    <p class="banner bad" role="alert">{{$d.Problem}}</p>
+    {{else}}
+    <p class="small muted">Pay {{.AppName}}</p>
+    <p class="amount">ETB {{birr $o.Amount}}</p>
+    <p class="title">{{$o.Title}}</p>
+    <dl class="facts small">
+      <div><dt>Merchant</dt><dd>{{.AppName}} <span class="muted">({{$o.MerchCode}})</span></dd></div>
+      <div><dt>Order</dt><dd class="mono">{{$o.MerchOrderID}}</dd></div>
+    </dl>
+    {{if eq $o.Status "Pending"}}
+    {{with $d.Error}}<p class="banner bad" role="alert">{{.}}</p>{{end}}
+    <form class="stack" method="post" action="/telebirr/checkout/{{$o.PrepayID}}">
+      <label>telebirr number <input name="phone" value="{{$d.Phone}}" inputmode="tel" autocomplete="tel" required placeholder="0911234567"></label>
+      <label>PIN <input name="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="6" required></label>
+      <button class="btn primary block" name="action" value="pay">Pay ETB {{birr $o.Amount}}</button>
+    </form>
+    <form method="post" action="/telebirr/checkout/{{$o.PrepayID}}">
+      <button class="btn ghost block" name="action" value="cancel">Cancel and go back</button>
+    </form>
+    <p class="small muted hint">Sandbox: any number pays from its phone's wallet, and the PIN is {{.PIN}}. The order expires at {{clock $o.Expires}}.</p>
+    {{else}}
+    <h1 class="state-{{$o.Status}}">{{orderState $o.Status}}</h1>
+    {{with $o.RedirectURL}}<a class="btn primary block" href="{{.}}">Back to {{$.AppName}}</a>{{end}}
+    {{end}}
+    {{end}}
+  </div>
+</div>
+{{end}}
