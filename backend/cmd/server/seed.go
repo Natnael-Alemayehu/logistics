@@ -307,17 +307,15 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 		// A trail of GPS points from the pickup to where the truck is now.
 		hours := geo.EstimateTransit(*sh.OriginLat, *sh.OriginLng, *sh.DestinationLat, *sh.DestinationLng, nil).Hours() * b.progress
 		start := now.Add(-time.Duration((hours + 0.5) * float64(time.Hour)))
-		if _, err := pool.Exec(ctx, `UPDATE shipments SET picked_up_at = $2::timestamptz, created_at = $2::timestamptz - interval '3 hours' WHERE id = $1`, sh.ID, start); err != nil {
-			return err
-		}
-		if _, err := pool.Exec(ctx, `UPDATE shipment_events SET occurred_at = CASE
+		if err := rewriteHistory(ctx, pool,
+			stmt{`UPDATE shipments SET picked_up_at = $2::timestamptz, created_at = $2::timestamptz - interval '3 hours' WHERE id = $1`, []any{sh.ID, start}},
+			stmt{`UPDATE shipment_events SET occurred_at = CASE
 			    WHEN event_type IN ('created', 'assigned') THEN $2::timestamptz - interval '3 hours'
 			    WHEN to_status = 'in_transit' THEN $2::timestamptz
 			    ELSE occurred_at END
-			  WHERE shipment_id = $1`, sh.ID, start); err != nil {
-			return err
-		}
-		if _, err := pool.Exec(ctx, `UPDATE shipment_events SET created_at = occurred_at WHERE shipment_id = $1`, sh.ID); err != nil {
+			  WHERE shipment_id = $1`, []any{sh.ID, start}},
+			stmt{`UPDATE shipment_events SET created_at = occurred_at WHERE shipment_id = $1`, []any{sh.ID}},
+		); err != nil {
 			return err
 		}
 		var locs []service.SyncLocation
@@ -367,10 +365,7 @@ func backdate(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, created, 
 		t := delivered.Add(90 * time.Minute)
 		confirmedAt = &t
 	}
-	stmts := []struct {
-		sql  string
-		args []any
-	}{
+	stmts := []stmt{
 		{`UPDATE shipments SET created_at = $2::timestamptz, picked_up_at = $3, estimated_delivery = $4, actual_delivery = $5::timestamptz,
 		     status_changed_at = $5::timestamptz, updated_at = $5::timestamptz, customer_confirmed_at = $6, eta_manual = false,
 		     tracking_number = 'ET-' || to_char($2::timestamptz AT TIME ZONE 'Africa/Addis_Ababa', 'YYYYMMDD') || substr(tracking_number, 12)
@@ -384,10 +379,8 @@ func backdate(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, created, 
 		{`UPDATE shipment_events SET created_at = occurred_at WHERE shipment_id = $1`, []any{id}},
 		{`UPDATE proof_of_deliveries SET recorded_at = $2, synced_at = $2 WHERE shipment_id = $1`, []any{id, delivered}},
 	}
-	for _, s := range stmts {
-		if _, err := pool.Exec(ctx, s.sql, s.args...); err != nil {
-			return fmt.Errorf("backdate: %w", err)
-		}
+	if err := rewriteHistory(ctx, pool, stmts...); err != nil {
+		return fmt.Errorf("backdate: %w", err)
 	}
 	if confirmed {
 		_, err := pool.Exec(ctx, `INSERT INTO shipment_events (tenant_id, shipment_id, event_type, actor_name, source, occurred_at, created_at)
@@ -397,6 +390,31 @@ func backdate(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, created, 
 		}
 	}
 	return nil
+}
+
+type stmt struct {
+	sql  string
+	args []any
+}
+
+// rewriteHistory moves demo shipments' timelines into the past. The timeline
+// is append-only (the append_only trigger), so the statements run in a
+// transaction allowed to change it.
+func rewriteHistory(ctx context.Context, pool *pgxpool.Pool, stmts ...stmt) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // a no-op after commit
+	if _, err := tx.Exec(ctx, "SELECT set_config('menged.purge', 'on', true)"); err != nil {
+		return err
+	}
+	for _, s := range stmts {
+		if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func jitter(rng *rand.Rand, lat, lng, deg float64) (float64, float64) {

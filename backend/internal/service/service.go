@@ -42,6 +42,9 @@ type Settings struct {
 	// BankDetails tells companies where to send a bank transfer; empty when
 	// transfers aren't accepted.
 	BankDetails string
+	// RetainShipments is how long a finished shipment keeps its customer
+	// and delivery details (FR-041). Zero means a year.
+	RetainShipments time.Duration
 }
 
 // Publisher delivers live updates to dashboards. The WebSocket hub
@@ -82,6 +85,9 @@ type Services struct {
 	Jobs      *Jobs
 	Audit     *AuditService
 	Billing   *BillingService
+	Data      *DataService
+	Support   *SupportService
+	Health    *HealthService
 }
 
 // New wires the services together.
@@ -91,6 +97,9 @@ func New(d Deps) *Services {
 	}
 	if d.Settings.Location == nil {
 		d.Settings.Location = time.UTC
+	}
+	if d.Settings.RetainShipments <= 0 {
+		d.Settings.RetainShipments = 365 * 24 * time.Hour
 	}
 	if d.Publisher == nil {
 		d.Publisher = nopPublisher{}
@@ -116,7 +125,10 @@ func New(d Deps) *Services {
 	s.Reports = &ReportService{core: c}
 	s.Tracking = &TrackingService{core: c}
 	s.Sync = &SyncService{core: c, shipments: s.Shipments, media: s.Media}
-	s.Jobs = &Jobs{core: c, billing: s.Billing}
+	s.Data = &DataService{core: c, media: s.Media}
+	s.Support = &SupportService{core: c}
+	s.Health = &HealthService{core: c}
+	s.Jobs = &Jobs{core: c, billing: s.Billing, data: s.Data}
 	return s
 }
 

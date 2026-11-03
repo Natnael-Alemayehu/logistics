@@ -94,7 +94,7 @@
         </ul>
         {{if .Blocked}}<p class="small text-bad">{{.Blocked}}</p>{{end}}
         {{if not .Offered}}
-          <a class="btn btn-block" href="mailto:{{$.App.SupportEmail}}?subject=Enterprise%20plan">Ask for an offer</a>
+          <a class="btn btn-block" href="/app/help/new?subject=Enterprise+plan">Ask for an offer</a>
         {{else if .Current}}
           <p class="small muted plan-note">Current plan</p>
         {{else if .Pending}}

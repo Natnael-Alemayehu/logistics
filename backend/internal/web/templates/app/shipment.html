@@ -10,8 +10,8 @@
   <div class="actions">
     {{if $d.CanEdit}}<a class="btn" href="/app/shipments/{{$id}}/edit">Edit</a>{{end}}
     <a class="btn" href="/app/shipments/{{$id}}/waybill" target="_blank" rel="noopener">{{template "icon" "print"}} Waybill</a>
-    <a class="btn" href="/app/shipments/new?copy={{$id}}" title="Book a new shipment with the same details">Book again</a>
-    {{if $d.CanReopen}}
+    {{if not $s.AnonymisedAt.Valid}}<a class="btn" href="/app/shipments/new?copy={{$id}}" title="Book a new shipment with the same details">Book again</a>{{end}}
+    {{if and $d.CanReopen (not $s.AnonymisedAt.Valid)}}
     <form method="post" action="/app/shipments/{{$id}}/reopen"><button class="btn" type="submit">Reopen</button></form>
     {{end}}
     {{if $d.CanCancel}}
@@ -33,6 +33,9 @@
   </div>
 </div>
 
+{{if $s.AnonymisedAt.Valid}}
+<p class="banner info">The customer's and recipient's details, signatures and photos were removed {{date $s.AnonymisedAt}}, at the end of the keeping period. The dates, route, driver and cargo stay for reports.</p>
+{{end}}
 {{if $d.Next}}
 <section class="card status-bar">
   <p class="status-bar-label">Update status <span class="muted small">— normally the driver does this from the app</span></p>
@@ -86,10 +89,13 @@
         {{if $s.DestinationPrecise}}<span class="small muted">{{template "icon" "pin"}} Exact drop-off pinned</span>{{end}}
       </div>
       <div class="route-end">
-        <span class="route-label">{{if $s.ActualDelivery.Valid}}Delivered{{else}}Due{{end}}</span>
+        <span class="route-label">{{if $s.ActualDelivery.Valid}}Delivered{{else if eq $s.Status "cancelled"}}Cancelled{{else}}Due{{end}}</span>
         {{if $s.ActualDelivery.Valid}}
           <strong>{{when $s.ActualDelivery}}</strong>
           {{if $s.EstimatedDelivery.Valid}}<span class="small {{if $s.ActualDelivery.Time.After $s.EstimatedDelivery.Time}}text-bad{{else}}text-good{{end}}">{{if $s.ActualDelivery.Time.After $s.EstimatedDelivery.Time}}Late{{else}}On time{{end}} · due {{when $s.EstimatedDelivery}}</span>{{end}}
+        {{else if eq $s.Status "cancelled"}}
+          <strong>{{if $s.StatusChangedAt.Valid}}{{when $s.StatusChangedAt}}{{else}}—{{end}}</strong>
+          {{if $s.EstimatedDelivery.Valid}}<span class="small muted">was due {{when $s.EstimatedDelivery}}</span>{{end}}
         {{else if $s.EstimatedDelivery.Valid}}
           <strong class="{{if late $s.EstimatedDelivery $s.Status}}text-bad{{end}}">{{when $s.EstimatedDelivery}}</strong>
           <span class="small muted">{{until $s.EstimatedDelivery}}{{if $s.EtaManual}} · set by the office{{else}} · estimated{{end}}</span>

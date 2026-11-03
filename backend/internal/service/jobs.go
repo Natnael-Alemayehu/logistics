@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 type Jobs struct {
 	*core
 	billing *BillingService
+	data    *DataService
 }
 
 const (
@@ -45,15 +47,17 @@ func (j *Jobs) Run(ctx context.Context) {
 	for {
 		retention := time.Since(lastRetention) > time.Hour
 		usage := time.Since(lastUsage) > usageEvery
-		if err := j.once(ctx, retention, usage); err != nil && ctx.Err() == nil {
+		ran, err := j.once(ctx, retention, usage)
+		if err != nil && ctx.Err() == nil {
 			j.log.Error().Err(err).Msg("periodic jobs")
-		} else {
-			if retention {
-				lastRetention = time.Now()
-			}
-			if usage {
-				lastUsage = time.Now()
-			}
+		}
+		// A failed run is retried at its next turn, not every minute: the
+		// health panel shows the error meanwhile.
+		if ran && retention {
+			lastRetention = time.Now()
+		}
+		if ran && usage {
+			lastUsage = time.Now()
 		}
 		select {
 		case <-ctx.Done():
@@ -63,52 +67,43 @@ func (j *Jobs) Run(ctx context.Context) {
 	}
 }
 
-func (j *Jobs) once(ctx context.Context, retention, usage bool) error {
+// once runs every job due, each on its own: one failing doesn't hold up the
+// others. ran is false when another replica holds the lock.
+func (j *Jobs) once(ctx context.Context, retention, usage bool) (ran bool, err error) {
 	tx, err := j.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // releases the lock
 	var got bool
 	if err := tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock($1)", jobsLockKey).Scan(&got); err != nil {
-		return err
+		return false, err
 	}
 	if !got {
-		return nil
+		return false, nil
 	}
 
-	if err := j.CheckDrivers(ctx); err != nil {
-		return fmt.Errorf("driver check: %w", err)
-	}
-	if err := j.CheckETAs(ctx); err != nil {
-		return fmt.Errorf("eta check: %w", err)
-	}
-	if err := j.CheckPickups(ctx); err != nil {
-		return fmt.Errorf("pickup check: %w", err)
-	}
-	if err := j.CheckRoutes(ctx); err != nil {
-		return fmt.Errorf("route check: %w", err)
-	}
-	if err := j.q.RequeueStuckSMS(ctx); err != nil {
-		return fmt.Errorf("requeue sms: %w", err)
-	}
-	if err := j.q.RequeueStuckEmails(ctx); err != nil {
-		return fmt.Errorf("requeue email: %w", err)
-	}
-	if err := j.billing.Run(ctx); err != nil {
-		return fmt.Errorf("billing: %w", err)
-	}
-	if usage {
-		if err := j.billing.CheckUsage(ctx); err != nil {
-			return fmt.Errorf("plan limits: %w", err)
+	var errs []error
+	run := func(name string, fn func(context.Context) error) {
+		if err := j.record(ctx, name, fn); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 		}
+	}
+	run("driver_check", j.CheckDrivers)
+	run("eta_check", j.CheckETAs)
+	run("pickup_check", j.CheckPickups)
+	run("route_check", j.CheckRoutes)
+	run("outbox_requeue", func(ctx context.Context) error {
+		return errors.Join(j.q.RequeueStuckSMS(ctx), j.q.RequeueStuckEmails(ctx))
+	})
+	run("billing", j.billing.Run)
+	if usage {
+		run("plan_limits", j.billing.CheckUsage)
 	}
 	if retention {
-		if err := j.Retention(ctx); err != nil {
-			return fmt.Errorf("retention: %w", err)
-		}
+		run("retention", j.Retention)
 	}
-	return nil
+	return true, errors.Join(errs...)
 }
 
 // CheckDrivers alerts on drivers carrying cargo who have not been heard from
@@ -190,9 +185,15 @@ func (j *Jobs) CheckPickups(ctx context.Context) error {
 	})
 }
 
-// Retention deletes data past its keeping period (NFR data retention).
+// Retention deletes data past its keeping period and removes customers'
+// details from shipments finished more than a year ago (FR-041).
 func (j *Jobs) Retention(ctx context.Context) error {
 	now := j.now()
+	if n, err := j.data.AnonymiseFinished(ctx, now.Add(-j.cfg.RetainShipments)); err != nil {
+		return err
+	} else if n > 0 {
+		j.log.Info().Int("shipments", n).Msg("removed customer details from old shipments")
+	}
 	if err := j.q.DeleteOldTrackingEvents(ctx, toTimestamp(now.Add(-retainTracking))); err != nil {
 		return err
 	}

@@ -295,6 +295,8 @@ legend + * { clear: both; }
 .card-foot { padding: 10px 18px; margin: 0; border-top: 1px solid var(--border); }
 .card.empty { text-align: center; padding: 44px 24px; }
 .card.empty p { max-width: 520px; margin-left: auto; margin-right: auto; }
+.card-danger { border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); }
+.card.stack > h2 { margin: 0; }
 .grid-dash { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: 18px; align-items: start; }
 .grid-detail { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 18px; align-items: start; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
@@ -480,6 +482,13 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .tl-note { color: var(--text-2); font-size: 0.9rem; font-style: italic; overflow-wrap: anywhere; }
 .tl-meta { color: var(--muted); font-size: 0.8rem; }
 
+/* ---------- support tickets ---------- */
+.thread { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 10px; }
+.msg { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
+.msg-platform { background: var(--accent-soft); border-color: transparent; }
+.msg-meta { margin: 0 0 4px; font-size: 0.88rem; }
+.msg-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* ---------- shipment page ---------- */
 .status-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; }
 .status-bar-label { margin: 0; font-weight: 600; }
@@ -501,7 +510,7 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .facts-2 { grid-template-columns: 1fr 1fr; gap: 16px; }
 .facts-3 { grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.facts-2 > div, .facts-3 > div { grid-template-columns: 1fr; gap: 2px; }
+.facts-2 > div, .facts-3 > div { grid-template-columns: 1fr; gap: 2px; align-content: start; }
 .facts-2 .span-2 { grid-column: span 2; }
 .locations > summary { list-style: none; cursor: pointer; padding: 14px 18px; margin: 0; }
 .locations > summary::-webkit-details-marker { display: none; }

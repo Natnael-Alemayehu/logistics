@@ -1,0 +1,43 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <h1>Help</h1>
+    <p class="muted">Questions to the {{.App.Name}} team. You get an email each time they answer.</p>
+  </div>
+  <div class="actions"><a class="btn btn-primary" href="/app/help/new">+ Ask a question</a></div>
+</div>
+{{if $d.Tickets}}
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table rows-link">
+  <thead><tr><th>Question</th><th>Status</th><th>Asked by</th><th class="num">Last update</th></tr></thead>
+  <tbody>
+  {{range $d.Tickets}}{{$href := printf "/app/help/%s" (uuid .ID)}}
+  <tr data-href="{{$href}}" {{if eq .Status "closed"}}class="is-muted"{{end}}>
+    <td><a href="{{$href}}"><strong>{{.Subject}}</strong></a><div class="small muted">#{{.Number}} · {{.Messages}} {{if eq .Messages 1}}message{{else}}messages{{end}}</div></td>
+    <td>{{template "ticket-status" .Status}}</td>
+    <td>{{or .OpenedByName "—"}}</td>
+    <td class="num nowrap">{{ago .UpdatedAt}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{else}}
+<section class="card empty">
+  <h2>No questions yet</h2>
+  <p class="muted">Stuck, found something wrong, or need a feature? Ask here. The conversation stays on this page and each answer is emailed to you.</p>
+  <p><a class="btn btn-primary" href="/app/help/new">Ask a question</a></p>
+</section>
+{{end}}
+<section class="card">
+  <h2>Quick answers</h2>
+  <dl class="facts facts-2">
+    <div><dt>A driver forgot their PIN</dt><dd>They can reset it from the sign-in screen of the driver app with a code texted to their phone, or a fleet manager can issue a temporary PIN from the driver's page.</dd></div>
+    <div><dt>A driver has no mobile data</dt><dd>The app keeps working offline and syncs later. A driver can also text updates to {{.App.SMSNumber}}: the text sent with each assignment says what to reply.</dd></div>
+    <div><dt>What did the customer receive?</dt><dd>An administrator can see every text sent and received under Settings → Text messages.</dd></div>
+    <div><dt>Who changed something?</dt><dd>Each shipment's history lists every change and who made it. An administrator can also see sign-ins and account changes in the audit log.</dd></div>
+  </dl>
+</section>
+{{end}}

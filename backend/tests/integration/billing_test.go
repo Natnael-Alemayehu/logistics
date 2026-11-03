@@ -529,7 +529,7 @@ func TestEnterpriseTerms(t *testing.T) {
 	tenant := office.tenant()
 	exec(t, `UPDATE tenants SET trial_ends_at = NOW() - INTERVAL '1 minute' WHERE id = $1`, tenant)
 
-	if msg, failed := office.result("/app/billing/plan", url.Values{"plan": {"enterprise"}, "cycle": {"monthly"}}); !failed || !strings.Contains(msg, "support@menged.test") {
+	if msg, failed := office.result("/app/billing/plan", url.Values{"plan": {"enterprise"}, "cycle": {"monthly"}}); !failed || !strings.Contains(msg, "Help page") {
 		t.Errorf("Enterprise without an offer: %q", msg)
 	}
 	if msg, failed := operator.result("/app/platform/tenants/"+tenant+"/offer", url.Values{"price": {"30,000"}, "max_drivers": {"120"}, "sms_quota": {"20000"}}); failed {

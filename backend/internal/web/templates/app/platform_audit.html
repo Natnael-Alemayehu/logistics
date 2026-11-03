@@ -1,0 +1,56 @@
+{{define "content"}}{{$d := .Data}}{{$q := .Query}}
+<div class="page-head">
+  <div>
+    <h1>Audit log</h1>
+    <p class="muted">Every company's sign-ins and account changes, and what the platform did to companies. Entries can't be changed or removed.</p>
+  </div>
+</div>
+<form class="card report-filters" method="get" action="/app/platform/audit">
+  <div class="filter-grid">
+    <label>Company
+      <select name="company">
+        <option value="">Every company</option>
+        {{range $d.Tenants}}<option value="{{uuid .ID}}" {{if eq (uuid .ID) ($q.Get "company")}}selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <label>Action
+      <select name="action">
+        <option value="">Any action</option>
+        {{range $d.Actions}}<option value="{{.Code}}" {{if eq .Code ($q.Get "action")}}selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </label>
+    <label>From <input type="date" name="from" value="{{$q.Get "from"}}"></label>
+    <label>To <input type="date" name="to" value="{{$q.Get "to"}}"></label>
+    <label>IP address <input name="ip" value="{{$q.Get "ip"}}" inputmode="decimal" autocomplete="off" placeholder="e.g. 196.188.0.1"></label>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Search</button>
+      {{if or ($q.Get "company") ($q.Get "action") ($q.Get "from") ($q.Get "to") ($q.Get "ip")}}<a class="btn btn-ghost" href="/app/platform/audit">Clear</a>{{end}}
+    </div>
+  </div>
+</form>
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>When</th><th>Company</th><th>Who</th><th>What</th><th>Details</th><th>From</th></tr></thead>
+  <tbody>
+  {{range $d.Rows}}
+  <tr>
+    <td class="nowrap">{{when .At}}</td>
+    <td>{{if .CompanyLink}}<a href="{{.CompanyLink}}">{{.Company}}</a>{{else}}{{or .Company "—"}}{{end}}</td>
+    <td>{{.Who}}</td>
+    <td>{{.Action}}{{if .Entity}} · {{if .Link}}<a href="{{.Link}}">{{.Entity}}</a>{{else}}{{.Entity}}{{end}}{{end}}</td>
+    <td class="small">{{range .Changes}}<div><span class="muted">{{.Field}}:</span> {{with .From}}<s>{{truncate 40 .}}</s> → {{end}}{{truncate 60 .To}}</div>{{end}}</td>
+    <td class="small muted mono">{{with .IP}}<a href="/app/platform/audit?ip={{.}}" title="Everything from this address">{{.}}</a>{{end}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="6" class="muted">Nothing matches.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+<nav class="pager">
+  {{with $d.Prev}}<a class="btn btn-sm" href="{{.}}">← Newer</a>{{end}}
+  {{with $d.Next}}<a class="btn btn-sm" href="{{.}}">Older →</a>{{end}}
+</nav>
+{{end}}

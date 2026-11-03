@@ -226,6 +226,7 @@ func buildServices(cfg *config.Config, pool *pgxpool.Pool, pub service.Publisher
 			AppName: cfg.AppName, BaseURL: cfg.PublicURL, Location: cfg.Timezone,
 			Secret: cfg.Secret, SMSNumber: cfg.SMSNumber,
 			SupportEmail: cfg.SupportEmail, BankDetails: cfg.BankDetails,
+			RetainShipments: time.Duration(cfg.RetainShipmentDays) * 24 * time.Hour,
 		},
 	}), nil
 }

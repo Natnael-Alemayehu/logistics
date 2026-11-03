@@ -82,6 +82,12 @@
     </dl>
     <p><a class="btn" href="/app/billing">Plans, invoices and payments</a></p>
   </section>
+  <section class="card" id="data">
+    <h2>Your data</h2>
+    <p class="small">Download everything {{.App.Name}} holds for {{.Me.TenantName}}: shipments and their history, deliveries with signatures and photos, people and vehicles, as spreadsheets in one ZIP file.</p>
+    <form method="post" action="/app/settings/export"><button class="btn" type="submit">{{template "icon" "download"}} Download all data</button></form>
+    <p class="small muted">Customer and delivery details are kept for {{.Data.RetainDays}} days after a shipment finishes, then removed. Counts in reports stay. Each download is recorded in the <a href="/app/audit">audit log</a>.</p>
+  </section>
 </aside>
 </div>
 {{end}}

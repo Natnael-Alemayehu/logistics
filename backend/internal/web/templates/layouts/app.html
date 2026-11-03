@@ -47,6 +47,9 @@
   {{if .Me}}{{if .Me.IsPlatformAdmin}}
   <a href="/app/platform" {{if eq .Nav "platform"}}aria-current="page"{{end}}>{{template "icon" "building"}}Companies</a>
   <a href="/app/platform/billing" {{if eq .Nav "platform-billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
+  <a href="/app/platform/support" {{if eq .Nav "platform-support"}}aria-current="page"{{end}}>{{template "icon" "chat"}}Support{{if .Waiting}}<span class="pill" title="{{.Waiting}} waiting for an answer">{{.Waiting}}</span>{{end}}</a>
+  <a href="/app/platform/audit" {{if eq .Nav "platform-audit"}}aria-current="page"{{end}}>{{template "icon" "shield"}}Audit log</a>
+  <a href="/app/platform/health" {{if eq .Nav "platform-health"}}aria-current="page"{{end}}>{{template "icon" "pulse"}}System health</a>
   {{else if not .Me.MustChangeCredential}}
   <a href="/app" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>{{template "icon" "home"}}Overview</a>
   <a href="/app/shipments" {{if eq .Nav "shipments"}}aria-current="page"{{end}}>{{template "icon" "box"}}Shipments</a>
@@ -60,6 +63,7 @@
   <a href="/app/billing" {{if eq .Nav "billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
   <a href="/app/settings" {{if eq .Nav "settings"}}aria-current="page"{{end}}>{{template "icon" "gear"}}Settings</a>
   {{end}}
+  <a href="/app/help" {{if eq .Nav "help"}}aria-current="page"{{end}}>{{template "icon" "help"}}Help</a>
   <div class="nav-foot">
     <a class="btn btn-primary btn-block" href="/app/shipments/new">+ New shipment</a>
     <p class="muted small">Drivers use <a href="/driver/" target="_blank" rel="noopener">{{bareURL .App.PublicURL}}/driver</a></p>

@@ -120,7 +120,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, password string,
 			return errLinkExpired
 		}
 		if !t.TenantActive {
-			return ErrCompanySuspended
+			return s.suspended()
 		}
 		if err := q.ResetUserPassword(ctx, db.ResetUserPasswordParams{ID: t.UserID, TenantID: t.TenantID, PasswordHash: &h}); err != nil {
 			return err

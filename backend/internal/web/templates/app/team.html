@@ -13,12 +13,13 @@
   <tbody>
   {{range $d.Staff}}{{$id := uuid .ID}}
   <tr {{if not .IsActive}}class="is-muted"{{end}}>
-    <td><strong>{{.FullName}}</strong>{{if eq .ID $.Me.UserID}} <span class="badge">You</span>{{end}}{{if not .IsActive}} <span class="badge">Deactivated</span>{{end}}{{if .PasswordResetRequired}} <span class="badge s-delayed" title="Must choose a new password at next sign-in">Temporary password</span>{{end}}</td>
+    <td><strong>{{.FullName}}</strong>{{if eq .ID $.Me.UserID}} <span class="badge">You</span>{{end}}{{if .AnonymisedAt.Valid}} <span class="badge">Details removed</span>{{else if not .IsActive}} <span class="badge">Deactivated</span>{{end}}{{if .PasswordResetRequired}} <span class="badge s-delayed" title="Must choose a new password at next sign-in">Temporary password</span>{{end}}</td>
     <td>{{roleLabel .Role}}</td>
     <td>{{with .Email}}{{.}}{{end}}{{if and .Email .Phone}}<br>{{end}}<span class="muted">{{str .Phone}}</span></td>
     <td>{{if .LastLoginAt.Valid}}{{ago .LastLoginAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
     <td class="num">
-      {{if ne .ID $.Me.UserID}}
+      {{if .AnonymisedAt.Valid}}<span class="muted small">Left · details removed {{date .AnonymisedAt}}</span>
+      {{else if ne .ID $.Me.UserID}}
       <div class="row-actions">
         <a class="btn btn-sm btn-ghost" href="/app/team/{{$id}}/edit">Edit</a>
         <details class="pop pop-right">
@@ -29,6 +30,13 @@
               <input type="hidden" name="active" value="{{if .IsActive}}false{{else}}true{{end}}">
               <button class="btn btn-sm btn-block {{if .IsActive}}btn-danger-ghost{{end}}" type="submit">{{if .IsActive}}Deactivate{{else}}Reactivate{{end}}</button>
             </form>
+            {{if not .IsActive}}
+            <form method="post" action="/app/team/{{$id}}/anonymise" class="stack">
+              <p class="hint">Remove their name, email and phone for good. What they did stays in the history, under "Former staff member".</p>
+              <label class="check small"><input type="checkbox" required> I understand this can't be undone</label>
+              <button class="btn btn-sm btn-block btn-danger-ghost" type="submit">Remove their details</button>
+            </form>
+            {{end}}
           </div>
         </details>
       </div>
