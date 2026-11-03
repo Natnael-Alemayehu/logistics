@@ -40,6 +40,10 @@ type Querier interface {
 	// A person who has left: what identifies them goes, their history stays
 	// (AC-041.6).
 	AnonymiseUser(ctx context.Context, arg AnonymiseUserParams) (pgtype.UUID, error)
+	// Notes that the provider is being asked how a payment ended, unless it was
+	// asked since checked_before. No row means another check is under way or
+	// was recent.
+	ClaimPaymentCheck(ctx context.Context, arg ClaimPaymentCheckParams) (Payment, error)
 	// The same five-minute lease as ClaimQueuedSMS.
 	ClaimQueuedEmails(ctx context.Context, limit int32) ([]Email, error)
 	// SKIP LOCKED lets several API replicas drain the queue without sending the
@@ -142,6 +146,9 @@ type Querier interface {
 	// The platform operator's view.
 	// ---------------------------------------------------------------------------
 	GetInvoiceByID(ctx context.Context, id pgtype.UUID) (GetInvoiceByIDRow, error)
+	// A payer quotes the number to a provider, which asks us about it. Numbers
+	// are the platform's and unique, so this finds one company's invoice.
+	GetInvoiceByNumber(ctx context.Context, number string) (Invoice, error)
 	GetLatestDriverLocation(ctx context.Context, arg GetLatestDriverLocationParams) (GetLatestDriverLocationRow, error)
 	GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error)
 	// Where the shipment was last seen, for the public tracking page.
@@ -222,6 +229,10 @@ type Querier interface {
 	ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error)
 	ListPODMediaForShipments(ctx context.Context, ids []pgtype.UUID) ([]ListPODMediaForShipmentsRow, error)
 	ListPaymentsByInvoice(ctx context.Context, arg ListPaymentsByInvoiceParams) ([]Payment, error)
+	// Payments a provider may have finished without its notification reaching
+	// us: open a minute or more, a few hours old at most, and not asked about
+	// recently. Across companies, for the billing job.
+	ListPaymentsToCheck(ctx context.Context, arg ListPaymentsToCheckParams) ([]Payment, error)
 	// Loads still waiting to be collected well after their planned pickup.
 	ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error)
 	ListPlatformAdmins(ctx context.Context) ([]ListPlatformAdminsRow, error)
@@ -299,6 +310,7 @@ type Querier interface {
 	ListUsersByTenant(ctx context.Context, arg ListUsersByTenantParams) ([]User, error)
 	ListVehiclesWithDrivers(ctx context.Context, tenantID pgtype.UUID) ([]ListVehiclesWithDriversRow, error)
 	LockInvoice(ctx context.Context, arg LockInvoiceParams) (Invoice, error)
+	LockInvoiceByNumber(ctx context.Context, number string) (Invoice, error)
 	LockPayment(ctx context.Context, id pgtype.UUID) (LockPaymentRow, error)
 	// A provider's notification carries only our reference. References are
 	// random and unique, so this finds one company's payment.
@@ -330,6 +342,11 @@ type Querier interface {
 	// For messages that are logged rather than sent through the queue: inbound
 	// messages and outbound ones skipped for opt-out.
 	RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessage, error)
+	// A provider's delivery report. Its message IDs are unique per provider, so
+	// this finds one company's text. Delivered is final; a text reported
+	// undelivered may still arrive when the network tries again. The error is
+	// the report's reason, none once delivered.
+	RecordSMSDelivery(ctx context.Context, arg RecordSMSDeliveryParams) (int64, error)
 	RecordSuccessfulLogin(ctx context.Context, id pgtype.UUID) error
 	RemoveSMSOptOut(ctx context.Context, phone string) error
 	// Why shipments were cancelled, and how many of them after the cargo had

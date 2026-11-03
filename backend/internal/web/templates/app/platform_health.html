@@ -74,7 +74,7 @@
     <h2>Services</h2>
     {{if or .App.MockSMS .App.MockMail .App.MockPay}}<p class="small muted">Simulated services print what they would send on the server terminal.</p>{{end}}
     <dl class="facts">
-      {{range $d.Providers}}<div><dt>{{.What}}</dt><dd>{{.Name}}{{if .Mock}} <span class="badge s-delayed">Simulated</span>{{end}}</dd></div>{{end}}
+      {{range $d.Providers}}<div><dt>{{.What}}</dt><dd>{{.Name}}{{if .Mock}} <span class="badge s-delayed">Simulated</span>{{else if .Sandbox}} <span class="badge s-delayed">Sandbox</span>{{end}}</dd></div>{{end}}
       <div><dt>Photos and signatures</dt><dd>{{if eq $d.Storage "local"}}This server's disk{{else}}S3{{with $d.Bucket}}, bucket {{.}}{{end}}{{end}}</dd></div>
       <div><dt>Support</dt><dd><a href="/app/platform/support">{{$h.WaitingTickets}} waiting for an answer</a></dd></div>
     </dl>

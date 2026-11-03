@@ -38,11 +38,11 @@ func (m *MockProvider) Name() string {
 	return "mock"
 }
 
-func (m *MockProvider) Send(ctx context.Context, to, message string, msgType MessageType) error {
+func (m *MockProvider) Send(ctx context.Context, to, message string, msgType MessageType) (string, error) {
 	normalizedPhone, err := NormalizeEthiopianPhone(to)
 	if err != nil {
 		m.logger.Error("invalid phone number", "phone", to, "error", err)
-		return err
+		return "", fmt.Errorf("%w: %w", ErrRejected, err)
 	}
 
 	msg := MockMessage{
@@ -63,16 +63,7 @@ func (m *MockProvider) Send(ctx context.Context, to, message string, msgType Mes
 	} else {
 		m.logger.Info("[MOCK SMS] Message sent", "id", msg.ID, "to", normalizedPhone, "type", msgType, "body", message)
 	}
-	return nil
-}
-
-func (m *MockProvider) SendBatch(ctx context.Context, recipients []string, message string, msgType MessageType) error {
-	for _, recipient := range recipients {
-		if err := m.Send(ctx, recipient, message, msgType); err != nil {
-			m.logger.Error("[MOCK SMS] Failed to send to recipient", "recipient", recipient, "error", err)
-		}
-	}
-	return nil
+	return msg.ID, nil
 }
 
 func (m *MockProvider) GetMessages() []MockMessage {

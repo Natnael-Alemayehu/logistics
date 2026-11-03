@@ -29,11 +29,15 @@ const (
 var (
 	ErrInvalidPhone        = errors.New("invalid phone number format")
 	ErrProviderUnavailable = errors.New("SMS provider unavailable")
+	// ErrRejected is a message the gateway will never take, such as one to
+	// a number it doesn't serve. Sending it again won't help.
+	ErrRejected = errors.New("the gateway rejected the message")
 )
 
 type SMSProvider interface {
-	Send(ctx context.Context, to, message string, msgType MessageType) error
-	SendBatch(ctx context.Context, recipients []string, message string, msgType MessageType) error
+	// Send hands a message to the gateway and returns the gateway's ID for
+	// it, which its delivery report names. Each call is one attempt.
+	Send(ctx context.Context, to, message string, msgType MessageType) (string, error)
 	Name() string
 }
 

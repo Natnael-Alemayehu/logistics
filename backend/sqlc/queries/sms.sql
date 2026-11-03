@@ -30,10 +30,23 @@ RETURNING *;
 UPDATE sms_messages
 SET status = 'sent',
     sent_at = NOW(),
-    provider = $2,
+    provider = sqlc.arg(provider),
+    provider_message_id = sqlc.narg(provider_message_id),
     last_error = NULL,
     body = CASE WHEN sensitive THEN '[redacted]' ELSE body END
-WHERE id = $1;
+WHERE id = sqlc.arg(id);
+
+-- name: RecordSMSDelivery :execrows
+-- A provider's delivery report. Its message IDs are unique per provider, so
+-- this finds one company's text. Delivered is final; a text reported
+-- undelivered may still arrive when the network tries again. The error is
+-- the report's reason, none once delivered.
+UPDATE sms_messages
+SET delivery = sqlc.arg(delivery),
+    delivery_at = sqlc.arg(delivery_at),
+    last_error = sqlc.narg(last_error)
+WHERE provider = sqlc.arg(provider) AND provider_message_id = sqlc.arg(provider_message_id)
+  AND direction = 'outbound' AND (delivery IS NULL OR delivery = 'undelivered');
 
 -- name: MarkSMSRetry :exec
 UPDATE sms_messages

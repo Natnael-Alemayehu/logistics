@@ -61,6 +61,14 @@ SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2;
 -- name: LockInvoice :one
 SELECT * FROM invoices WHERE id = $1 AND tenant_id = $2 FOR UPDATE;
 
+-- name: GetInvoiceByNumber :one
+-- A payer quotes the number to a provider, which asks us about it. Numbers
+-- are the platform's and unique, so this finds one company's invoice.
+SELECT * FROM invoices WHERE number = $1;
+
+-- name: LockInvoiceByNumber :one
+SELECT * FROM invoices WHERE number = $1 FOR UPDATE;
+
 -- name: ListInvoices :many
 SELECT * FROM invoices WHERE tenant_id = $1 ORDER BY issued_at DESC, number DESC LIMIT $2;
 
@@ -107,12 +115,12 @@ WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id);
 
 -- name: CreatePayment :one
 INSERT INTO payments (
-    tenant_id, invoice_id, provider, reference, payer_phone, amount_santim,
-    status, note, recorded_by, completed_at
+    tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim,
+    status, raw, note, recorded_by, completed_at
 ) VALUES (
     sqlc.arg(tenant_id), sqlc.arg(invoice_id), sqlc.arg(provider), sqlc.arg(reference),
-    sqlc.narg(payer_phone), sqlc.arg(amount_santim), sqlc.arg(status), sqlc.narg(note),
-    sqlc.narg(recorded_by), sqlc.narg(completed_at)
+    sqlc.narg(provider_ref), sqlc.narg(payer_phone), sqlc.arg(amount_santim), sqlc.arg(status),
+    sqlc.narg(raw), sqlc.narg(note), sqlc.narg(recorded_by), sqlc.narg(completed_at)
 ) RETURNING *;
 
 -- name: SetPaymentProviderRef :exec
@@ -141,7 +149,7 @@ WHERE id = sqlc.arg(id);
 UPDATE payments SET refund_due = true, note = $2 WHERE id = $1;
 
 -- name: LockPayment :one
-SELECT p.*, i.number AS invoice_number
+SELECT p.*, i.number AS invoice_number, i.total_santim AS invoice_total
 FROM payments p JOIN invoices i ON i.id = p.invoice_id
 WHERE p.id = $1
 FOR UPDATE OF p;
@@ -151,6 +159,26 @@ UPDATE payments
 SET status = 'refunded', refund_due = false, refunded_at = NOW(),
     refund_reference = sqlc.arg(refund_reference), note = sqlc.arg(note)
 WHERE id = sqlc.arg(id);
+
+-- name: ClaimPaymentCheck :one
+-- Notes that the provider is being asked how a payment ended, unless it was
+-- asked since checked_before. No row means another check is under way or
+-- was recent.
+UPDATE payments SET checked_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND status IN ('pending', 'expired')
+  AND (checked_at IS NULL OR checked_at < sqlc.arg(checked_before))
+RETURNING *;
+
+-- name: ListPaymentsToCheck :many
+-- Payments a provider may have finished without its notification reaching
+-- us: open a minute or more, a few hours old at most, and not asked about
+-- recently. Across companies, for the billing job.
+SELECT * FROM payments
+WHERE status IN ('pending', 'expired') AND provider = ANY(sqlc.arg(providers)::text[])
+  AND created_at < sqlc.arg(started_before) AND created_at > sqlc.arg(started_after)
+  AND (checked_at IS NULL OR checked_at < sqlc.arg(checked_before))
+ORDER BY created_at
+LIMIT 50;
 
 -- name: ExpirePendingPayments :exec
 -- A prompt nobody answered. A late approval is still honoured.

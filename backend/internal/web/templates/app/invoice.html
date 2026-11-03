@@ -58,25 +58,36 @@
   {{if not $platform}}
   <section class="card">
     <h2>Pay {{birr $i.TotalSantim}}</h2>
-    {{with $d.Waiting}}<p class="banner info">A prompt sent to {{maskPhone (str .PayerPhone)}} is waiting for approval. <a href="/app/billing/payments/{{uuid .ID}}">Follow it</a></p>{{end}}
+    {{with $d.Waiting}}<p class="banner info">A {{or (index $.Data.Labels .Provider) .Provider}} payment started {{when .CreatedAt}} is waiting for {{or (index $.Data.Labels .Provider) .Provider}} to confirm it. <a href="/app/billing/payments/{{uuid .ID}}">Follow it</a></p>{{end}}
     {{if not $.Me.EmailVerified}}
     <form class="stack" method="post" action="/app/account/verify-email">
       <p>First confirm your email address, {{$.Me.Email}}: receipts and invoices are sent there. Open the link we emailed you.</p>
       <button class="btn" type="submit">Send the link again</button>
     </form>
-    {{else if $.Data.Providers}}
-    <form method="post" action="/app/billing/invoices/{{uuid $i.ID}}/pay" class="stack">
+    {{else}}
+    {{range $.Data.Options}}{{if .Checkout}}
+    <form method="post" action="/app/billing/invoices/{{uuid $i.ID}}/pay" class="pay-option">
       <input type="hidden" name="back" value="/app/billing/invoices/{{uuid $i.ID}}">
-      <fieldset class="choice">
-        <legend>Pay with</legend>
-        {{range $.Data.Providers}}<label class="check"><input type="radio" name="provider" value="{{.Code}}" {{if eq (field $.Form "provider" "") .Code}}checked{{end}}> {{.Label}}</label>{{end}}
-      </fieldset>
-      <label>Phone that gets the payment prompt
-        <input name="phone" type="tel" value="{{field $.Form "phone" ""}}" autocomplete="tel" required>
-      </label>
-      <button class="btn btn-primary btn-block" type="submit">Pay {{birr $i.TotalSantim}}</button>
-      {{if $.App.MockPay}}<p class="hint">Payments are simulated on this server: the prompt is printed on the server terminal, with a link that approves or declines it.</p>{{end}}
+      <input type="hidden" name="provider" value="{{.Code}}">
+      <button class="btn btn-primary btn-block" type="submit">Pay with {{.Label}}</button>
+      <p class="small muted">On {{.Label}}'s page, which brings you back here when you've paid.</p>
     </form>
+    {{end}}{{end}}
+    {{range $.Data.Options}}{{if not .Checkout}}
+    <div class="pay-option">
+      <h3 class="small">With {{.Label}} from your phone</h3>
+      <p class="small">Choose to pay a merchant, and enter:</p>
+      <dl class="facts pay-ref">
+        <div><dt>Merchant ID</dt><dd class="mono">{{.MerchantID}}</dd></div>
+        <div><dt>Reference</dt><dd class="mono">{{$d.PayReference}}</dd></div>
+        <div><dt>Amount</dt><dd>{{birr $i.TotalSantim}}</dd></div>
+      </dl>
+      <p class="small muted">{{.Label}} shows the invoice before you confirm, and this page updates as soon as the payment arrives.</p>
+      {{with .Simulated}}<p class="hint"><a href="{{.}}">{{if $.Data.Sandbox}}Pay from a sandbox phone{{else}}Play the payer's phone{{end}}</a> to pay this way.</p>{{end}}
+    </div>
+    {{end}}{{end}}
+    {{if $.App.MockPay}}<p class="hint">Payments are simulated on this server: no money moves, and the providers' pages are pages of this server.</p>
+    {{else if $.Data.Sandbox}}<p class="hint">The providers are the sandbox at {{$.Data.Sandbox}}: no money moves.</p>{{end}}
     {{end}}
     {{with $.App.BankDetails}}
     <h3 class="small">Or by bank transfer</h3>
@@ -111,7 +122,7 @@
     <ul class="pay-list">
       {{range $d.Payments}}
       <li>
-        <div><strong>{{birr .AmountSantim}}</strong> · {{if eq .Provider "bank"}}Bank transfer{{else}}{{.Provider}}{{end}} · <span class="pay-{{.Status}}">{{title .Status}}</span></div>
+        <div><strong>{{birr .AmountSantim}}</strong> · {{or (index $.Data.Labels .Provider) .Provider}} · <span class="pay-{{.Status}}">{{title .Status}}</span></div>
         <div class="small muted">{{when .CreatedAt}} · <span class="mono">{{.Reference}}</span>{{if .PayerPhone}} · {{maskPhone (str .PayerPhone)}}{{end}}</div>
         {{$due := .RefundDue}}{{with .Note}}<div class="small {{if $due}}text-warn{{else}}muted{{end}}">{{.}}</div>{{end}}
       </li>

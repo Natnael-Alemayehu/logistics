@@ -1,28 +1,25 @@
-{{/* Stands in for the payment prompt on the payer's phone while payments
-   are simulated. Answering sends the provider's signed notification. */}}
+{{/* Stands in for a provider's checkout page while payments are simulated.
+   Paying or cancelling sends Menged the provider's signed notification,
+   then returns the payer to the payment page, as the provider does. */}}
 {{define "bodyclass"}}narrow{{end}}
 {{define "content"}}{{$p := .Data.Pay}}
 <section class="card auth pay-prompt">
   <p><span class="badge">{{.Data.Label}} · simulated</span></p>
-  {{if .Data.Answered}}
-    <h1>{{if eq $p.Status "paid"}}Payment approved{{else}}Payment declined{{end}}</h1>
-    <p>{{if eq $p.Status "paid"}}{{birr $p.AmountSantim}} was paid to {{.App.Name}} for invoice {{$p.InvoiceNumber}}.{{else}}Nothing was paid.{{end}} You can close this page: the billing page has already updated.</p>
-  {{else if or (eq $p.Status "pending") (eq $p.Status "expired")}}
-    <h1>Pay {{birr $p.AmountSantim}}?</h1>
+  {{if or (eq $p.Status "pending") (eq $p.Status "expired")}}
+    <h1>Pay {{birr $p.AmountSantim}}</h1>
     <dl class="facts">
-      <div><dt>To</dt><dd>{{.App.Name}}</dd></div>
+      <div><dt>Merchant</dt><dd>{{.App.Name}}</dd></div>
       <div><dt>For</dt><dd>Invoice {{$p.InvoiceNumber}}, {{$p.TenantName}}</dd></div>
-      <div><dt>From</dt><dd>{{str $p.PayerPhone}}</dd></div>
-      <div><dt>Reference</dt><dd class="mono">{{$p.Reference}}</dd></div>
+      <div><dt>Order</dt><dd class="mono">{{$p.Reference}}</dd></div>
     </dl>
     <form method="post" class="stack">
-      <button class="btn btn-primary btn-block btn-lg" type="submit" name="answer" value="approve">Approve</button>
-      <button class="btn btn-block" type="submit" name="answer" value="decline">Decline</button>
+      <button class="btn btn-primary btn-block btn-lg" type="submit" name="answer" value="approve">Pay</button>
+      <button class="btn btn-block" type="submit" name="answer" value="decline">Cancel</button>
     </form>
-    <p class="hint">Payments are simulated on this server, so this page plays the payer's phone. Approving sends the same signed notification a real provider would.</p>
+    <p class="hint">Payments are simulated on this server, so this page plays {{.Data.Label}}'s checkout. Paying sends the same signed notification {{.Data.Label}} would, then takes you back.</p>
   {{else}}
     <h1>This payment is {{if eq $p.Status "paid"}}already paid{{else}}{{$p.Status}}{{end}}</h1>
-    <p>There's nothing to approve. You can close this page.</p>
+    <p>There's nothing to pay. <a href="/app/billing/payments/{{uuid $p.ID}}">See the payment</a></p>
   {{end}}
 </section>
 {{end}}

@@ -446,7 +446,9 @@ func latestMigration() int64 {
 
 type provider struct {
 	What, Name string
-	Mock       bool
+	// Mock is a stand-in in this server; Sandbox a real adapter talking to
+	// the provider sandbox.
+	Mock, Sandbox bool
 }
 
 // platformHealth shows how the system is running (AC-049.6).
@@ -456,13 +458,14 @@ func (s *Server) platformHealth(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	sandbox := s.cfg.SandboxURL != ""
 	data := map[string]any{
 		"Health": h, "Latest": latestMigration(), "Version": s.version, "Uptime": time.Since(s.started),
 		"Storage": s.cfg.StorageType,
 		"Providers": []provider{
-			{"Text messages", s.cfg.SMSProvider, s.mockSMS},
-			{"Email", s.cfg.MailProvider, s.mockMail},
-			{"Payments", s.cfg.PaymentProvider, s.mockPay},
+			{"Text messages", s.cfg.SMSProvider, s.mockSMS, !s.mockSMS && sandbox},
+			{"Email", s.cfg.MailProvider, s.mockMail, false},
+			{"Payments", s.cfg.PaymentProvider, s.mockPay, !s.mockPay && sandbox && s.cfg.PaymentProvider != "none"},
 		},
 	}
 	if s.hub != nil {

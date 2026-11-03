@@ -712,6 +712,10 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .pay-refunded { color: var(--muted); font-weight: 600; }
 .pay-status { max-width: 620px; }
 .pay-prompt .facts { margin: 14px 0 18px; }
+.pay-option { display: grid; gap: 8px; margin-bottom: 16px; }
+.pay-option + .pay-option { padding-top: 14px; border-top: 1px solid var(--border); }
+.pay-option p { margin: 0; }
+.pay-ref > div { grid-template-columns: 110px 1fr; }
 
 /* ---------- waybill / print ---------- */
 .print-page { background: var(--surface-2); }

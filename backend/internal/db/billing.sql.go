@@ -30,6 +30,48 @@ func (q *Queries) AddBillingNotice(ctx context.Context, arg AddBillingNoticePara
 	return result.RowsAffected(), nil
 }
 
+const claimPaymentCheck = `-- name: ClaimPaymentCheck :one
+UPDATE payments SET checked_at = $1
+WHERE id = $2 AND status IN ('pending', 'expired')
+  AND (checked_at IS NULL OR checked_at < $3)
+RETURNING id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at, checked_at
+`
+
+type ClaimPaymentCheckParams struct {
+	Now           pgtype.Timestamptz `db:"now" json:"now"`
+	ID            pgtype.UUID        `db:"id" json:"id"`
+	CheckedBefore pgtype.Timestamptz `db:"checked_before" json:"checked_before"`
+}
+
+// Notes that the provider is being asked how a payment ended, unless it was
+// asked since checked_before. No row means another check is under way or
+// was recent.
+func (q *Queries) ClaimPaymentCheck(ctx context.Context, arg ClaimPaymentCheckParams) (Payment, error) {
+	row := q.db.QueryRow(ctx, claimPaymentCheck, arg.Now, arg.ID, arg.CheckedBefore)
+	var i Payment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.InvoiceID,
+		&i.Provider,
+		&i.Reference,
+		&i.ProviderRef,
+		&i.PayerPhone,
+		&i.AmountSantim,
+		&i.Status,
+		&i.Raw,
+		&i.Note,
+		&i.RefundDue,
+		&i.RefundedAt,
+		&i.RefundReference,
+		&i.RecordedBy,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CheckedAt,
+	)
+	return i, err
+}
+
 const countOpenRenewals = `-- name: CountOpenRenewals :one
 SELECT COUNT(*) FROM invoices WHERE tenant_id = $1 AND status = 'open' AND kind = 'renewal'
 `
@@ -146,13 +188,13 @@ func (q *Queries) CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (I
 
 const createPayment = `-- name: CreatePayment :one
 INSERT INTO payments (
-    tenant_id, invoice_id, provider, reference, payer_phone, amount_santim,
-    status, note, recorded_by, completed_at
+    tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim,
+    status, raw, note, recorded_by, completed_at
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7, $8,
-    $9, $10
-) RETURNING id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at
+    $9, $10, $11, $12
+) RETURNING id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at, checked_at
 `
 
 type CreatePaymentParams struct {
@@ -160,9 +202,11 @@ type CreatePaymentParams struct {
 	InvoiceID    pgtype.UUID        `db:"invoice_id" json:"invoice_id"`
 	Provider     string             `db:"provider" json:"provider"`
 	Reference    string             `db:"reference" json:"reference"`
+	ProviderRef  *string            `db:"provider_ref" json:"provider_ref"`
 	PayerPhone   *string            `db:"payer_phone" json:"payer_phone"`
 	AmountSantim int64              `db:"amount_santim" json:"amount_santim"`
 	Status       string             `db:"status" json:"status"`
+	Raw          []byte             `db:"raw" json:"raw"`
 	Note         *string            `db:"note" json:"note"`
 	RecordedBy   pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
 	CompletedAt  pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
@@ -174,9 +218,11 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 		arg.InvoiceID,
 		arg.Provider,
 		arg.Reference,
+		arg.ProviderRef,
 		arg.PayerPhone,
 		arg.AmountSantim,
 		arg.Status,
+		arg.Raw,
 		arg.Note,
 		arg.RecordedBy,
 		arg.CompletedAt,
@@ -200,6 +246,7 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 		&i.RecordedBy,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CheckedAt,
 	)
 	return i, err
 }
@@ -364,6 +411,42 @@ func (q *Queries) GetInvoiceByID(ctx context.Context, id pgtype.UUID) (GetInvoic
 	return i, err
 }
 
+const getInvoiceByNumber = `-- name: GetInvoiceByNumber :one
+SELECT id, tenant_id, number, kind, plan, billing_cycle, period_start, period_end, lines, usage, subtotal_santim, vat_santim, total_santim, status, issued_at, due_at, paid_at, voided_at, customer_name, customer_tin, customer_city, created_by FROM invoices WHERE number = $1
+`
+
+// A payer quotes the number to a provider, which asks us about it. Numbers
+// are the platform's and unique, so this finds one company's invoice.
+func (q *Queries) GetInvoiceByNumber(ctx context.Context, number string) (Invoice, error) {
+	row := q.db.QueryRow(ctx, getInvoiceByNumber, number)
+	var i Invoice
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Number,
+		&i.Kind,
+		&i.Plan,
+		&i.BillingCycle,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Lines,
+		&i.Usage,
+		&i.SubtotalSantim,
+		&i.VatSantim,
+		&i.TotalSantim,
+		&i.Status,
+		&i.IssuedAt,
+		&i.DueAt,
+		&i.PaidAt,
+		&i.VoidedAt,
+		&i.CustomerName,
+		&i.CustomerTin,
+		&i.CustomerCity,
+		&i.CreatedBy,
+	)
+	return i, err
+}
+
 const getOldestDebt = `-- name: GetOldestDebt :one
 SELECT id, tenant_id, number, kind, plan, billing_cycle, period_start, period_end, lines, usage, subtotal_santim, vat_santim, total_santim, status, issued_at, due_at, paid_at, voided_at, customer_name, customer_tin, customer_city, created_by FROM invoices
 WHERE tenant_id = $1 AND status = 'open' AND kind IN ('renewal', 'usage')
@@ -439,7 +522,7 @@ func (q *Queries) GetOpenPlanInvoice(ctx context.Context, tenantID pgtype.UUID) 
 }
 
 const getPayment = `-- name: GetPayment :one
-SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, i.number AS invoice_number
+SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, p.checked_at, i.number AS invoice_number
 FROM payments p JOIN invoices i ON i.id = p.invoice_id
 WHERE p.id = $1 AND p.tenant_id = $2
 `
@@ -467,6 +550,7 @@ type GetPaymentRow struct {
 	RecordedBy      pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CheckedAt       pgtype.Timestamptz `db:"checked_at" json:"checked_at"`
 	InvoiceNumber   string             `db:"invoice_number" json:"invoice_number"`
 }
 
@@ -491,13 +575,14 @@ func (q *Queries) GetPayment(ctx context.Context, arg GetPaymentParams) (GetPaym
 		&i.RecordedBy,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CheckedAt,
 		&i.InvoiceNumber,
 	)
 	return i, err
 }
 
 const getPaymentByReference = `-- name: GetPaymentByReference :one
-SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, i.number AS invoice_number, COALESCE(t.name, i.customer_name)::text AS tenant_name
+SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, p.checked_at, i.number AS invoice_number, COALESCE(t.name, i.customer_name)::text AS tenant_name
 FROM payments p
 JOIN invoices i ON i.id = p.invoice_id
 LEFT JOIN tenants t ON t.id = p.tenant_id
@@ -522,6 +607,7 @@ type GetPaymentByReferenceRow struct {
 	RecordedBy      pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CheckedAt       pgtype.Timestamptz `db:"checked_at" json:"checked_at"`
 	InvoiceNumber   string             `db:"invoice_number" json:"invoice_number"`
 	TenantName      string             `db:"tenant_name" json:"tenant_name"`
 }
@@ -548,6 +634,7 @@ func (q *Queries) GetPaymentByReference(ctx context.Context, reference string) (
 		&i.RecordedBy,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CheckedAt,
 		&i.InvoiceNumber,
 		&i.TenantName,
 	)
@@ -827,7 +914,7 @@ func (q *Queries) ListOverdueDebts(ctx context.Context, dueAt pgtype.Timestamptz
 }
 
 const listPaymentsByInvoice = `-- name: ListPaymentsByInvoice :many
-SELECT id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at FROM payments WHERE invoice_id = $1 AND tenant_id = $2 ORDER BY created_at DESC
+SELECT id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at, checked_at FROM payments WHERE invoice_id = $1 AND tenant_id = $2 ORDER BY created_at DESC
 `
 
 type ListPaymentsByInvoiceParams struct {
@@ -862,6 +949,70 @@ func (q *Queries) ListPaymentsByInvoice(ctx context.Context, arg ListPaymentsByI
 			&i.RecordedBy,
 			&i.CreatedAt,
 			&i.CompletedAt,
+			&i.CheckedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPaymentsToCheck = `-- name: ListPaymentsToCheck :many
+SELECT id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at, checked_at FROM payments
+WHERE status IN ('pending', 'expired') AND provider = ANY($1::text[])
+  AND created_at < $2 AND created_at > $3
+  AND (checked_at IS NULL OR checked_at < $4)
+ORDER BY created_at
+LIMIT 50
+`
+
+type ListPaymentsToCheckParams struct {
+	Providers     []string           `db:"providers" json:"providers"`
+	StartedBefore pgtype.Timestamptz `db:"started_before" json:"started_before"`
+	StartedAfter  pgtype.Timestamptz `db:"started_after" json:"started_after"`
+	CheckedBefore pgtype.Timestamptz `db:"checked_before" json:"checked_before"`
+}
+
+// Payments a provider may have finished without its notification reaching
+// us: open a minute or more, a few hours old at most, and not asked about
+// recently. Across companies, for the billing job.
+func (q *Queries) ListPaymentsToCheck(ctx context.Context, arg ListPaymentsToCheckParams) ([]Payment, error) {
+	rows, err := q.db.Query(ctx, listPaymentsToCheck,
+		arg.Providers,
+		arg.StartedBefore,
+		arg.StartedAfter,
+		arg.CheckedBefore,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Payment{}
+	for rows.Next() {
+		var i Payment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.InvoiceID,
+			&i.Provider,
+			&i.Reference,
+			&i.ProviderRef,
+			&i.PayerPhone,
+			&i.AmountSantim,
+			&i.Status,
+			&i.Raw,
+			&i.Note,
+			&i.RefundDue,
+			&i.RefundedAt,
+			&i.RefundReference,
+			&i.RecordedBy,
+			&i.CreatedAt,
+			&i.CompletedAt,
+			&i.CheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -874,7 +1025,7 @@ func (q *Queries) ListPaymentsByInvoice(ctx context.Context, arg ListPaymentsByI
 }
 
 const listRecentPayments = `-- name: ListRecentPayments :many
-SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, i.number AS invoice_number, COALESCE(t.name, i.customer_name)::text AS tenant_name
+SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, p.checked_at, i.number AS invoice_number, COALESCE(t.name, i.customer_name)::text AS tenant_name
 FROM payments p
 JOIN invoices i ON i.id = p.invoice_id
 LEFT JOIN tenants t ON t.id = p.tenant_id
@@ -900,6 +1051,7 @@ type ListRecentPaymentsRow struct {
 	RecordedBy      pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CheckedAt       pgtype.Timestamptz `db:"checked_at" json:"checked_at"`
 	InvoiceNumber   string             `db:"invoice_number" json:"invoice_number"`
 	TenantName      string             `db:"tenant_name" json:"tenant_name"`
 }
@@ -931,6 +1083,7 @@ func (q *Queries) ListRecentPayments(ctx context.Context, limit int32) ([]ListRe
 			&i.RecordedBy,
 			&i.CreatedAt,
 			&i.CompletedAt,
+			&i.CheckedAt,
 			&i.InvoiceNumber,
 			&i.TenantName,
 		); err != nil {
@@ -945,7 +1098,7 @@ func (q *Queries) ListRecentPayments(ctx context.Context, limit int32) ([]ListRe
 }
 
 const listRefundsDue = `-- name: ListRefundsDue :many
-SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, i.number AS invoice_number, COALESCE(t.name, i.customer_name)::text AS tenant_name
+SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, p.checked_at, i.number AS invoice_number, COALESCE(t.name, i.customer_name)::text AS tenant_name
 FROM payments p
 JOIN invoices i ON i.id = p.invoice_id
 LEFT JOIN tenants t ON t.id = p.tenant_id
@@ -971,6 +1124,7 @@ type ListRefundsDueRow struct {
 	RecordedBy      pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CheckedAt       pgtype.Timestamptz `db:"checked_at" json:"checked_at"`
 	InvoiceNumber   string             `db:"invoice_number" json:"invoice_number"`
 	TenantName      string             `db:"tenant_name" json:"tenant_name"`
 }
@@ -1002,6 +1156,7 @@ func (q *Queries) ListRefundsDue(ctx context.Context) ([]ListRefundsDueRow, erro
 			&i.RecordedBy,
 			&i.CreatedAt,
 			&i.CompletedAt,
+			&i.CheckedAt,
 			&i.InvoiceNumber,
 			&i.TenantName,
 		); err != nil {
@@ -1305,8 +1460,42 @@ func (q *Queries) LockInvoice(ctx context.Context, arg LockInvoiceParams) (Invoi
 	return i, err
 }
 
+const lockInvoiceByNumber = `-- name: LockInvoiceByNumber :one
+SELECT id, tenant_id, number, kind, plan, billing_cycle, period_start, period_end, lines, usage, subtotal_santim, vat_santim, total_santim, status, issued_at, due_at, paid_at, voided_at, customer_name, customer_tin, customer_city, created_by FROM invoices WHERE number = $1 FOR UPDATE
+`
+
+func (q *Queries) LockInvoiceByNumber(ctx context.Context, number string) (Invoice, error) {
+	row := q.db.QueryRow(ctx, lockInvoiceByNumber, number)
+	var i Invoice
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Number,
+		&i.Kind,
+		&i.Plan,
+		&i.BillingCycle,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Lines,
+		&i.Usage,
+		&i.SubtotalSantim,
+		&i.VatSantim,
+		&i.TotalSantim,
+		&i.Status,
+		&i.IssuedAt,
+		&i.DueAt,
+		&i.PaidAt,
+		&i.VoidedAt,
+		&i.CustomerName,
+		&i.CustomerTin,
+		&i.CustomerCity,
+		&i.CreatedBy,
+	)
+	return i, err
+}
+
 const lockPayment = `-- name: LockPayment :one
-SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, i.number AS invoice_number
+SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, p.checked_at, i.number AS invoice_number, i.total_santim AS invoice_total
 FROM payments p JOIN invoices i ON i.id = p.invoice_id
 WHERE p.id = $1
 FOR UPDATE OF p
@@ -1330,7 +1519,9 @@ type LockPaymentRow struct {
 	RecordedBy      pgtype.UUID        `db:"recorded_by" json:"recorded_by"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CheckedAt       pgtype.Timestamptz `db:"checked_at" json:"checked_at"`
 	InvoiceNumber   string             `db:"invoice_number" json:"invoice_number"`
+	InvoiceTotal    int64              `db:"invoice_total" json:"invoice_total"`
 }
 
 func (q *Queries) LockPayment(ctx context.Context, id pgtype.UUID) (LockPaymentRow, error) {
@@ -1354,13 +1545,15 @@ func (q *Queries) LockPayment(ctx context.Context, id pgtype.UUID) (LockPaymentR
 		&i.RecordedBy,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CheckedAt,
 		&i.InvoiceNumber,
+		&i.InvoiceTotal,
 	)
 	return i, err
 }
 
 const lockPaymentByReference = `-- name: LockPaymentByReference :one
-SELECT id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at FROM payments WHERE reference = $1 FOR UPDATE
+SELECT id, tenant_id, invoice_id, provider, reference, provider_ref, payer_phone, amount_santim, status, raw, note, refund_due, refunded_at, refund_reference, recorded_by, created_at, completed_at, checked_at FROM payments WHERE reference = $1 FOR UPDATE
 `
 
 // A provider's notification carries only our reference. References are
@@ -1386,6 +1579,7 @@ func (q *Queries) LockPaymentByReference(ctx context.Context, reference string) 
 		&i.RecordedBy,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.CheckedAt,
 	)
 	return i, err
 }

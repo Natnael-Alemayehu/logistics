@@ -3,7 +3,9 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"math/rand/v2"
@@ -104,20 +106,26 @@ func TestPayingForAPlan(t *testing.T) {
 	}
 
 	// Receipts go by email, so the address must be confirmed first.
-	if msg, failed := office.result("/app/billing/invoices/"+invoiceID+"/pay", url.Values{"provider": {"telebirr"}, "phone": {office.phone}}); !failed || !strings.Contains(msg, "Confirm your email") {
+	if msg, failed := office.result("/app/billing/invoices/"+invoiceID+"/pay", url.Values{"provider": {"telebirr"}}); !failed || !strings.Contains(msg, "Confirm your email") {
 		t.Errorf("paying before confirming the email: %q", msg)
 	}
 	office.confirmEmail()
+	// CBE Birr is paid from the payer's phone, not from here.
+	if msg, failed := office.result("/app/billing/invoices/"+invoiceID+"/pay", url.Values{"provider": {"cbebirr"}}); !failed || !strings.Contains(msg, "from your phone") {
+		t.Errorf("starting a CBE Birr payment: %q", msg)
+	}
 
-	// The payer declines the first prompt.
-	status, prompt := office.startPayment(invoiceID)
-	if p := office.get(status); !strings.Contains(p.Body, "Approve the payment on your phone") {
-		t.Errorf("the payment page doesn't wait for the phone: status %d", p.Status)
+	// The payer cancels at the first checkout, which sends them back.
+	status, checkout := office.startPayment(invoiceID)
+	if p := office.get(status); !strings.Contains(p.Body, "Waiting for telebirr to confirm") {
+		t.Errorf("the payment page doesn't wait for telebirr: status %d", p.Status)
 	}
-	if p := e.browser().get(prompt); p.Status != http.StatusOK || !strings.Contains(p.Body, "10,350.00") || !strings.Contains(p.Body, number) {
-		t.Errorf("the stand-in prompt: status %d", p.Status)
+	if p := e.browser().get(checkout); p.Status != http.StatusOK || !strings.Contains(p.Body, "10,350.00") || !strings.Contains(p.Body, number) {
+		t.Errorf("the stand-in checkout: status %d", p.Status)
 	}
-	e.answer(prompt, "decline")
+	if back := e.answer(checkout, "decline"); back != status {
+		t.Errorf("the checkout sent the payer back to %q, want %q", back, status)
+	}
 	if p := office.get(status); !strings.Contains(p.Body, "didn't go through") {
 		t.Error("a declined payment isn't reported as such")
 	}
@@ -126,8 +134,8 @@ func TestPayingForAPlan(t *testing.T) {
 	}
 
 	// The second is answered by the provider's notification, checked first.
-	status, prompt = office.startPayment(invoiceID)
-	reference := strings.TrimPrefix(prompt, "/dev/payments/")
+	status, checkout = office.startPayment(invoiceID)
+	reference := strings.TrimPrefix(checkout, "/dev/payments/")
 	n := payments.Notification{Reference: reference, Status: payments.StatusPaid, Amount: 1035000}
 	if code := e.notify("telebirr", n, "forged"); code != http.StatusUnauthorized {
 		t.Errorf("an unsigned notification: status %d, want 401", code)
@@ -141,8 +149,8 @@ func TestPayingForAPlan(t *testing.T) {
 	if code := e.notify("telebirr", unknown, e.sign("telebirr", unknown)); code != http.StatusNotFound {
 		t.Errorf("a notification for an unknown payment: status %d, want 404", code)
 	}
-	if code := e.notify("cbebirr", n, e.sign("cbebirr", n)); code != http.StatusBadRequest {
-		t.Errorf("another provider's notification: status %d, want 400", code)
+	if err := e.svc.Billing.Settle(context.Background(), "cbebirr", n); err == nil {
+		t.Error("another provider's report on the payment was accepted")
 	}
 	if st := scalar[string](t, `SELECT status FROM payments WHERE reference = $1`, reference); st != "pending" {
 		t.Fatalf("refused notifications changed the payment to %s", st)
@@ -171,15 +179,141 @@ func TestPayingForAPlan(t *testing.T) {
 		t.Error("the invoice isn't paid, with its period")
 	}
 	// Repeats and the payer answering again change nothing.
-	e.answer(prompt, "approve")
+	e.answer(checkout, "approve")
 	if c := scalar[int64](t, `SELECT COUNT(*) FROM payments WHERE invoice_id = $1 AND status = 'paid'`, invoiceID); c != 1 {
 		t.Errorf("%d paid payments, want 1", c)
 	}
 	if c := scalar[int64](t, `SELECT COUNT(*) FROM emails WHERE to_address = $1 AND purpose = 'receipt'`, office.email); c != 1 {
 		t.Errorf("%d receipts, want 1", c)
 	}
-	if msg, failed := office.result("/app/billing/invoices/"+invoiceID+"/pay", url.Values{"provider": {"telebirr"}, "phone": {office.phone}}); !failed || !strings.Contains(msg, "already paid") {
+	if msg, failed := office.result("/app/billing/invoices/"+invoiceID+"/pay", url.Values{"provider": {"telebirr"}}); !failed || !strings.Contains(msg, "already paid") {
 		t.Errorf("paying a paid invoice: %q", msg)
+	}
+}
+
+// TestPayingByReference: with CBE Birr the payer pays Menged's merchant ID
+// from their phone, quoting the invoice's reference, and CBE Birr's servers
+// call Menged to look the reference up, check the payment and confirm it.
+// The stand-in page plays CBE Birr through the same handler. Money CBE Birr
+// took is never turned away: paid twice or short, it is kept for a refund.
+func TestPayingByReference(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Reference Freight")
+	invoiceID := office.choose("starter", "monthly")
+	number := scalar[string](t, `SELECT number FROM invoices WHERE id = $1`, invoiceID)
+	total := scalar[int64](t, `SELECT total_santim FROM invoices WHERE id = $1`, invoiceID)
+	ref := service.PayReference(number)
+	office.confirmEmail()
+
+	// The invoice says what to key in.
+	page := office.get("/app/billing/invoices/" + invoiceID)
+	for _, want := range []string{cbeMerchant, ref, "/dev/cbebirr?"} {
+		if !strings.Contains(page.Body, want) {
+			t.Errorf("the invoice page doesn't show %q", want)
+		}
+	}
+
+	query := func(ref string) payments.CBEBirrBill {
+		t.Helper()
+		var bill payments.CBEBirrBill
+		if code := e.cbe("/query", payments.CBEBirrQuery{BillRefNumber: ref, BusinessShortCode: cbeMerchant}, &bill, cbeUser, cbePassword); code != http.StatusOK {
+			t.Fatalf("query %s: status %d", ref, code)
+		}
+		return bill
+	}
+	send := func(path string, tx payments.CBEBirrTransaction) string {
+		t.Helper()
+		var res payments.CBEBirrResult
+		if code := e.cbe(path, tx, &res, cbeUser, cbePassword); code != http.StatusOK {
+			t.Fatalf("%s %s: status %d", path, tx.TransID, code)
+		}
+		return res.ResultCode
+	}
+
+	// CBE Birr's servers must log in.
+	if code := e.cbe("/query", payments.CBEBirrQuery{BillRefNumber: ref, BusinessShortCode: cbeMerchant}, nil, cbeUser, "wrong"); code != http.StatusUnauthorized {
+		t.Errorf("a query with the wrong password: status %d, want 401", code)
+	}
+	if bill := query("202699999"); bill.ResultCode != payments.CBEBirrUnknownBill {
+		t.Errorf("an unknown reference: %+v", bill)
+	}
+	if bill := query(number); bill.ResultCode != payments.CBEBirrOK || bill.Amount != payments.Decimal(total) {
+		t.Errorf("the invoice number as the reference: %+v", bill)
+	}
+
+	// Short money is kept for a refund and doesn't pay the invoice.
+	tx := payments.CBEBirrTransaction{
+		TransType: "Pay Bill", TransID: "CBSHORT1", TransTime: time.Now().In(time.FixedZone("EAT", 3*3600)).Format("20060102150405"),
+		TransAmount: "100.00", BusinessShortCode: cbeMerchant, BillRefNumber: ref, MSISDN: "251911223344",
+	}
+	if code := send("/validation", tx); code != payments.CBEBirrWrongAmount {
+		t.Errorf("validating short money: result %s", code)
+	}
+	if code := send("/confirmation", tx); code != payments.CBEBirrOK {
+		t.Errorf("confirming short money: result %s", code)
+	}
+	if !scalar[bool](t, `SELECT refund_due FROM payments WHERE provider_ref = 'CBSHORT1'`) ||
+		scalar[string](t, `SELECT status FROM invoices WHERE id = $1`, invoiceID) != "open" {
+		t.Error("short money should be flagged for a refund and leave the invoice open")
+	}
+
+	// The payer, on the page playing CBE Birr: the reference, then pay.
+	payer := e.browser()
+	form := url.Values{"merchant": {cbeMerchant}, "ref": {ref}, "phone": {office.phone}, "step": {"query"}}
+	if p := payer.post("/dev/cbebirr", form); p.Status != http.StatusOK || !strings.Contains(p.Body, "Pay ETB") || !strings.Contains(p.Body, number) {
+		t.Fatalf("looking the reference up: status %d\n%s", p.Status, errorText(p.Body))
+	}
+	form.Set("step", "pay")
+	if p := payer.post("/dev/cbebirr", form); p.Status != http.StatusOK || !strings.Contains(p.Body, "<h1>Paid</h1>") {
+		t.Fatalf("paying: status %d\n%s", p.Status, errorText(p.Body))
+	}
+	if st := scalar[string](t, `SELECT status FROM invoices WHERE id = $1`, invoiceID); st != "paid" {
+		t.Fatalf("after paying by reference the invoice is %s", st)
+	}
+	e.received("email", office.email, "Receipt for invoice "+number)
+	transID := scalar[string](t, `SELECT provider_ref FROM payments WHERE invoice_id = $1 AND NOT refund_due`, invoiceID)
+	if !scalar[bool](t, `SELECT status = 'paid' AND provider = 'cbebirr' AND payer_phone = $2 FROM payments WHERE provider_ref = $1`, transID, office.phone) {
+		t.Error("the payment isn't recorded as paid with CBE Birr from the payer's phone")
+	}
+
+	// CBE Birr confirming again records nothing more.
+	tx.TransID, tx.TransAmount = transID, payments.Decimal(total)
+	if code := send("/confirmation", tx); code != payments.CBEBirrOK {
+		t.Errorf("a repeated confirmation: result %s", code)
+	}
+	if c := scalar[int64](t, `SELECT COUNT(*) FROM payments WHERE invoice_id = $1`, invoiceID); c != 2 {
+		t.Errorf("%d payments after a repeated confirmation, want 2", c)
+	}
+
+	// A paid invoice can't be paid again, but money CBE Birr took for it
+	// anyway is kept, for a refund.
+	if bill := query(ref); bill.ResultCode != payments.CBEBirrBillPaid {
+		t.Errorf("querying a paid invoice: %+v", bill)
+	}
+	tx.TransID = "CB2NDPAYER"
+	if code := send("/validation", tx); code != payments.CBEBirrBillPaid {
+		t.Errorf("validating a payment for a paid invoice: result %s", code)
+	}
+	if code := send("/confirmation", tx); code != payments.CBEBirrOK {
+		t.Errorf("confirming money for a paid invoice: result %s", code)
+	}
+	if !scalar[bool](t, `SELECT refund_due FROM payments WHERE provider_ref = 'CB2NDPAYER'`) {
+		t.Error("money for a paid invoice isn't flagged for a refund")
+	}
+	if c := scalar[int64](t, `SELECT COUNT(*) FROM emails WHERE to_address = $1 AND purpose = 'receipt'`, office.email); c != 1 {
+		t.Errorf("%d receipts, want 1", c)
+	}
+
+	// The operator sends both back, and the company is told why.
+	operator := e.operator()
+	for _, id := range []string{"CBSHORT1", "CB2NDPAYER"} {
+		payment := scalar[string](t, `SELECT id::text FROM payments WHERE provider_ref = $1`, id)
+		if msg, failed := operator.result("/app/platform/payments/"+payment+"/refunded", url.Values{"reference": {"RF-" + id}}); failed {
+			t.Fatalf("recording the refund of %s: %q", id, msg)
+		}
+	}
+	if mail := e.received("email", office.email, "Refund of ETB 100.00"); !strings.Contains(mail.Body, "wasn't the ETB") {
+		t.Errorf("the refund of short money doesn't say why: %q", mail.Body)
 	}
 }
 
@@ -622,7 +756,7 @@ func TestPaymentForAPaidInvoiceIsRefunded(t *testing.T) {
 
 var (
 	invoicePathRe = regexp.MustCompile(`^/app/billing/invoices/([0-9a-f-]{36})$`)
-	promptLinkRe  = regexp.MustCompile(`/dev/payments/PAY-[A-Z2-7]+`)
+	checkoutRe    = regexp.MustCompile(`/dev/payments/PAY-[A-Z2-7]+`)
 	anyFlashRe    = regexp.MustCompile(`(?s)class="flash flash-(\w+)"[^>]*>(.*?)<`)
 )
 
@@ -695,28 +829,50 @@ func (b *browser) choose(plan, cycle string) string {
 	return ""
 }
 
-// startPayment asks for an invoice to be paid by telebirr. It returns the
-// page that follows the payment and the link of the prompt printed on the
-// terminal, which stands in for the payer's phone.
-func (b *browser) startPayment(invoiceID string) (status, prompt string) {
+// startPayment pays an invoice with telebirr. It returns the payment page,
+// where the checkout sends the payer back to, and the stand-in checkout the
+// payer is sent to.
+func (b *browser) startPayment(invoiceID string) (status, checkout string) {
 	b.e.t.Helper()
-	p := b.mustPost("/app/billing/invoices/"+invoiceID+"/pay", url.Values{"provider": {"telebirr"}, "phone": {b.phone}})
-	if !strings.HasPrefix(p.Location, "/app/billing/payments/") {
+	p := b.mustPost("/app/billing/invoices/"+invoiceID+"/pay", url.Values{"provider": {"telebirr"}})
+	checkout = checkoutRe.FindString(p.Location)
+	if checkout == "" || !strings.HasPrefix(p.Location, b.e.srv.URL+"/dev/payments/") {
 		b.e.t.Fatalf("paying invoice %s redirected to %q", invoiceID, p.Location)
 	}
-	prompt = promptLinkRe.FindString(b.e.received("payment", b.phone, "/dev/payments/").Body)
-	if prompt == "" {
-		b.e.t.Fatal("no payment prompt on the terminal")
-	}
-	return p.Location, prompt
+	id := scalar[string](b.e.t, `SELECT id::text FROM payments WHERE reference = $1`, strings.TrimPrefix(checkout, "/dev/payments/"))
+	return "/app/billing/payments/" + id, checkout
 }
 
-// answer approves or declines a payment prompt as the payer would.
-func (e *env) answer(prompt, answer string) {
+// answer pays or cancels at the stand-in checkout as the payer would, and
+// returns where the checkout sent them back to.
+func (e *env) answer(checkout, answer string) string {
 	e.t.Helper()
-	if p := e.browser().post(prompt, url.Values{"answer": {answer}}); p.Status != http.StatusOK {
-		e.t.Fatalf("answering %s: status %d", prompt, p.Status)
+	p := e.browser().post(checkout, url.Values{"answer": {answer}})
+	if p.Status != http.StatusSeeOther {
+		e.t.Fatalf("answering %s: status %d\n%s", checkout, p.Status, errorText(p.Body))
 	}
+	return p.Location
+}
+
+// cbe makes one of CBE Birr's calls to Menged, logged in as user, decodes
+// the answer into out, and returns the status.
+func (e *env) cbe(path string, body, out any, user, pass string) int {
+	e.t.Helper()
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/v1/payments/cbebirr"+path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(user, pass)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if out != nil && res.StatusCode == http.StatusOK {
+		if err := json.NewDecoder(res.Body).Decode(out); err != nil {
+			e.t.Fatalf("%s: %v", path, err)
+		}
+	}
+	return res.StatusCode
 }
 
 // markPaid records a bank transfer for an invoice, as the operator does.
@@ -731,10 +887,11 @@ func (b *browser) markPaid(invoiceID, reference string) {
 func (e *env) sign(provider string, n payments.Notification) string {
 	e.t.Helper()
 	p, ok := e.svc.Billing.Provider(provider)
-	if !ok {
-		e.t.Fatalf("no provider %s", provider)
+	mock, isMock := p.(*payments.Mock)
+	if !ok || !isMock {
+		e.t.Fatalf("no stand-in provider %s", provider)
 	}
-	return p.(*payments.Mock).Sign(n)
+	return mock.Sign(n)
 }
 
 // notify posts a provider's notification and returns the response status.

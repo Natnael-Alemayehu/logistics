@@ -55,3 +55,27 @@ func TestMoney(t *testing.T) {
 		t.Errorf("grouped = %q", got)
 	}
 }
+
+func TestPayReferences(t *testing.T) {
+	if got := PayReference("INV-2026-00012"); got != "202600012" {
+		t.Errorf("PayReference = %q, want 202600012", got)
+	}
+	// What a payer may key in for INV-2026-00012, and a counter past 99999.
+	for in, want := range map[string]string{
+		"202600012":      "INV-2026-00012",
+		"INV-2026-00012": "INV-2026-00012",
+		"inv 2026 00012": "INV-2026-00012",
+		"2026-12":        "INV-2026-00012",
+		"202612":         "INV-2026-00012",
+		"2026123456":     "INV-2026-123456",
+	} {
+		if got := invoiceNumberOf(in); got != want {
+			t.Errorf("invoiceNumberOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for _, in := range []string{"", "2026", "202600000", "INV-2026-0001A", "PAY-ABCDEF", "2026/00012"} {
+		if got := invoiceNumberOf(in); got != "" {
+			t.Errorf("invoiceNumberOf(%q) = %q, want nothing", in, got)
+		}
+	}
+}

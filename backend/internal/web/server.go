@@ -20,6 +20,7 @@ import (
 
 	"github.com/natnael-alemayehu/logistics/internal/config"
 	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/logistics/pkg/payments"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 )
 
@@ -142,10 +143,13 @@ func (s *Server) Handler() http.Handler {
 		r.With(strict).Post("/c/{token}", s.confirmSubmit)
 		r.With(lookup).Get("/c/{token}/media/{n}", s.confirmMedia)
 
-		// Stands in for the payer's phone while payments are simulated.
+		// Stand in for the providers' side while payments are simulated:
+		// a checkout page, and CBE Birr's app and servers.
 		if s.mockPay {
 			r.With(lookup).Get("/dev/payments/{reference}", s.devPaymentPage)
 			r.With(lookup).Post("/dev/payments/{reference}", s.devPaymentAnswer)
+			r.With(lookup).Get("/dev/cbebirr", s.devCBEBirr)
+			r.With(lookup).Post("/dev/cbebirr", s.devCBEBirr)
 		}
 	})
 
@@ -169,7 +173,15 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/driver/sync", s.apiSync)
 		})
 		r.Post("/sms/inbound", s.apiSMSInbound)
-		r.Post("/payments/{provider}/notify", s.apiPaymentNotify)
+		r.Post("/sms/status", s.apiSMSStatus)
+		// Each payment provider's calls: how a payment went, and for one
+		// whose payers pay by reference, the look-ups before it.
+		for _, p := range s.svc.Billing.Providers() {
+			if c, ok := p.(payments.Callbacks); ok {
+				prefix := "/api/v1/payments/" + p.Code()
+				r.Mount("/payments/"+p.Code(), http.StripPrefix(prefix, c.Handler(s.svc.Billing, s.paymentFail)))
+			}
+		}
 	})
 
 	// The dashboard.

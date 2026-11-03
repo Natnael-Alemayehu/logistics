@@ -23,6 +23,7 @@ import (
 
 	"github.com/natnael-alemayehu/logistics/internal/service"
 	"github.com/natnael-alemayehu/logistics/pkg/metrics"
+	"github.com/natnael-alemayehu/logistics/pkg/payments"
 )
 
 type ctxKey int
@@ -145,6 +146,14 @@ func observeRequest(r *http.Request, status int, took time.Duration) {
 }
 
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
+	// Pay redirects the form to the provider's checkout, which form-action
+	// governs too.
+	formAction := []string{"form-action 'self'"}
+	for _, p := range s.svc.Billing.Providers() {
+		if c, ok := p.(payments.Starter); ok && c.CheckoutOrigin() != "" {
+			formAction = append(formAction, c.CheckoutOrigin())
+		}
+	}
 	csp := strings.Join([]string{
 		"default-src 'self'",
 		"script-src 'self'",
@@ -156,7 +165,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		"manifest-src 'self'",
 		"frame-ancestors 'none'",
 		"base-uri 'self'",
-		"form-action 'self'",
+		strings.Join(formAction, " "),
 		"object-src 'none'",
 	}, "; ")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

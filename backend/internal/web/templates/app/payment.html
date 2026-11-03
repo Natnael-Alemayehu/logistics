@@ -1,13 +1,14 @@
-{{/* While the payer hasn't answered, the page reloads itself; a live update
-   reloads it at once when the provider reports back. */}}
+{{/* The provider's checkout sends the payer back here. While the payment
+   is open, the page reloads itself; a live update reloads it at once when
+   the provider reports back. */}}
 {{define "head"}}{{if eq .Data.Pay.Status "pending"}}<meta http-equiv="refresh" content="5">{{end}}{{end}}
 {{define "content"}}{{$p := .Data.Pay}}
 <section class="card pay-status" data-payment="{{uuid $p.ID}}">
   {{if eq $p.Status "pending"}}
-    <h1>Approve the payment on your phone</h1>
-    <p>{{.Data.Label}} sent a prompt to <strong>{{str $p.PayerPhone}}</strong> for <strong>{{birr $p.AmountSantim}}</strong>, invoice {{$p.InvoiceNumber}}. Enter your PIN there to approve it.</p>
-    <p class="muted small">This page updates by itself when the payment goes through.</p>
-    {{if .App.MockPay}}<p class="banner info">Payments are simulated on this server: the prompt is printed on the server terminal, with a link that approves or declines it.</p>{{end}}
+    <h1>Waiting for {{.Data.Label}} to confirm</h1>
+    <p>{{birr $p.AmountSantim}} for invoice {{$p.InvoiceNumber}}. If you paid on {{.Data.Label}}'s page, the confirmation is on its way.</p>
+    <p class="muted small">This page updates by itself when it arrives. If you left {{.Data.Label}}'s page without paying, start again from the invoice: nothing was taken.</p>
+    {{if .App.MockPay}}<p class="banner info">Payments are simulated on this server: no money moves.</p>{{end}}
     <p><a href="/app/billing/invoices/{{uuid $p.InvoiceID}}">Back to the invoice</a></p>
   {{else if eq $p.Status "paid"}}
     <h1>Paid. Thank you</h1>
@@ -23,8 +24,8 @@
     <p>{{.Data.Label}} reported that it was declined or could not be completed{{with $p.Note}}: {{.}}{{else}}.{{end}} Nothing was taken.</p>
     <div class="actions"><a class="btn btn-primary" href="/app/billing/invoices/{{uuid $p.InvoiceID}}">Try again</a></div>
   {{else}}
-    <h1>No answer from your phone</h1>
-    <p>The prompt for {{birr $p.AmountSantim}} wasn't approved within 30 minutes. If you approve it after all, the payment still counts when it arrives.</p>
+    <h1>The payment wasn't completed</h1>
+    <p>{{.Data.Label}} didn't confirm the payment of {{birr $p.AmountSantim}} within 30 minutes. If you did pay, it still counts when {{.Data.Label}} confirms it.</p>
     <div class="actions"><a class="btn btn-primary" href="/app/billing/invoices/{{uuid $p.InvoiceID}}">Try again</a></div>
   {{end}}
 </section>
