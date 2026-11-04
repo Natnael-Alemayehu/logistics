@@ -9,9 +9,11 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -27,8 +29,12 @@ import (
 func TestDelivery(t *testing.T) {
 	office := signUp(t, "Highland Freight")
 
-	// Signing in: the cookies go over HTTPS only, out of scripts' reach.
+	// Signing in: the cookies go over HTTPS only, out of scripts' reach. The
+	// browser claims other addresses, as anyone can, and the app records the
+	// one Caddy saw, so no one can take a new address for each try.
 	again := newBrowser(t)
+	claimed := []string{"203.0.113.7", "198.51.100.7"}
+	again.header = http.Header{"X-Real-IP": {claimed[0]}, "X-Forwarded-For": {claimed[1]}}
 	p := again.mustPost("/login", url.Values{"identifier": {office.email}, "password": {password}})
 	if p.Location != "/app" {
 		t.Fatalf("signing in went to %q", p.Location)
@@ -43,6 +49,9 @@ func TestDelivery(t *testing.T) {
 				t.Errorf("cookie %s without %s", strings.SplitN(c, "=", 2)[0], flag)
 			}
 		}
+	}
+	if from := lastSignIn(t, office); net.ParseIP(from) == nil || slices.Contains(claimed, from) {
+		t.Errorf("the sign-in is recorded from %q, want the address Caddy saw", from)
 	}
 
 	// A driver, and a load for them.
@@ -136,7 +145,24 @@ var (
 	secretRe   = regexp.MustCompile(`data-secret>([^<]+)<`)
 	trackingRe = regexp.MustCompile(`ET-\d{8}-[0-9A-Z]{10}`)
 	reportRe   = regexp.MustCompile(`text ET (\w+) 1 to \d+`)
+	auditIPRe  = regexp.MustCompile(`<td class="small muted mono">([^<]*)</td>`)
 )
+
+// lastSignIn is the address the company's audit log, newest first, records
+// its latest sign-in from.
+func lastSignIn(t *testing.T, admin *browser) string {
+	t.Helper()
+	for _, row := range strings.Split(admin.get("/app/audit").Body, "<tr>") {
+		if strings.Contains(row, "Signed in") {
+			if m := auditIPRe.FindStringSubmatch(row); m != nil {
+				return m[1]
+			}
+			return ""
+		}
+	}
+	t.Fatal("the audit log shows no sign-in")
+	return ""
+}
 
 // optionFor finds a driver's ID among the choices on the booking form.
 func optionFor(t *testing.T, form, name string) string {

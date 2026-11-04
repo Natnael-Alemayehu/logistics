@@ -30,8 +30,9 @@ type Config struct {
 	LogLevel    string
 	// AutoMigrate applies pending migrations at startup.
 	AutoMigrate bool
-	// TrustProxy takes the client address from X-Forwarded-For / X-Real-IP.
-	// Enable only behind a reverse proxy that sets them.
+	// TrustProxy takes the client address from the last X-Forwarded-For
+	// entry, the one the proxy adds. Enable only behind a reverse proxy
+	// that sets it.
 	TrustProxy bool
 	// Secret keys one-time codes and signed cookies. Generated into SecretFile
 	// on first start when not set.

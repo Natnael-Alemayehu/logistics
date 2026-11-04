@@ -59,23 +59,21 @@ func actor(r *http.Request) service.Actor {
 
 // clientIP determines the caller's address. Forwarding headers are believed
 // only when the deployment says a proxy sets them; otherwise anyone could
-// claim any address and walk around the rate limits.
+// claim any address and walk around the rate limits. Even then, only the
+// last X-Forwarded-For entry: X-Real-IP is one the client can send too, and
+// proxies such as Caddy pass it through.
 func (s *Server) clientIP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			ip = r.RemoteAddr
 		}
-		if s.cfg.TrustProxy {
-			if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); net.ParseIP(real) != nil {
-				ip = real
-			} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-				// The proxy appends the address it saw; earlier entries are
-				// whatever the client chose to send.
-				parts := strings.Split(xff, ",")
-				if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
-					ip = last
-				}
+		if xff := r.Header.Values("X-Forwarded-For"); s.cfg.TrustProxy && len(xff) > 0 {
+			// The proxy appends the address it saw, to the last header;
+			// earlier entries are whatever the client chose to send.
+			parts := strings.Split(xff[len(xff)-1], ",")
+			if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
+				ip = last
 			}
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxIP, ip)))
