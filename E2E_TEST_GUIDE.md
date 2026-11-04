@@ -1,7 +1,8 @@
 # End-to-end walkthrough
 
 A manual pass over every flow, in the order a new customer meets them. The
-automated version of the core flows is `make test-integration`.
+automated version of the core flows is `make test-integration`, and
+`make test-e2e` runs them against staging (section 13).
 
 ## Setup
 
@@ -551,3 +552,53 @@ Check:
 - The sandbox's pages work on a phone and in dark mode.
 - `docker compose --profile sandbox up sandbox` runs the sandbox in a
   container instead of `make sandbox`, for the app on the host.
+
+## 13. On staging
+
+The product as production runs it: the production images and compose file,
+behind Caddy over HTTPS, with the provider sandbox, Mailpit and SeaweedFS in
+place of the providers, the mail server and S3. From `backend/`:
+
+```bash
+make staging-up   # https://menged.localhost:8443
+make test-e2e     # the automated pass over the steps below
+```
+
+Trust `tmp/staging-ca.crt` in the browser, or accept its warning. Texts
+arrive on the sandbox's phones (https://sandbox.menged.localhost:8443) and
+email in Mailpit (https://mail.menged.localhost:8443).
+
+1. **Sign up** at https://menged.localhost:8443/signup, with the code from
+   the sandbox's phone, and confirm the address from the link in Mailpit.
+2. **The driver app.** Add a driver and book a load for them. On a phone
+   (or the browser's device mode), open `/driver/`, sign in with the PIN
+   the dashboard showed and choose a new one. Turn the network off and
+   reload: the app opens from its service worker and says *No signal*. Mark
+   the load arrived; it is sent when the network is back, and the dashboard
+   updates without a reload.
+3. **Proof of delivery** with a photo: the photo on the shipment's page is
+   kept in S3 and served by the app from there.
+4. **Pay** an invoice at telebirr's checkout on the sandbox (any number, PIN
+   `1234`): it returns to the payment page, paid, and the receipt is in
+   Mailpit.
+5. **Monitoring.** Grafana (https://grafana.menged.localhost:8443, `admin` /
+   `staging-grafana-password`) shows the Menged dashboard with the requests,
+   texts and emails from the steps above.
+6. **Backup and restore**, as on a production machine:
+
+   ```bash
+   export COMPOSE_FILE=deployments/docker-compose.prod.yml:deployments/staging/compose.yml
+   export ENV_FILE=deployments/staging/staging.env
+   BACKUP_DIR=tmp/backups scripts/backup.sh
+   ```
+
+   Sign up another company, then run the `scripts/restore.sh` command the
+   backup printed and type `menged-staging`. The second company is gone, and
+   the first is still signed in. Unset `COMPOSE_FILE` and `ENV_FILE`
+   afterwards, or the next `docker compose` goes to staging too.
+
+Check:
+- http://menged.localhost:8088 redirects to HTTPS, port included.
+- Responses carry HSTS, the CSP, `X-Content-Type-Options: nosniff` and an
+  `Alt-Svc` header offering HTTP/3. `/metrics` is 404 through Caddy.
+- `make staging-down` removes staging and its data.
