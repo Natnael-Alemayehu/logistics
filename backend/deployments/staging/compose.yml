@@ -1,0 +1,181 @@
+# Staging: production's compose file, on one machine, with the provider
+# sandbox playing Ethio telecom, telebirr and CBE Birr. The app runs as in
+# production (ENVIRONMENT=production, its real adapters, behind Caddy over
+# HTTPS), with Mailpit for email, SeaweedFS for S3 and the monitoring.
+#
+#   https://menged.localhost:8443           the app (http://menged.localhost:8088 redirects)
+#   https://sandbox.menged.localhost:8443   the sandbox's phones, checkout and faults
+#   https://mail.menged.localhost:8443      Mailpit: every email sent
+#   https://grafana.menged.localhost:8443   Grafana (admin, staging-grafana-password)
+#
+#   make staging-up      build, start, and wait until it is healthy
+#   make test-e2e        the end-to-end tests against it
+#   make staging-down    remove it and its data
+#
+# Browsers resolve *.localhost to this machine. `make staging-ca` writes
+# Caddy's root certificate, for a browser or curl to trust.
+#
+# This file is laid over deployments/docker-compose.prod.yml, so its
+# relative paths are from deployments/, like that file's.
+name: menged-staging
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-hardened: &hardened
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: *logging
+
+services:
+  app:
+    env_file: !override
+      - staging/staging.env
+    volumes:
+      # The telebirr keys, from the sandbox-keys job in place of
+      # deployments/secrets/.
+      - sandbox-keys:/run/secrets:ro
+    depends_on:
+      sandbox-keys:
+        condition: service_completed_successfully
+      s3-bucket:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_started
+
+  caddy:
+    ports: !override
+      - "127.0.0.1:8088:8088"
+      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:8443:8443/udp"
+    volumes:
+      - ./staging/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/production.caddy:ro
+    # The sites' names lead to Caddy from the other containers too: the
+    # sandbox calls the app at its public address, as a provider would.
+    networks:
+      default:
+        aliases:
+          - menged.localhost
+          - sandbox.menged.localhost
+          - mail.menged.localhost
+          - grafana.menged.localhost
+    healthcheck:
+      # Up, with its certificate authority made.
+      test: ["CMD-SHELL", "test -f /data/caddy/pki/authorities/local/root.crt && wget -qO /dev/null http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  sandbox:
+    build:
+      context: ..
+      target: sandbox
+    image: menged-sandbox:staging
+    restart: unless-stopped
+    env_file:
+      - staging/staging.env
+    environment:
+      SANDBOX_ADDR: 0.0.0.0:8091
+      SANDBOX_KEYS_DIR: /keys
+      SANDBOX_APP_URL: https://menged.localhost:8443
+      # The app's certificate is from Caddy's own authority.
+      SSL_CERT_FILE: /ca/root.crt
+    volumes:
+      - sandbox-keys:/keys:ro
+      - ca:/ca:ro
+    <<: *hardened
+    depends_on:
+      sandbox-keys:
+        condition: service_completed_successfully
+      caddy-ca:
+        condition: service_completed_successfully
+
+  # Copies Caddy's root certificate where the sandbox can read it: Caddy
+  # keeps its authority readable by root only.
+  caddy-ca:
+    image: caddy:2.10-alpine
+    entrypoint: ["sh", "-c", "install -m 0644 /data/caddy/pki/authorities/local/root.crt /ca/root.crt"]
+    volumes:
+      - caddy-data:/data:ro
+      - ca:/ca
+    <<: *hardened
+    depends_on:
+      caddy:
+        condition: service_healthy
+
+  # Writes the key pairs the app and the sandbox sign with, once.
+  sandbox-keys:
+    build:
+      context: ..
+      target: sandbox
+    image: menged-sandbox:staging
+    command: keys
+    environment:
+      SANDBOX_KEYS_DIR: /keys
+    volumes:
+      - sandbox-keys:/keys
+    <<: *hardened
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 5000
+    <<: *hardened
+
+  s3:
+    image: chrislusf/seaweedfs:3.97
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - s3-data:/data
+      - ./staging/s3.json:/etc/seaweedfs/s3.json:ro
+    logging: *logging
+    healthcheck:
+      # The master is healthy and the S3 gateway answers (refusing an
+      # unsigned request).
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:9333/cluster/healthz && wget -S --spider http://127.0.0.1:8333/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Makes the app's bucket, once the filer has joined.
+  s3-bucket:
+    image: chrislusf/seaweedfs:3.97
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        for i in $$(seq 60); do
+          echo 's3.bucket.list' | weed shell -master=s3:9333 2>/dev/null | grep -q '[[:space:]]menged[[:space:]]' && exit 0
+          echo 's3.bucket.create -name menged' | weed shell -master=s3:9333 >/dev/null 2>&1
+          sleep 2
+        done
+        echo 'no bucket' >&2
+        exit 1
+    logging: *logging
+    depends_on:
+      s3:
+        condition: service_healthy
+
+  prometheus:
+    profiles: !reset []
+    volumes:
+      - ./staging/metrics_token:/etc/prometheus/metrics_token:ro
+
+  grafana:
+    profiles: !reset []
+    ports: !reset []
+    environment:
+      GF_SERVER_ROOT_URL: https://grafana.menged.localhost:8443/
+
+volumes:
+  sandbox-keys:
+  s3-data:
+  ca:

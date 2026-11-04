@@ -42,6 +42,7 @@ Run commands from `backend/` (the root Makefile only forwards to it).
 make db && make seed && make run   # http://localhost:8080, demo logins in README
 make test                          # unit tests
 make test-integration              # HTTP-level tests against PostGIS
+make staging-up && make test-e2e   # production's images and compose file, over HTTPS
 make vet
 ```
 
@@ -70,3 +71,10 @@ make vet
   own. When a contract changes or is confirmed with a provider, change the
   adapter (`pkg/sms`, `pkg/payments`) and the sandbox together, and run
   `make test-integration`, whose sandbox tests run the adapters against it.
+- Staging is `deployments/docker-compose.prod.yml` with
+  `deployments/staging/compose.yml` on top, which only swaps in stand-ins for
+  the outside world (the sandbox, Mailpit, SeaweedFS, Caddy's own CA). Change
+  production's file and staging follows. `tests/e2e` runs against it; its
+  last test restores a backup over staging's data.
+- The Dockerfile and CI (`.github/workflows/ci.yml`) name the same Go
+  release, the newest: change them together.

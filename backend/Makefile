@@ -1,4 +1,5 @@
-.PHONY: help db db-stop run dev build migrate seed test test-integration vet sqlc docker-build clean sandbox sandbox-keys run-sandbox
+.PHONY: help db db-stop run dev build migrate seed test test-integration test-e2e vet sqlc docker-build clean sandbox sandbox-keys run-sandbox \
+	staging-up staging-down staging-ca staging-logs
 
 DB_PORT ?= 5434
 DATABASE_URL ?= postgres://logistics:logistics@localhost:$(DB_PORT)/logistics?sslmode=disable
@@ -7,6 +8,11 @@ TEST_DATABASE_URL ?= postgres://logistics:logistics@localhost:$(DB_PORT)/postgre
 export DATABASE_URL
 # Runs a command with sandbox.env's settings, for the app and the sandbox.
 WITH_SANDBOX_ENV = set -a && . ./sandbox.env && set +a &&
+# Staging: production's compose file, with the provider sandbox for the
+# providers (deployments/staging/compose.yml).
+STAGING = docker compose -f deployments/docker-compose.prod.yml -f deployments/staging/compose.yml \
+	--env-file deployments/staging/staging.env
+STAGING_CA = tmp/staging-ca.crt
 
 help:
 	@echo "Menged"
@@ -18,6 +24,9 @@ help:
 	@echo "  make run-sandbox        run the app with its providers pointed at the sandbox"
 	@echo "  make test               unit tests"
 	@echo "  make test-integration   end-to-end tests against the database"
+	@echo "  make staging-up         run staging at https://menged.localhost:8443"
+	@echo "  make test-e2e           end-to-end tests against staging"
+	@echo "  make staging-down       remove staging and its data"
 	@echo "  make build              build bin/menged and bin/menged-sandbox"
 	@echo "  make migrate            apply migrations"
 	@echo "  make sqlc               regenerate internal/db from sqlc/queries"
@@ -63,9 +72,32 @@ test:
 test-integration:
 	TEST_DATABASE_URL=$(TEST_DATABASE_URL) go test -tags integration -count=1 ./tests/integration/
 
+# Against staging (make staging-up), through Caddy as a browser and the
+# providers reach it.
+test-e2e:
+	E2E_CA_FILE=$(CURDIR)/$(STAGING_CA) go test -tags e2e -count=1 -v ./tests/e2e/
+
+staging-up:
+	$(STAGING) up -d --build --wait
+	@$(MAKE) --no-print-directory staging-ca
+	@echo "Staging is up: https://menged.localhost:8443, the sandbox at https://sandbox.menged.localhost:8443"
+	@echo "and email at https://mail.menged.localhost:8443. Caddy's root certificate is $(STAGING_CA)."
+
+staging-down:
+	$(STAGING) down --volumes --remove-orphans
+
+# Caddy's root certificate, for the tests, curl or a browser to trust.
+staging-ca:
+	@mkdir -p $(dir $(STAGING_CA))
+	@$(STAGING) cp caddy:/data/caddy/pki/authorities/local/root.crt $(STAGING_CA)
+
+staging-logs:
+	$(STAGING) logs --follow --tail=100
+
 vet:
 	go vet ./...
 	go vet -tags integration ./tests/...
+	go vet -tags e2e ./tests/...
 
 sqlc:
 	sqlc generate -f sqlc/sqlc.yaml

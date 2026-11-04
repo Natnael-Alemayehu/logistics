@@ -1,0 +1,35 @@
+# Staging's Caddy: production's site as it is, with certificates from
+# Caddy's own authority (there is no public name to get them for), on ports
+# this machine has free, and the staging tools beside it.
+{
+	http_port 8088
+	https_port 8443
+	local_certs
+	skip_install_trust
+	# The authority has no OCSP responder.
+	ocsp_stapling off
+	# Caddy's own redirects to HTTPS leave https_port out, taking it for a
+	# port that 443 is forwarded to. Here it is the port itself.
+	auto_https disable_redirects
+}
+
+http:// {
+	redir https://{host}:8443{uri} 308
+}
+
+# {$DOMAIN}, menged.localhost:8443.
+import /etc/caddy/production.caddy
+
+# The provider sandbox: phones, telebirr's checkout, faults and its API.
+sandbox.menged.localhost:8443 {
+	reverse_proxy sandbox:8091
+}
+
+# Every email the app sends.
+mail.menged.localhost:8443 {
+	reverse_proxy mailpit:8025
+}
+
+grafana.menged.localhost:8443 {
+	reverse_proxy grafana:3000
+}

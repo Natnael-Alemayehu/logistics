@@ -154,7 +154,8 @@ backend/
   pkg/                 SMS, email and payment providers, terminal stand-ins, storage (local or S3),
                        websocket hub, hashing
   tests/integration/   end-to-end tests over HTTP against PostGIS
-  deployments/         production compose file, Caddy, Prometheus, Grafana
+  tests/e2e/           tests against staging, through Caddy over HTTPS
+  deployments/         production compose file, Caddy, Prometheus, Grafana; staging/
   scripts/             backup and restore
 ```
 
@@ -246,6 +247,10 @@ The integration tests create a scratch database on the server from `make db`
 and drop it afterwards. Without `TEST_DATABASE_URL` they start their own PostGIS
 container instead. The S3 tests start a SeaweedFS container.
 
+`make staging-up && make test-e2e` tests the production images and compose
+file over HTTPS, with the providers played by the sandbox (see
+[Staging](#staging)).
+
 ## Deploy
 
 One machine with Docker runs it: the app, PostGIS, and Caddy, which gets a
@@ -316,7 +321,49 @@ the backups off the machine:
 Photos kept in S3 aren't included: use the store's versioning or
 replication. `restore.sh` asks for the stack's name, then stops the app,
 replaces the database (and the files, if given) with the backup's, and starts
-it again.
+it again. `make test-e2e` backs up staging and restores it, so both scripts
+are tested.
+
+### Staging
+
+Production's compose file and images, with `deployments/staging/compose.yml`
+standing in for the outside world: the provider sandbox for Ethio telecom,
+telebirr and CBE Birr (the app runs its real adapters, and the sandbox calls
+back over HTTPS through Caddy), Mailpit for SMTP, SeaweedFS for S3, and
+Caddy's own certificate authority. Prometheus and Grafana are on.
+
+```bash
+make staging-up     # from backend/: build, start, and copy Caddy's root certificate to tmp/staging-ca.crt
+make test-e2e       # the end-to-end tests, against staging
+make staging-down   # remove staging and its data
+```
+
+| | |
+|---|---|
+| The app | https://menged.localhost:8443 |
+| The sandbox: phones, wallets and faults | https://sandbox.menged.localhost:8443 |
+| Email sent (Mailpit) | https://mail.menged.localhost:8443 |
+| Grafana, as `admin` / `staging-grafana-password` | https://grafana.menged.localhost:8443 |
+
+It listens on 127.0.0.1 only, and `*.localhost` names reach this machine
+without DNS. Trust `tmp/staging-ca.crt` in the browser, or give it to curl
+with `--cacert`. `make staging-logs` follows the logs.
+
+The end-to-end tests (`tests/e2e/`) reach staging as browsers and the
+providers do. A company signs up with the code from the sandbox's phone and
+the link from Mailpit. A driver works a load in the driver app, with its
+photo stored in S3 and the dashboard told over a WebSocket. Invoices are
+paid with telebirr and CBE Birr. The tests also check the HTTPS edge's
+redirect and headers and the figures in Prometheus and Grafana, and last,
+take a backup and restore it.
+
+### CI
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to main: vet,
+unit tests, gofmt, `sqlc diff`, govulncheck and shellcheck; the integration
+tests against a PostGIS service; and staging, with the end-to-end tests. Go
+fixes security issues only in its two newest releases, so CI and the
+Dockerfile stay on the newer one, together.
 
 ### Connecting the real providers
 
