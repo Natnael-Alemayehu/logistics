@@ -55,6 +55,12 @@ func NewS3Storage(bucket, region, endpoint, accessKey, secretKey string, useSSL 
 			if !useSSL && strings.HasPrefix(endpoint, "http://") {
 				o.UsePathStyle = true
 			}
+			// S3-compatible stores differ in their support for the SDK's
+			// default integrity checksums, and the SDK logs a warning for
+			// every download that lacks one. Send and check them only
+			// where S3 requires them.
+			o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+			o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 		})
 	}
 

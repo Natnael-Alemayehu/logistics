@@ -61,3 +61,7 @@ backend/deployments/prometheus/metrics_token
 
 # The provider sandbox's throwaway telebirr keys (make sandbox-keys)
 backend/sandbox-keys/
+
+# Provider keys for production, mounted at /run/secrets
+backend/deployments/secrets/*
+!backend/deployments/secrets/README.md

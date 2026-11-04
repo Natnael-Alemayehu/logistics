@@ -217,3 +217,37 @@ func TestRetentionClearsAccountLinks(t *testing.T) {
 		t.Error("an expired sign-up was kept")
 	}
 }
+
+// TestRateLimits: one address may try 30 sign-ins a minute, more than the
+// five wrong passwords that lock an account, and signing in doesn't use up
+// its allowance for what texts a code, which is 10.
+func TestRateLimits(t *testing.T) {
+	e := newEnv(t)
+	b := e.browser()
+	for i := range 30 {
+		if p := b.post("/login", url.Values{"identifier": {fmt.Sprintf("nobody%d@example.et", i)}, "password": {"wrong-password"}}); p.Status != http.StatusUnauthorized {
+			t.Fatalf("sign-in %d: status %d, want it refused for the password", i+1, p.Status)
+		}
+	}
+	p := b.post("/login", url.Values{"identifier": {"nobody@example.et"}, "password": {"wrong-password"}})
+	if p.Status != http.StatusTooManyRequests || !strings.Contains(p.Body, "Wait a minute") {
+		t.Fatalf("the 31st sign-in in a minute: status %d, want 429", p.Status)
+	}
+	var api struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if code := e.api("POST", "/api/v1/driver/login", "", map[string]string{"phone": phoneNumber(), "pin": "1234", "device_id": "d"}, &api); code != http.StatusTooManyRequests || api.Error.Code != "RATE_LIMITED" {
+		t.Errorf("a driver signing in from the same address: status %d %q, want 429", code, api.Error.Code)
+	}
+
+	for i := range 10 {
+		if p := b.post("/forgot", url.Values{"email": {fmt.Sprintf("nobody%d@example.et", i)}}); p.Status != http.StatusOK {
+			t.Fatalf("reset request %d: status %d, want it taken", i+1, p.Status)
+		}
+	}
+	if p := b.post("/forgot", url.Values{"email": {"nobody@example.et"}}); p.Status != http.StatusTooManyRequests {
+		t.Errorf("the 11th reset request in a minute: status %d, want 429", p.Status)
+	}
+}

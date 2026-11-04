@@ -58,6 +58,7 @@ func TestMain(m *testing.M) {
 			return 1
 		}
 		defer pool.Close()
+		defer func() { stopObjectStore() }()
 		if err := migrate(ctx); err != nil {
 			fmt.Fprintln(os.Stderr, "migrate:", err)
 			return 1

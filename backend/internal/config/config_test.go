@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +63,10 @@ func TestProductionRequiresPublicURL(t *testing.T) {
 	t.Setenv("BILLING_BANK_DETAILS", "Commercial Bank of Ethiopia, account 1000123456789, Menged PLC")
 	if _, err := Load(); err == nil {
 		t.Error("production without PUBLIC_URL should fail")
+	}
+	t.Setenv("PUBLIC_URL", "http://app.example.et")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "https://") {
+		t.Errorf("production over plain HTTP: %v, want it refused", err)
 	}
 	t.Setenv("PUBLIC_URL", "https://app.example.et/")
 	c, err := Load()

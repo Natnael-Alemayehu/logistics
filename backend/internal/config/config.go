@@ -236,8 +236,16 @@ func Load() (*Config, error) {
 		c.CBEBirr = standInCBEBirr(c.CBEBirr, c.Secret)
 	}
 
-	if c.IsProduction() && strings.HasPrefix(c.PublicURL, "http://localhost") {
-		return nil, errors.New("PUBLIC_URL must be set in production")
+	if c.IsProduction() {
+		switch {
+		case strings.HasPrefix(c.PublicURL, "http://localhost"):
+			return nil, errors.New("PUBLIC_URL must be set in production")
+		case !strings.HasPrefix(c.PublicURL, "https://"):
+			// Over plain HTTP, sign-in cookies can't be marked Secure and
+			// browsers refuse the driver app its service worker, so it
+			// stops working offline.
+			return nil, fmt.Errorf("PUBLIC_URL must be an https:// address in production, not %q", c.PublicURL)
+		}
 	}
 	if c.IsProduction() && c.PaymentProvider == "none" && c.BankDetails == "" {
 		return nil, errors.New("BILLING_BANK_DETAILS must be set in production: without a payment provider, a bank transfer is the only way companies can pay")
