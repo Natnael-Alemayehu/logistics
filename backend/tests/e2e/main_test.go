@@ -126,6 +126,8 @@ func clientID() string { return fmt.Sprintf("e2e-%d", rand.Int64()) }
 type browser struct {
 	t *testing.T
 	c *http.Client
+	// header goes with every request, as headers a client chose to send.
+	header http.Header
 	// email, phone and company are the signed-up administrator's.
 	email, phone, company string
 }
@@ -171,6 +173,11 @@ func send(t *testing.T, c *http.Client, req *http.Request) *http.Response {
 
 func (b *browser) do(req *http.Request) page {
 	b.t.Helper()
+	for k, vs := range b.header {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
 	res := send(b.t, b.c, req)
 	defer res.Body.Close()
 	body, _ := io.ReadAll(res.Body)

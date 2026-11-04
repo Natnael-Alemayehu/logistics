@@ -353,9 +353,10 @@ The end-to-end tests (`tests/e2e/`) reach staging as browsers and the
 providers do. A company signs up with the code from the sandbox's phone and
 the link from Mailpit. A driver works a load in the driver app, with its
 photo stored in S3 and the dashboard told over a WebSocket. Invoices are
-paid with telebirr and CBE Birr. The tests also check the HTTPS edge's
-redirect and headers and the figures in Prometheus and Grafana, and last,
-take a backup and restore it.
+paid with telebirr and CBE Birr. The tests also check the HTTPS edge (the
+redirect, the headers, and that a client can't claim another address) and
+the figures in Prometheus and Grafana, and last, take a backup and restore
+it.
 
 ### CI
 
