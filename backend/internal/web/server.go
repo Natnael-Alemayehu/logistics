@@ -108,6 +108,11 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/favicon.ico", s.favicon)
 	r.Get("/robots.txt", s.robots)
 
+	// Requests a minute from one address. Signing in has an allowance of
+	// its own: an account locks after five wrong passwords anyway, and a
+	// depot's drivers often reach the internet through one carrier address.
+	// strict is for what sends a code or checks one.
+	signIn := httprate.Limit(30, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
 	strict := httprate.Limit(10, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
 	lookup := httprate.Limit(60, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
 	general := httprate.Limit(600, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
@@ -118,7 +123,7 @@ func (s *Server) Handler() http.Handler {
 		r.Use(s.optionalStaff)
 		r.Get("/", s.landing)
 		r.Get("/login", s.loginPage)
-		r.With(strict).Post("/login", s.login)
+		r.With(signIn).Post("/login", s.login)
 		r.Post("/logout", s.logout)
 		r.Get("/signup", s.signupPage)
 		r.With(strict).Post("/signup", s.signup)
@@ -163,7 +168,7 @@ func (s *Server) Handler() http.Handler {
 		r.Use(general)
 		r.Use(s.decompressBody)
 		r.Get("/driver/config", s.apiDriverConfig)
-		r.With(strict).Post("/driver/login", s.apiDriverLogin)
+		r.With(signIn).Post("/driver/login", s.apiDriverLogin)
 		r.With(strict).Post("/driver/pin-reset/request", s.apiPINResetRequest)
 		r.With(strict).Post("/driver/pin-reset/confirm", s.apiPINResetConfirm)
 		r.Group(func(r chi.Router) {

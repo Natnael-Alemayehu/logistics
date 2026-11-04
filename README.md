@@ -155,11 +155,12 @@ backend/
                        websocket hub, hashing
   tests/integration/   end-to-end tests over HTTP against PostGIS
   deployments/         production compose file, Caddy, Prometheus, Grafana
+  scripts/             backup and restore
 ```
 
 ## Run it locally
 
-You need Go 1.25+ and Docker.
+You need Go 1.26+ and Docker.
 
 ```bash
 make db      # PostGIS on localhost:5434 (DB_PORT=… to change)
@@ -243,19 +244,39 @@ make test-integration   # end-to-end: signup → book → driver sync → POD �
 
 The integration tests create a scratch database on the server from `make db`
 and drop it afterwards. Without `TEST_DATABASE_URL` they start their own PostGIS
-container instead.
+container instead. The S3 tests start a SeaweedFS container.
 
 ## Deploy
+
+One machine with Docker runs it: the app, PostGIS, and Caddy, which gets a
+TLS certificate for `DOMAIN` and serves HTTP/2 and HTTP/3.
 
 ```bash
 cd backend
 cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_* and SMTP_* settings, BILLING_BANK_DETAILS
-docker compose -f deployments/docker-compose.prod.yml up -d
+docker compose -f deployments/docker-compose.prod.yml --env-file .env up -d --build --wait
 ```
 
-This runs the app, PostGIS and Caddy, which gets a TLS certificate for `DOMAIN`.
-Signatures and photos go to the `app-data` volume, or to S3 with
-`STORAGE_TYPE=s3`.
+In production the app refuses to start without an `https://` address (the
+compose file sets `PUBLIC_URL` from `DOMAIN`), with a stand-in provider or
+`SANDBOX_URL` unless `ALLOW_MOCK_PROVIDERS=true`, or with a provider whose
+settings or key files are missing, and says which. The database password is
+passed to the app on its own, not in a URL, so it may contain any character.
+Provider keys, such as telebirr's key files, go in `deployments/secrets/`,
+which the app sees at `/run/secrets` (see the README there). Signatures and
+photos go to the `app-data` volume, or to S3 or another S3-compatible store
+with `STORAGE_TYPE=s3`.
+
+Each container has a read-only root filesystem where it can, no Linux
+capabilities beyond what it needs and no privilege escalation, and its logs
+rotate. When the app is stopped or replaced, it stops taking requests and
+gives those in progress, and the text or email being sent, 30 seconds to
+finish. Messages it hadn't started are left for the next start to send at
+once.
+
+Run one app container per database. Live updates (the WebSocket hub) and
+rate limits are kept in memory, so a second instance would split them. The
+background jobs take a Postgres advisory lock, so they never run twice.
 
 Add `--profile monitoring` for Prometheus and Grafana: set `METRICS_TOKEN`, and
 put the same value in `deployments/prometheus/metrics_token`. Grafana listens
@@ -271,9 +292,31 @@ provider, or set it to `off`.
 Point your SMS provider's webhooks at `https://DOMAIN/api/v1/sms/inbound`
 (texts from phones) and `https://DOMAIN/api/v1/sms/status` (delivery
 reports), with `SMS_INBOUND_SECRET` in an `X-Webhook-Secret` header or a
-`secret` parameter. Back up with `scripts/backup.sh`.
+`secret` parameter.
 
 Health checks: `/healthz` (process up) and `/readyz` (database reachable).
+
+### Backups
+
+```bash
+scripts/backup.sh                                   # from backend/
+scripts/restore.sh <menged_….dump> [<menged_…_files.tar.gz>]
+```
+
+`backup.sh` writes the database (`pg_dump`) and the app's volume (photos and
+signatures kept on disk, and the app secret that sessions and codes depend
+on) to `/var/backups/menged` (`BACKUP_DIR`), readable by their owner only,
+and deletes those older than two weeks (`KEEP_DAYS`). Run it nightly and copy
+the backups off the machine:
+
+```
+15 2 * * *  cd /srv/menged/backend && scripts/backup.sh >>/var/log/menged-backup.log 2>&1
+```
+
+Photos kept in S3 aren't included: use the store's versioning or
+replication. `restore.sh` asks for the stack's name, then stops the app,
+replaces the database (and the files, if given) with the backup's, and starts
+it again.
 
 ### Connecting the real providers
 

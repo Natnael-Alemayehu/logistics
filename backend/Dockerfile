@@ -1,6 +1,8 @@
 # One image, one binary: the dashboard, public tracking, the driver app and
 # background jobs. Templates, static files and migrations are embedded.
-FROM golang:1.25-alpine AS build
+# Go's security fixes reach only its two newest releases: keep this on the
+# newer one, and CI's go-version with it.
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -13,8 +15,12 @@ FROM build AS sandbox-build
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/menged-sandbox ./cmd/sandbox
 
 FROM alpine:3.22 AS sandbox
+# /keys belongs to the sandbox, so a new volume there takes its owner and
+# `menged-sandbox keys` can write the key pairs into it.
 RUN apk add --no-cache ca-certificates tzdata \
- && adduser -D -H -u 10001 sandbox
+ && adduser -D -H -u 10001 sandbox \
+ && mkdir /keys \
+ && chown sandbox /keys
 COPY --from=sandbox-build /out/menged-sandbox /usr/local/bin/menged-sandbox
 USER sandbox
 # Its pages show the time as a phone in Ethiopia would.
