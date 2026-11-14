@@ -1,0 +1,22 @@
+{{define "content"}}{{$f := .Form}}{{$e := .Errors}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/help">Help</a></p>
+    <h1>Ask a question</h1>
+    <p class="muted">The {{.App.Name}} team answers here{{with .Me.Email}} and emails the answer to {{.}}{{end}}.</p>
+  </div>
+</div>
+{{template "form-error" .}}
+<form method="post" action="/app/help" class="card stack form-narrow">
+  <label>Subject
+    <input name="subject" maxlength="200" required value="{{field $f "subject" ""}}" placeholder="e.g. A driver can't sign in" {{if index $e "subject"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "subject")}}
+  </label>
+  <label>Your message
+    <textarea name="body" rows="8" maxlength="5000" required {{if index $e "body"}}aria-invalid="true"{{end}}>{{field $f "body" ""}}</textarea>
+    <span class="hint">What happened, and what you expected. Give the tracking number or the driver's name if it's about one.</span>
+    {{template "field-error" (index $e "body")}}
+  </label>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Send</button><a class="btn btn-ghost" href="/app/help">Cancel</a></div>
+</form>
+{{end}}

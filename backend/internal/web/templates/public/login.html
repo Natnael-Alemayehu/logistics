@@ -1,0 +1,23 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$e := .Errors}}
+<section class="card auth">
+  <h1>Sign in</h1>
+  <p class="muted">For office staff. Drivers use the <a href="/driver/">driver app</a>.</p>
+  {{template "form-error" .}}
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="next" value="{{.Data.Next}}">
+    <label>Email or mobile number
+      <input name="identifier" value="{{field .Form "identifier" ""}}" autocomplete="username" required autofocus {{if index $e "identifier"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "identifier")}}
+    </label>
+    <label>Password
+      <input name="password" type="password" autocomplete="current-password" required {{if index $e "password"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "password")}}
+    </label>
+    <label class="check"><input type="checkbox" name="remember" value="1" {{if checked .Form "remember" false}}checked{{end}}> Keep me signed in for 30 days</label>
+    <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+  </form>
+  <p class="small"><a href="/forgot">Forgot your password?</a></p>
+  <p class="small">New to {{.App.Name}}? <a href="/signup">Start a free trial</a></p>
+</section>
+{{end}}

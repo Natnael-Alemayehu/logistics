@@ -1,0 +1,9 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$d := .Data}}
+<section class="card empty error-page">
+  <p class="error-code">{{$d.Status}}</p>
+  <h1>{{$d.Title}}</h1>
+  <p class="muted">{{$d.Detail}}</p>
+  <p><a class="btn btn-primary" href="/">Home</a> <a class="btn" href="/track">Track a shipment</a></p>
+</section>
+{{end}}

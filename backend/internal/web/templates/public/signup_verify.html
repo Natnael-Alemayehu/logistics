@@ -1,0 +1,19 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$e := .Errors}}
+<section class="card auth">
+  <h1>Confirm your phone</h1>
+  <p class="muted">We've texted a 6-digit code to <strong>{{.Data.Phone}}</strong>. Enter it to create {{.Data.Company}}.</p>
+  {{if .App.MockSMS}}<p class="hint">Text messages are simulated on this server: the code is printed on its terminal.</p>{{end}}
+  {{template "form-error" .}}
+  <form method="post" action="/signup/verify" class="stack" novalidate>
+    <label>Code
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required autofocus class="mono code-input" {{if index $e "code"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "code")}}
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+  </form>
+  <form method="post" action="/signup/resend">
+    <p class="small">No text after a minute? <button type="submit" class="link">Send a new code</button> · <a href="/signup">Change your details</a></p>
+  </form>
+</section>
+{{end}}

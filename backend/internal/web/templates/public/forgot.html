@@ -1,0 +1,25 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$e := .Errors}}
+<section class="card auth">
+  {{if .Data.Sent}}
+  <h1>Check your email</h1>
+  <p>If <strong>{{.Data.Email}}</strong> belongs to a {{.App.Name}} account and has been confirmed, we've sent it a link to choose a new password. The link works once, within the hour.</p>
+  <p class="small muted">Nothing arrived? Check your spam folder, and that this is the address you sign in with. If you never confirmed it, <a href="/forgot">reset with your phone number</a> instead. Your company's administrator can also issue you a temporary password.</p>
+  {{if .App.MockMail}}<p class="hint">Email is simulated on this server: the link is printed on its terminal.</p>{{end}}
+  <p class="small"><a href="/login">Back to sign in</a></p>
+  {{else}}
+  <h1>Reset your password</h1>
+  <p class="muted">Enter the email address or phone number you sign in with. We'll email a link to a confirmed address, or text a code to your phone.</p>
+  {{template "form-error" .}}
+  <form method="post" action="/forgot" class="stack" novalidate>
+    <label>Email or phone
+      <input name="identifier" type="text" value="{{field .Form "identifier" (field .Form "email" "")}}" autocomplete="username" required autofocus {{if or (index $e "email") (index $e "phone")}}aria-invalid="true"{{end}}>
+      {{template "field-error" (or (index $e "email") (index $e "phone"))}}
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Continue</button>
+  </form>
+  <p class="small muted">Neither works? Ask your company's administrator to issue you a temporary password.</p>
+  <p class="small"><a href="/login">Back to sign in</a></p>
+  {{end}}
+</section>
+{{end}}

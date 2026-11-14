@@ -1,0 +1,34 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$e := .Errors}}
+<section class="card auth">
+  <h1>Choose a new password</h1>
+  {{if .Data.Sent}}
+  <p class="muted">If <strong>{{.Data.Phone}}</strong> belongs to an office account, we've texted it a 6-digit code. It works once, within 10 minutes.</p>
+  {{else}}
+  <p class="muted">Enter the code we texted to your phone, and a new password. You'll be signed in, and signed out on every other device.</p>
+  {{end}}
+  {{if .App.MockSMS}}<p class="hint">Text messages are simulated on this server: the code is printed on its terminal.</p>{{end}}
+  {{template "form-error" .}}
+  <form method="post" action="/reset/phone" class="stack" novalidate>
+    <label>Phone
+      <input name="phone" type="tel" inputmode="tel" value="{{field .Form "phone" (print .Data.Phone)}}" autocomplete="username" required {{if index $e "phone"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "phone")}}
+    </label>
+    <label>Code
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required autofocus class="mono code-input" {{if index $e "code"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "code")}}
+    </label>
+    <label>New password
+      <input name="new_password" type="password" autocomplete="new-password" minlength="8" required {{if index $e "new_password"}}aria-invalid="true"{{end}}>
+      <span class="hint">At least 8 characters.</span>
+      {{template "field-error" (index $e "new_password")}}
+    </label>
+    <label>Repeat it
+      <input name="confirm_password" type="password" autocomplete="new-password" required {{if index $e "confirm_password"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "confirm_password")}}
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Save and sign in</button>
+  </form>
+  <p class="small">No text after a minute? <a href="/forgot">Ask for a new code</a> · <a href="/login">Back to sign in</a></p>
+</section>
+{{end}}

@@ -106,8 +106,6 @@ func TestNormalizeEthiopianPhone(t *testing.T) {
 
 func TestNewProvider_Twilio(t *testing.T) {
 	logger := &mockLogger{}
-	rateLimiter := NewInMemoryRateLimiter(RateLimiterConfig{})
-	optOutStore := NewInMemoryOptOutStore()
 
 	cfg := Config{
 		Provider:         ProviderTwilio,
@@ -116,7 +114,7 @@ func TestNewProvider_Twilio(t *testing.T) {
 		TwilioFromNumber: "+1234567890",
 	}
 
-	provider, err := NewProvider(cfg, logger, rateLimiter, optOutStore)
+	provider, err := NewProvider(cfg, logger)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}
@@ -130,8 +128,6 @@ func TestNewProvider_Twilio(t *testing.T) {
 
 func TestNewProvider_TwilioMissingConfig(t *testing.T) {
 	logger := &mockLogger{}
-	rateLimiter := NewInMemoryRateLimiter(RateLimiterConfig{})
-	optOutStore := NewInMemoryOptOutStore()
 
 	tests := []struct {
 		name   string
@@ -165,7 +161,7 @@ func TestNewProvider_TwilioMissingConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewProvider(tt.config, logger, rateLimiter, optOutStore)
+			_, err := NewProvider(tt.config, logger)
 			if err == nil {
 				t.Error("NewProvider() expected error for missing config, got nil")
 			}
@@ -175,8 +171,6 @@ func TestNewProvider_TwilioMissingConfig(t *testing.T) {
 
 func TestNewProvider_EthioTelecom(t *testing.T) {
 	logger := &mockLogger{}
-	rateLimiter := NewInMemoryRateLimiter(RateLimiterConfig{})
-	optOutStore := NewInMemoryOptOutStore()
 
 	cfg := Config{
 		Provider:             ProviderEthioTelecom,
@@ -185,7 +179,7 @@ func TestNewProvider_EthioTelecom(t *testing.T) {
 		EthioTelecomSenderID: "SENDER",
 	}
 
-	provider, err := NewProvider(cfg, logger, rateLimiter, optOutStore)
+	provider, err := NewProvider(cfg, logger)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}
@@ -199,8 +193,6 @@ func TestNewProvider_EthioTelecom(t *testing.T) {
 
 func TestNewProvider_EthioTelecomMissingConfig(t *testing.T) {
 	logger := &mockLogger{}
-	rateLimiter := NewInMemoryRateLimiter(RateLimiterConfig{})
-	optOutStore := NewInMemoryOptOutStore()
 
 	tests := []struct {
 		name   string
@@ -224,7 +216,7 @@ func TestNewProvider_EthioTelecomMissingConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewProvider(tt.config, logger, rateLimiter, optOutStore)
+			_, err := NewProvider(tt.config, logger)
 			if err == nil {
 				t.Error("NewProvider() expected error for missing config, got nil")
 			}
@@ -234,14 +226,12 @@ func TestNewProvider_EthioTelecomMissingConfig(t *testing.T) {
 
 func TestNewProvider_Mock(t *testing.T) {
 	logger := &mockLogger{}
-	rateLimiter := NewInMemoryRateLimiter(RateLimiterConfig{})
-	optOutStore := NewInMemoryOptOutStore()
 
 	cfg := Config{
 		Provider: ProviderMock,
 	}
 
-	provider, err := NewProvider(cfg, logger, rateLimiter, optOutStore)
+	provider, err := NewProvider(cfg, logger)
 	if err != nil {
 		t.Fatalf("NewProvider() error = %v", err)
 	}
@@ -255,14 +245,12 @@ func TestNewProvider_Mock(t *testing.T) {
 
 func TestNewProvider_UnknownProvider(t *testing.T) {
 	logger := &mockLogger{}
-	rateLimiter := NewInMemoryRateLimiter(RateLimiterConfig{})
-	optOutStore := NewInMemoryOptOutStore()
 
 	cfg := Config{
 		Provider: ProviderType("unknown"),
 	}
 
-	_, err := NewProvider(cfg, logger, rateLimiter, optOutStore)
+	_, err := NewProvider(cfg, logger)
 	if err == nil {
 		t.Error("NewProvider() expected error for unknown provider, got nil")
 	}

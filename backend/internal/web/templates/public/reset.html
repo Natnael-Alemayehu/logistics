@@ -1,0 +1,21 @@
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$e := .Errors}}
+<section class="card auth">
+  <h1>Choose a new password</h1>
+  <p class="muted">For {{.Data.Name}}. You'll be signed in, and signed out on every other device.</p>
+  {{template "form-error" .}}
+  <form method="post" class="stack" novalidate>
+    <input type="email" name="username" value="{{.Data.Email}}" autocomplete="username" hidden readonly>
+    <label>New password
+      <input name="new_password" type="password" autocomplete="new-password" minlength="8" required autofocus {{if index $e "new_password"}}aria-invalid="true"{{end}}>
+      <span class="hint">At least 8 characters.</span>
+      {{template "field-error" (index $e "new_password")}}
+    </label>
+    <label>Repeat it
+      <input name="confirm_password" type="password" autocomplete="new-password" required {{if index $e "confirm_password"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "confirm_password")}}
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Save and sign in</button>
+  </form>
+</section>
+{{end}}

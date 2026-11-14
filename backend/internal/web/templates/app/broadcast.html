@@ -1,0 +1,61 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/drivers">Drivers</a></p>
+    <h1>Message every driver on the road</h1>
+    <p class="muted">Drivers with a shipment assigned or under way: {{len $d.Drivers}}</p>
+  </div>
+</div>
+{{template "form-error" .}}
+
+<div class="grid-detail">
+<div class="col-main stack">
+  {{if $d.Drivers}}
+  <form method="post" action="/app/drivers/message" class="card stack">
+    <label>Message
+      <textarea name="body" rows="3" maxlength="500" required data-quick-target {{if index $e "body"}}aria-invalid="true"{{end}}>{{field $f "body" ""}}</textarea>
+      <span class="hint">It shows in the driver app on its next sync. A driver whose app hasn't synced for 15 minutes gets it by SMS too.</span>
+      {{template "field-error" (index $e "body")}}
+    </label>
+    <div class="quick" role="group" aria-label="Quick messages">
+      {{range $d.Quick}}<button class="chip" type="button" data-quick="{{.}}">{{.}}</button>{{end}}
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Send to {{len $d.Drivers}} {{if eq (len $d.Drivers) 1}}driver{{else}}drivers{{end}}</button></div>
+  </form>
+  {{else}}
+  <div class="card empty">
+    <h2>No driver is on the road</h2>
+    <p class="muted">This message goes to drivers with a shipment assigned or under way. To write to one driver, open their shipment and use <strong>To the driver</strong>.</p>
+  </div>
+  {{end}}
+
+  <section class="card card-flush">
+    <div class="card-head"><h2>Sent</h2></div>
+    {{if $d.Sent}}
+    <ul class="sent-list">
+      {{range $d.Sent}}
+      <li>
+        <p>{{.Body}}</p>
+        <p class="small muted">{{.SenderName}} · {{when .CreatedAt}} · {{.Recipients}} {{if eq .Recipients 1}}driver{{else}}drivers{{end}}{{if .BySms}}, {{.BySms}} by SMS{{end}}</p>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}<p class="muted card-pad">Nothing sent yet.</p>{{end}}
+  </section>
+</div>
+
+<aside class="col-side">
+  <section class="card">
+    <div class="card-head"><h2>Who gets it</h2></div>
+    {{if $d.Drivers}}
+    <ul class="plain-list">
+      {{range $d.Drivers}}
+      <li><a href="/app/drivers/{{uuid .ID}}">{{.FullName}}</a>
+        <div class="small muted">{{template "conn" (connState .LastSyncAt)}} {{if .LastSyncAt.Valid}}app synced {{ago .LastSyncAt}}{{else}}never used the app{{end}} · {{.Shipments}} {{if eq .Shipments 1}}shipment{{else}}shipments{{end}}</div></li>
+      {{end}}
+    </ul>
+    {{else}}<p class="muted">Nobody right now.</p>{{end}}
+  </section>
+</aside>
+</div>
+{{end}}

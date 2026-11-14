@@ -11,19 +11,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countHeldPODs = `-- name: CountHeldPODs :one
+SELECT COUNT(*) FROM proof_of_deliveries
+WHERE shipment_id = $1 AND tenant_id = $2 AND status = 'held'
+`
+
+type CountHeldPODsParams struct {
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) CountHeldPODs(ctx context.Context, arg CountHeldPODsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countHeldPODs, arg.ShipmentID, arg.TenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createPOD = `-- name: CreatePOD :one
 INSERT INTO proof_of_deliveries (
     tenant_id, shipment_id, driver_id,
     recipient_name, recipient_phone,
     signature_data, signature_url, photo_urls,
     delivery_address, delivery_coordinates,
-    delivery_notes, location_verified, location_mismatch_meters,
-    recorded_at
+    delivery_notes, location_verified, location_mismatch_meters, location_reason,
+    recorded_at, synced_at, client_id, status, held_reason
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, 
-    ST_MakePoint($10, $11)::geometry(Point, 4326),
-    $12, $13, $14, $15
-) RETURNING id, tenant_id, shipment_id, driver_id, recipient_name, recipient_phone, signature_data, signature_url, photo_urls, delivery_address, delivery_coordinates, delivery_notes, location_verified, location_mismatch_meters, recorded_at, synced_at
+    $1, $2, $3,
+    $4, $5,
+    $6, $7, $8::text[],
+    $9,
+    CASE WHEN $10::float8 IS NULL OR $11::float8 IS NULL THEN NULL
+         ELSE ST_SetSRID(ST_MakePoint($11::float8, $10::float8), 4326)
+    END,
+    $12, $13, $14, $15,
+    $16, NOW(), $17, $18, $19
+) RETURNING id
 `
 
 type CreatePODParams struct {
@@ -36,15 +59,19 @@ type CreatePODParams struct {
 	SignatureUrl           *string            `db:"signature_url" json:"signature_url"`
 	PhotoUrls              []string           `db:"photo_urls" json:"photo_urls"`
 	DeliveryAddress        *string            `db:"delivery_address" json:"delivery_address"`
-	StMakepoint            interface{}        `db:"st_makepoint" json:"st_makepoint"`
-	StMakepoint_2          interface{}        `db:"st_makepoint_2" json:"st_makepoint_2"`
+	Latitude               *float64           `db:"latitude" json:"latitude"`
+	Longitude              *float64           `db:"longitude" json:"longitude"`
 	DeliveryNotes          *string            `db:"delivery_notes" json:"delivery_notes"`
 	LocationVerified       *bool              `db:"location_verified" json:"location_verified"`
 	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
+	LocationReason         *string            `db:"location_reason" json:"location_reason"`
 	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	ClientID               *string            `db:"client_id" json:"client_id"`
+	Status                 string             `db:"status" json:"status"`
+	HeldReason             *string            `db:"held_reason" json:"held_reason"`
 }
 
-func (q *Queries) CreatePOD(ctx context.Context, arg CreatePODParams) (ProofOfDelivery, error) {
+func (q *Queries) CreatePOD(ctx context.Context, arg CreatePODParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, createPOD,
 		arg.TenantID,
 		arg.ShipmentID,
@@ -55,46 +82,108 @@ func (q *Queries) CreatePOD(ctx context.Context, arg CreatePODParams) (ProofOfDe
 		arg.SignatureUrl,
 		arg.PhotoUrls,
 		arg.DeliveryAddress,
-		arg.StMakepoint,
-		arg.StMakepoint_2,
+		arg.Latitude,
+		arg.Longitude,
 		arg.DeliveryNotes,
 		arg.LocationVerified,
 		arg.LocationMismatchMeters,
+		arg.LocationReason,
 		arg.RecordedAt,
+		arg.ClientID,
+		arg.Status,
+		arg.HeldReason,
 	)
-	var i ProofOfDelivery
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const getHeldPOD = `-- name: GetHeldPOD :one
+SELECT p.id, p.driver_id, p.recipient_name, p.recipient_phone, p.recorded_at,
+       u.full_name AS driver_name, u.is_active AS driver_active
+FROM proof_of_deliveries p
+JOIN users u ON u.id = p.driver_id
+WHERE p.id = $1 AND p.shipment_id = $2 AND p.tenant_id = $3 AND p.status = 'held'
+FOR UPDATE OF p
+`
+
+type GetHeldPODParams struct {
+	ID         pgtype.UUID `db:"id" json:"id"`
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+type GetHeldPODRow struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	RecipientName  string             `db:"recipient_name" json:"recipient_name"`
+	RecipientPhone *string            `db:"recipient_phone" json:"recipient_phone"`
+	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	DriverName     string             `db:"driver_name" json:"driver_name"`
+	DriverActive   bool               `db:"driver_active" json:"driver_active"`
+}
+
+func (q *Queries) GetHeldPOD(ctx context.Context, arg GetHeldPODParams) (GetHeldPODRow, error) {
+	row := q.db.QueryRow(ctx, getHeldPOD, arg.ID, arg.ShipmentID, arg.TenantID)
+	var i GetHeldPODRow
 	err := row.Scan(
 		&i.ID,
-		&i.TenantID,
-		&i.ShipmentID,
 		&i.DriverID,
 		&i.RecipientName,
 		&i.RecipientPhone,
-		&i.SignatureData,
-		&i.SignatureUrl,
-		&i.PhotoUrls,
-		&i.DeliveryAddress,
-		&i.DeliveryCoordinates,
-		&i.DeliveryNotes,
-		&i.LocationVerified,
-		&i.LocationMismatchMeters,
 		&i.RecordedAt,
-		&i.SyncedAt,
+		&i.DriverName,
+		&i.DriverActive,
+	)
+	return i, err
+}
+
+const getPODByClientID = `-- name: GetPODByClientID :one
+SELECT id, shipment_id, status, held_reason
+FROM proof_of_deliveries
+WHERE tenant_id = $1 AND driver_id = $2 AND client_id = $3
+`
+
+type GetPODByClientIDParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
+	ClientID *string     `db:"client_id" json:"client_id"`
+}
+
+type GetPODByClientIDRow struct {
+	ID         pgtype.UUID `db:"id" json:"id"`
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	Status     string      `db:"status" json:"status"`
+	HeldReason *string     `db:"held_reason" json:"held_reason"`
+}
+
+// The device's identifier for a proof: a replayed upload finds the first.
+func (q *Queries) GetPODByClientID(ctx context.Context, arg GetPODByClientIDParams) (GetPODByClientIDRow, error) {
+	row := q.db.QueryRow(ctx, getPODByClientID, arg.TenantID, arg.DriverID, arg.ClientID)
+	var i GetPODByClientIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.ShipmentID,
+		&i.Status,
+		&i.HeldReason,
 	)
 	return i, err
 }
 
 const getPODByShipmentID = `-- name: GetPODByShipmentID :one
-SELECT id, tenant_id, shipment_id, driver_id,
-       recipient_name, recipient_phone,
-       signature_data, signature_url, photo_urls,
-       delivery_address,
-       ST_X(delivery_coordinates::geometry) as delivery_longitude,
-       ST_Y(delivery_coordinates::geometry) as delivery_latitude,
-       delivery_notes, location_verified, location_mismatch_meters,
-       recorded_at, synced_at
-FROM proof_of_deliveries
-WHERE shipment_id = $1 AND tenant_id = $2
+SELECT p.id, p.tenant_id, p.shipment_id, p.driver_id,
+       p.recipient_name, p.recipient_phone,
+       p.signature_data, p.signature_url, p.photo_urls,
+       p.delivery_address,
+       -- 0,0 stands for "no fix": it is in the Gulf of Guinea, never a delivery here.
+       COALESCE(ST_Y(p.delivery_coordinates), 0)::float8 AS delivery_latitude,
+       COALESCE(ST_X(p.delivery_coordinates), 0)::float8 AS delivery_longitude,
+       p.delivery_notes, p.location_verified, p.location_mismatch_meters, p.location_reason,
+       p.recorded_at, p.synced_at,
+       u.full_name AS driver_name
+FROM proof_of_deliveries p
+LEFT JOIN users u ON u.id = p.driver_id
+WHERE p.shipment_id = $1 AND p.tenant_id = $2 AND p.status = 'accepted'
 `
 
 type GetPODByShipmentIDParams struct {
@@ -113,13 +202,15 @@ type GetPODByShipmentIDRow struct {
 	SignatureUrl           *string            `db:"signature_url" json:"signature_url"`
 	PhotoUrls              []string           `db:"photo_urls" json:"photo_urls"`
 	DeliveryAddress        *string            `db:"delivery_address" json:"delivery_address"`
-	DeliveryLongitude      interface{}        `db:"delivery_longitude" json:"delivery_longitude"`
-	DeliveryLatitude       interface{}        `db:"delivery_latitude" json:"delivery_latitude"`
+	DeliveryLatitude       float64            `db:"delivery_latitude" json:"delivery_latitude"`
+	DeliveryLongitude      float64            `db:"delivery_longitude" json:"delivery_longitude"`
 	DeliveryNotes          *string            `db:"delivery_notes" json:"delivery_notes"`
 	LocationVerified       *bool              `db:"location_verified" json:"location_verified"`
 	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
+	LocationReason         *string            `db:"location_reason" json:"location_reason"`
 	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
 	SyncedAt               pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
+	DriverName             *string            `db:"driver_name" json:"driver_name"`
 }
 
 func (q *Queries) GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error) {
@@ -136,83 +227,134 @@ func (q *Queries) GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentID
 		&i.SignatureUrl,
 		&i.PhotoUrls,
 		&i.DeliveryAddress,
-		&i.DeliveryLongitude,
 		&i.DeliveryLatitude,
+		&i.DeliveryLongitude,
 		&i.DeliveryNotes,
 		&i.LocationVerified,
 		&i.LocationMismatchMeters,
+		&i.LocationReason,
 		&i.RecordedAt,
 		&i.SyncedAt,
+		&i.DriverName,
 	)
 	return i, err
 }
 
-const getUnsyncedPODs = `-- name: GetUnsyncedPODs :many
-SELECT id, tenant_id, shipment_id, driver_id,
-       recipient_name, recipient_phone,
-       signature_data, signature_url, photo_urls,
-       delivery_address,
-       ST_X(delivery_coordinates::geometry) as delivery_longitude,
-       ST_Y(delivery_coordinates::geometry) as delivery_latitude,
-       delivery_notes, location_verified, location_mismatch_meters,
-       recorded_at, synced_at
-FROM proof_of_deliveries
-WHERE driver_id = $1 AND tenant_id = $2 AND synced_at IS NULL
-ORDER BY recorded_at ASC
+const listRecentRecipients = `-- name: ListRecentRecipients :many
+SELECT s.customer_phone, p.recipient_name, MAX(p.recorded_at)::timestamptz AS last_at
+FROM proof_of_deliveries p
+JOIN shipments s ON s.id = p.shipment_id AND s.tenant_id = p.tenant_id
+WHERE p.tenant_id = $1
+  AND p.status = 'accepted'
+  AND s.customer_phone = ANY($2::text[])
+  AND p.recorded_at > NOW() - INTERVAL '365 days'
+GROUP BY s.customer_phone, p.recipient_name
+ORDER BY s.customer_phone, last_at DESC
 `
 
-type GetUnsyncedPODsParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
+type ListRecentRecipientsParams struct {
 	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Phones   []string    `db:"phones" json:"phones"`
 }
 
-type GetUnsyncedPODsRow struct {
-	ID                     pgtype.UUID        `db:"id" json:"id"`
-	TenantID               pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID             pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	DriverID               pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	RecipientName          string             `db:"recipient_name" json:"recipient_name"`
-	RecipientPhone         *string            `db:"recipient_phone" json:"recipient_phone"`
-	SignatureData          *string            `db:"signature_data" json:"signature_data"`
-	SignatureUrl           *string            `db:"signature_url" json:"signature_url"`
-	PhotoUrls              []string           `db:"photo_urls" json:"photo_urls"`
-	DeliveryAddress        *string            `db:"delivery_address" json:"delivery_address"`
-	DeliveryLongitude      interface{}        `db:"delivery_longitude" json:"delivery_longitude"`
-	DeliveryLatitude       interface{}        `db:"delivery_latitude" json:"delivery_latitude"`
-	DeliveryNotes          *string            `db:"delivery_notes" json:"delivery_notes"`
-	LocationVerified       *bool              `db:"location_verified" json:"location_verified"`
-	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
-	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	SyncedAt               pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
+type ListRecentRecipientsRow struct {
+	CustomerPhone string             `db:"customer_phone" json:"customer_phone"`
+	RecipientName string             `db:"recipient_name" json:"recipient_name"`
+	LastAt        pgtype.Timestamptz `db:"last_at" json:"last_at"`
 }
 
-func (q *Queries) GetUnsyncedPODs(ctx context.Context, arg GetUnsyncedPODsParams) ([]GetUnsyncedPODsRow, error) {
-	rows, err := q.db.Query(ctx, getUnsyncedPODs, arg.DriverID, arg.TenantID)
+// Who signed for each customer's deliveries in the last year, newest first,
+// so the driver app can suggest the name (AC-020.4).
+func (q *Queries) ListRecentRecipients(ctx context.Context, arg ListRecentRecipientsParams) ([]ListRecentRecipientsRow, error) {
+	rows, err := q.db.Query(ctx, listRecentRecipients, arg.TenantID, arg.Phones)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []GetUnsyncedPODsRow{}
+	items := []ListRecentRecipientsRow{}
 	for rows.Next() {
-		var i GetUnsyncedPODsRow
+		var i ListRecentRecipientsRow
+		if err := rows.Scan(&i.CustomerPhone, &i.RecipientName, &i.LastAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReviewPODs = `-- name: ListReviewPODs :many
+SELECT p.id, p.driver_id, p.recipient_name, p.recipient_phone,
+       p.signature_url, p.photo_urls, p.delivery_notes,
+       COALESCE(ST_Y(p.delivery_coordinates), 0)::float8 AS delivery_latitude,
+       COALESCE(ST_X(p.delivery_coordinates), 0)::float8 AS delivery_longitude,
+       p.location_verified, p.location_mismatch_meters, p.location_reason,
+       p.recorded_at, p.status, p.held_reason, p.reviewed_at,
+       u.full_name AS driver_name, r.full_name AS reviewer_name
+FROM proof_of_deliveries p
+LEFT JOIN users u ON u.id = p.driver_id
+LEFT JOIN users r ON r.id = p.reviewed_by
+WHERE p.shipment_id = $1 AND p.tenant_id = $2 AND p.status <> 'accepted'
+ORDER BY p.recorded_at DESC
+`
+
+type ListReviewPODsParams struct {
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+type ListReviewPODsRow struct {
+	ID                     pgtype.UUID        `db:"id" json:"id"`
+	DriverID               pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	RecipientName          string             `db:"recipient_name" json:"recipient_name"`
+	RecipientPhone         *string            `db:"recipient_phone" json:"recipient_phone"`
+	SignatureUrl           *string            `db:"signature_url" json:"signature_url"`
+	PhotoUrls              []string           `db:"photo_urls" json:"photo_urls"`
+	DeliveryNotes          *string            `db:"delivery_notes" json:"delivery_notes"`
+	DeliveryLatitude       float64            `db:"delivery_latitude" json:"delivery_latitude"`
+	DeliveryLongitude      float64            `db:"delivery_longitude" json:"delivery_longitude"`
+	LocationVerified       *bool              `db:"location_verified" json:"location_verified"`
+	LocationMismatchMeters pgtype.Numeric     `db:"location_mismatch_meters" json:"location_mismatch_meters"`
+	LocationReason         *string            `db:"location_reason" json:"location_reason"`
+	RecordedAt             pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	Status                 string             `db:"status" json:"status"`
+	HeldReason             *string            `db:"held_reason" json:"held_reason"`
+	ReviewedAt             pgtype.Timestamptz `db:"reviewed_at" json:"reviewed_at"`
+	DriverName             *string            `db:"driver_name" json:"driver_name"`
+	ReviewerName           *string            `db:"reviewer_name" json:"reviewer_name"`
+}
+
+// Proofs of delivery held for the office to review, and those it dismissed.
+func (q *Queries) ListReviewPODs(ctx context.Context, arg ListReviewPODsParams) ([]ListReviewPODsRow, error) {
+	rows, err := q.db.Query(ctx, listReviewPODs, arg.ShipmentID, arg.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReviewPODsRow{}
+	for rows.Next() {
+		var i ListReviewPODsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.TenantID,
-			&i.ShipmentID,
 			&i.DriverID,
 			&i.RecipientName,
 			&i.RecipientPhone,
-			&i.SignatureData,
 			&i.SignatureUrl,
 			&i.PhotoUrls,
-			&i.DeliveryAddress,
-			&i.DeliveryLongitude,
-			&i.DeliveryLatitude,
 			&i.DeliveryNotes,
+			&i.DeliveryLatitude,
+			&i.DeliveryLongitude,
 			&i.LocationVerified,
 			&i.LocationMismatchMeters,
+			&i.LocationReason,
 			&i.RecordedAt,
-			&i.SyncedAt,
+			&i.Status,
+			&i.HeldReason,
+			&i.ReviewedAt,
+			&i.DriverName,
+			&i.ReviewerName,
 		); err != nil {
 			return nil, err
 		}
@@ -224,13 +366,25 @@ func (q *Queries) GetUnsyncedPODs(ctx context.Context, arg GetUnsyncedPODsParams
 	return items, nil
 }
 
-const updatePODSyncedAt = `-- name: UpdatePODSyncedAt :exec
+const reviewPOD = `-- name: ReviewPOD :exec
 UPDATE proof_of_deliveries
-SET synced_at = NOW()
-WHERE id = $1
+SET status = $1, reviewed_at = NOW(), reviewed_by = $2
+WHERE id = $3 AND tenant_id = $4
 `
 
-func (q *Queries) UpdatePODSyncedAt(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, updatePODSyncedAt, id)
+type ReviewPODParams struct {
+	Status     string      `db:"status" json:"status"`
+	ReviewedBy pgtype.UUID `db:"reviewed_by" json:"reviewed_by"`
+	ID         pgtype.UUID `db:"id" json:"id"`
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) ReviewPOD(ctx context.Context, arg ReviewPODParams) error {
+	_, err := q.db.Exec(ctx, reviewPOD,
+		arg.Status,
+		arg.ReviewedBy,
+		arg.ID,
+		arg.TenantID,
+	)
 	return err
 }

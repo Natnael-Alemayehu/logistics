@@ -1,0 +1,50 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <h1>Drivers</h1>
+    <p class="muted">{{$d.Usage.ActiveDrivers}} of {{$d.Usage.MaxDrivers}} driver places on your {{$d.Usage.Plan.Name}} plan</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/app/drivers/message">Message drivers on the road</a>
+    {{if .Me.CanManageFleet}}<a class="btn btn-primary" href="/app/drivers/new">+ Add a driver</a>{{end}}
+  </div>
+</div>
+
+<form class="toolbar" method="get" action="/app/drivers">
+  <input type="search" name="q" value="{{.Query.Get "q"}}" placeholder="Name or phone" aria-label="Search drivers">
+  <label class="check"><input type="checkbox" name="inactive" value="1" {{if $d.ShowInactive}}checked{{end}} data-autosubmit> Show deactivated</label>
+  <button class="btn" type="submit">Search</button>
+</form>
+
+<p class="small muted">On duty: carrying a load that has left, or with the driver app open and sharing location in the last half hour.</p>
+
+{{if $d.Drivers}}
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table rows-link">
+  <thead><tr><th>Driver</th><th>Duty</th><th>Vehicle</th><th class="num">Active</th><th class="num">Delivered this month</th><th>Driver app</th></tr></thead>
+  <tbody>
+  {{range $d.Drivers}}
+  <tr data-href="/app/drivers/{{uuid .ID}}" {{if not .IsActive}}class="is-muted"{{end}}>
+    <td><a href="/app/drivers/{{uuid .ID}}"><strong>{{.FullName}}</strong></a>{{if not .IsActive}} <span class="badge">Deactivated</span>{{end}}<div class="muted small">{{str .Phone}}</div></td>
+    <td>{{if .OnDuty}}<span class="badge s-in_transit">On duty</span>{{else if .IsActive}}<span class="muted">Off duty</span>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td>{{with .VehiclePlate}}{{.}}{{else}}<span class="muted">—</span>{{end}}</td>
+    <td class="num">{{.ActiveShipments}}</td>
+    <td class="num">{{.DeliveredThisMonth}}</td>
+    <td>{{$st := connState .LastSyncAt}}{{template "conn" $st}} {{if eq $st "never"}}<span class="muted">Not signed in yet</span>{{else}}{{ago .LastSyncAt}}{{end}}
+      <div class="muted small">{{with .BatteryLevel}}Battery {{.}}%{{end}}{{if bool .TrackingPaused}} · <span class="text-warn">location off</span>{{end}}</div></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{else}}
+<div class="card empty">
+  {{if .Query.Get "q"}}<h2>No drivers match “{{.Query.Get "q"}}”</h2>
+  {{else}}<h2>No drivers yet</h2>
+  <p class="muted">Add your drivers with their phone numbers. Each gets a PIN by SMS and signs in to the driver app at <strong>{{.App.PublicURL}}/driver</strong>.</p>
+  {{if .Me.CanManageFleet}}<p><a class="btn btn-primary" href="/app/drivers/new">+ Add a driver</a></p>{{end}}{{end}}
+</div>
+{{end}}
+{{end}}

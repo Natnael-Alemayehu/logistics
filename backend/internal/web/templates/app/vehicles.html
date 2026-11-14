@@ -1,0 +1,32 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div><h1>Vehicles</h1></div>
+  <div class="actions">{{if .Me.CanManageFleet}}<a class="btn btn-primary" href="/app/vehicles/new">+ Add a vehicle</a>{{end}}</div>
+</div>
+{{if $d.Vehicles}}
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table rows-link">
+  <thead><tr><th>Plate</th><th>Type</th><th class="num">Capacity</th><th>Usual drivers</th><th class="num">Active shipments</th></tr></thead>
+  <tbody>
+  {{range $d.Vehicles}}
+  <tr data-href="/app/vehicles/{{uuid .ID}}" {{if not .IsActive}}class="is-muted"{{end}}>
+    <td><a href="/app/vehicles/{{uuid .ID}}"><strong class="mono">{{.PlateNumber}}</strong></a>{{if not .IsActive}} <span class="badge">Out of service</span>{{end}}</td>
+    <td>{{with .VehicleType}}{{vehicleType .}}{{else}}<span class="muted">—</span>{{end}}</td>
+    <td class="num">{{if hasNum .CapacityKg}}{{kg .CapacityKg}}{{else}}—{{end}}</td>
+    <td>{{with .DriverNames}}{{.}}{{else}}<span class="muted">—</span>{{end}}</td>
+    <td class="num">{{.ActiveShipments}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{else}}
+<div class="card empty">
+  <h2>No vehicles yet</h2>
+  <p class="muted">Register your trucks so dispatchers can put the right one on each shipment and customers see a plate number on the waybill.</p>
+  {{if .Me.CanManageFleet}}<p><a class="btn btn-primary" href="/app/vehicles/new">+ Add a vehicle</a></p>{{end}}
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,135 @@
+{{define "content"}}{{$d := .Data.D}}{{$i := $d.Invoice}}{{$platform := .Data.Platform}}
+<div class="page-head no-print">
+  <div><p class="small"><a href="{{if $platform}}/app/platform/billing{{else}}/app/billing{{end}}">← Billing</a></p><h1>Invoice {{$i.Number}}</h1></div>
+  <div class="actions"><button class="btn" type="button" data-print>{{template "icon" "print"}} Print</button></div>
+</div>
+
+<div class="grid-detail" data-invoice="{{uuid $i.ID}}">
+<article class="card invoice">
+  <header class="inv-head">
+    <div class="inv-from">
+      <p class="inv-brand">{{template "logo"}}<strong>{{.App.Name}}</strong></p>
+      <p class="small muted">Shipment tracking and proof of delivery<br>{{.App.SupportEmail}}</p>
+    </div>
+    <div class="inv-number">
+      <p class="inv-label">Invoice</p>
+      <p class="mono inv-no">{{$i.Number}}</p>
+      {{template "inv-status" $i}}
+    </div>
+  </header>
+
+  <dl class="facts facts-3 inv-facts">
+    <div><dt>Billed to</dt><dd><strong>{{$i.CustomerName}}</strong>{{with $i.CustomerCity}}<br>{{.}}{{end}}{{with $i.CustomerTin}}<br>TIN {{.}}{{end}}</dd></div>
+    <div><dt>Issued</dt><dd>{{date $i.IssuedAt}}</dd></div>
+    {{if eq $i.Status "paid"}}<div><dt>Paid</dt><dd>{{date $i.PaidAt}}</dd></div>
+    {{else if eq $i.Status "void"}}<div><dt>Cancelled</dt><dd>{{date $i.VoidedAt}}</dd></div>
+    {{else}}<div><dt>Due</dt><dd {{if past $i.DueAt}}class="text-bad"{{end}}>{{date $i.DueAt}}</dd></div>{{end}}
+    {{if $d.Usage}}<div><dt>Month</dt><dd>{{$d.Usage.MonthName}}</dd></div>
+    {{else if $i.PeriodStart.Valid}}<div><dt>Period</dt><dd>{{date $i.PeriodStart}} to {{date $i.PeriodEnd}}</dd></div>{{end}}
+    <div><dt>Plan</dt><dd>{{planName $i.Plan}}, billed {{lower (cycleName $i.BillingCycle)}}</dd></div>
+  </dl>
+
+  <div class="table-wrap">
+  <table class="table inv-lines">
+    <thead><tr><th>Description</th><th class="num inv-detail">Quantity</th><th class="num inv-detail">Unit price</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      {{range $d.Lines}}<tr>
+        <td>{{.Description}}{{if ne .Quantity 1}}<div class="small muted inv-detail-inline">{{grouped .Quantity}} × {{birr .Unit}}</div>{{end}}</td>
+        <td class="num inv-detail">{{grouped .Quantity}}</td><td class="num inv-detail">{{birr .Unit}}</td><td class="num">{{birr .Amount}}</td>
+      </tr>{{end}}
+    </tbody>
+    <tfoot>
+      {{/* The empty cell spans the columns a phone hides, so the totals
+           stay under the amounts there too. */}}
+      <tr><td class="inv-detail" colspan="2"></td><th>Subtotal</th><td class="num">{{birr $i.SubtotalSantim}}</td></tr>
+      <tr><td class="inv-detail" colspan="2"></td><th>VAT {{.Data.VAT}}%</th><td class="num">{{birr $i.VatSantim}}</td></tr>
+      <tr class="inv-total"><td class="inv-detail" colspan="2"></td><th>Total</th><td class="num">{{birr $i.TotalSantim}}</td></tr>
+    </tfoot>
+  </table>
+  </div>
+  {{with $d.Usage}}<p class="small muted">Text messages sent in {{.MonthName}}: {{grouped .Sent}}. Included in the plan: {{grouped .Included}}. Charged: {{grouped .Extra}}.</p>{{end}}
+  {{if and (eq $i.Kind "subscription") (not $i.PeriodStart.Valid)}}<p class="small muted">The period starts when this invoice is paid, or when the free trial ends if that is later. Unpaid, it lapses on {{date $i.DueAt}}.</p>{{end}}
+  {{if eq $i.Kind "upgrade"}}{{if eq $i.Status "open"}}<p class="small muted">The upgrade applies as soon as this invoice is paid. Unpaid, it lapses on {{date $i.DueAt}}.</p>{{end}}{{end}}
+  {{if eq $i.Status "open"}}{{with .App.BankDetails}}<p class="small inv-bank"><strong>Bank transfer:</strong> {{.}}. Quote {{$i.Number}} as the reference.</p>{{end}}{{end}}
+</article>
+
+<aside class="stack no-print">
+  {{if eq $i.Status "open"}}
+  {{if not $platform}}
+  <section class="card">
+    <h2>Pay {{birr $i.TotalSantim}}</h2>
+    {{with $d.Waiting}}<p class="banner info">A {{or (index $.Data.Labels .Provider) .Provider}} payment started {{when .CreatedAt}} is waiting for {{or (index $.Data.Labels .Provider) .Provider}} to confirm it. <a href="/app/billing/payments/{{uuid .ID}}">Follow it</a></p>{{end}}
+    {{if not $.Me.EmailVerified}}
+    <form class="stack" method="post" action="/app/account/verify-email">
+      <p>First confirm your email address, {{$.Me.Email}}: receipts and invoices are sent there. Open the link we emailed you.</p>
+      <button class="btn" type="submit">Send the link again</button>
+    </form>
+    {{else}}
+    {{range $.Data.Options}}{{if .Checkout}}
+    <form method="post" action="/app/billing/invoices/{{uuid $i.ID}}/pay" class="pay-option">
+      <input type="hidden" name="back" value="/app/billing/invoices/{{uuid $i.ID}}">
+      <input type="hidden" name="provider" value="{{.Code}}">
+      <button class="btn btn-primary btn-block" type="submit">Pay with {{.Label}}</button>
+      <p class="small muted">On {{.Label}}'s page, which brings you back here when you've paid.</p>
+    </form>
+    {{end}}{{end}}
+    {{range $.Data.Options}}{{if not .Checkout}}
+    <div class="pay-option">
+      <h3 class="small">With {{.Label}} from your phone</h3>
+      <p class="small">Choose to pay a merchant, and enter:</p>
+      <dl class="facts pay-ref">
+        <div><dt>Merchant ID</dt><dd class="mono">{{.MerchantID}}</dd></div>
+        <div><dt>Reference</dt><dd class="mono">{{$d.PayReference}}</dd></div>
+        <div><dt>Amount</dt><dd>{{birr $i.TotalSantim}}</dd></div>
+      </dl>
+      <p class="small muted">{{.Label}} shows the invoice before you confirm, and this page updates as soon as the payment arrives.</p>
+      {{with .Simulated}}<p class="hint"><a href="{{.}}">{{if $.Data.Sandbox}}Pay from a sandbox phone{{else}}Play the payer's phone{{end}}</a> to pay this way.</p>{{end}}
+    </div>
+    {{end}}{{end}}
+    {{if $.App.MockPay}}<p class="hint">Payments are simulated on this server: no money moves, and the providers' pages are pages of this server.</p>
+    {{else if $.Data.Sandbox}}<p class="hint">The providers are the sandbox at {{$.Data.Sandbox}}: no money moves.</p>{{end}}
+    {{end}}
+    {{with $.App.BankDetails}}
+    <h3 class="small">Or by bank transfer</h3>
+    <p class="small">{{.}}. Quote <strong>{{$i.Number}}</strong> as the reference: we mark the invoice paid when the transfer arrives, usually within a working day.</p>
+    {{end}}
+  </section>
+  {{else}}
+  <section class="card">
+    <h2>Record a bank transfer</h2>
+    <p class="small muted">{{$d.TenantName}} · {{birr $i.TotalSantim}}</p>
+    <form method="post" action="/app/platform/invoices/{{uuid $i.ID}}/paid" class="stack">
+      <input type="hidden" name="back" value="/app/platform/invoices/{{uuid $i.ID}}">
+      <label>The bank's reference <input name="reference" required maxlength="60"></label>
+      <label>Note for the company <span class="muted">(optional)</span><input name="note" maxlength="200"></label>
+      <button class="btn btn-primary" type="submit">Mark paid</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Cancel the invoice</h2>
+    <form method="post" action="/app/platform/invoices/{{uuid $i.ID}}/void" class="stack">
+      <input type="hidden" name="back" value="/app/platform/invoices/{{uuid $i.ID}}">
+      <label>Reason, sent to the company <input name="reason" maxlength="200"></label>
+      <button class="btn btn-danger-ghost" type="submit">Cancel invoice</button>
+    </form>
+  </section>
+  {{end}}
+  {{end}}
+
+  {{if $d.Payments}}
+  <section class="card">
+    <h2>Payments</h2>
+    <ul class="pay-list">
+      {{range $d.Payments}}
+      <li>
+        <div><strong>{{birr .AmountSantim}}</strong> · {{or (index $.Data.Labels .Provider) .Provider}} · <span class="pay-{{.Status}}">{{title .Status}}</span></div>
+        <div class="small muted">{{when .CreatedAt}} · <span class="mono">{{.Reference}}</span>{{if .PayerPhone}} · {{maskPhone (str .PayerPhone)}}{{end}}</div>
+        {{$due := .RefundDue}}{{with .Note}}<div class="small {{if $due}}text-warn{{else}}muted{{end}}">{{.}}</div>{{end}}
+      </li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
+</aside>
+</div>
+{{end}}

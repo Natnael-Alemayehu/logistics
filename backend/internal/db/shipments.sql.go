@@ -11,86 +11,119 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const advancedSearchShipments = `-- name: AdvancedSearchShipments :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE tenant_id = $1
-  AND ($2::text IS NULL OR status = $2::text)
-  AND ($3::uuid IS NULL OR driver_id = $3::uuid)
-  AND ($4::timestamptz IS NULL OR created_at >= $4::timestamptz)
-  AND ($5::timestamptz IS NULL OR created_at <= $5::timestamptz)
-  AND ($6::text IS NULL OR origin_address ILIKE '%' || $6::text || '%')
-  AND ($7::text IS NULL OR destination_address ILIKE '%' || $7::text || '%')
-  AND ($8::text IS NULL
-       OR tracking_number ILIKE '%' || $8::text || '%'
-       OR customer_name ILIKE '%' || $8::text || '%'
-       OR customer_phone ILIKE '%' || $8::text || '%')
-ORDER BY created_at DESC
-LIMIT $10 OFFSET $9
+const countActiveShipmentsByDriver = `-- name: CountActiveShipmentsByDriver :one
+SELECT COUNT(*) FROM shipments
+WHERE driver_id = $1
+  AND tenant_id = $2
+  AND status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
 `
 
-type AdvancedSearchShipmentsParams struct {
+type CountActiveShipmentsByDriverParams struct {
+	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) CountActiveShipmentsByDriver(ctx context.Context, arg CountActiveShipmentsByDriverParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveShipmentsByDriver, arg.DriverID, arg.TenantID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countDeliveredSince = `-- name: CountDeliveredSince :one
+SELECT COUNT(*) FROM shipments
+WHERE tenant_id = $1 AND status = 'delivered' AND actual_delivery >= $2
+`
+
+type CountDeliveredSinceParams struct {
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ActualDelivery pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
+}
+
+func (q *Queries) CountDeliveredSince(ctx context.Context, arg CountDeliveredSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countDeliveredSince, arg.TenantID, arg.ActualDelivery)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countShipments = `-- name: CountShipments :one
+SELECT COUNT(*)
+FROM shipments s
+LEFT JOIN users d ON d.id = s.driver_id
+WHERE s.tenant_id = $1
+  AND (cardinality($2::text[]) = 0 OR s.status = ANY($2::text[]))
+  AND ($3::uuid IS NULL OR s.driver_id = $3::uuid)
+  AND ($4::uuid IS NULL OR s.vehicle_id = $4::uuid)
+  AND ($5::text IS NULL OR s.priority = $5::text)
+  AND ($6::timestamptz IS NULL OR s.created_at >= $6::timestamptz)
+  AND ($7::timestamptz IS NULL OR s.created_at < $7::timestamptz)
+  AND ($8::text IS NULL
+       OR s.origin_city ILIKE $8::text
+       OR s.origin_address ILIKE '%' || $8::text || '%')
+  AND ($9::text IS NULL
+       OR s.destination_city ILIKE $9::text
+       OR s.destination_address ILIKE '%' || $9::text || '%')
+  AND ($10::text IS NULL
+       OR s.tracking_number ILIKE '%' || $10::text || '%'
+       OR s.customer_name ILIKE '%' || $10::text || '%'
+       OR s.customer_phone ILIKE '%' || $10::text || '%'
+       OR d.full_name ILIKE '%' || $10::text || '%')
+`
+
+type CountShipmentsParams struct {
 	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	Status      *string            `db:"status" json:"status"`
+	Statuses    []string           `db:"statuses" json:"statuses"`
 	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	VehicleID   pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
+	Priority    *string            `db:"priority" json:"priority"`
 	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
 	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
 	Origin      *string            `db:"origin" json:"origin"`
 	Destination *string            `db:"destination" json:"destination"`
 	Query       *string            `db:"query" json:"query"`
-	RowOffset   int32              `db:"row_offset" json:"row_offset"`
-	RowLimit    int32              `db:"row_limit" json:"row_limit"`
 }
 
-// Every filter is optional, and NULL means "no constraint". The parameters must
-// be genuinely nullable for that to work: the caller previously passed an empty
-// string for an unset filter, which is not NULL, so each guard fell through to
-// `status = ”` and the search matched nothing at all.
-func (q *Queries) AdvancedSearchShipments(ctx context.Context, arg AdvancedSearchShipmentsParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, advancedSearchShipments,
+func (q *Queries) CountShipments(ctx context.Context, arg CountShipmentsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countShipments,
 		arg.TenantID,
-		arg.Status,
+		arg.Statuses,
 		arg.DriverID,
+		arg.VehicleID,
+		arg.Priority,
 		arg.DateFrom,
 		arg.DateTo,
 		arg.Origin,
 		arg.Destination,
 		arg.Query,
-		arg.RowOffset,
-		arg.RowLimit,
 	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countShipmentsByStatus = `-- name: CountShipmentsByStatus :many
+SELECT status, COUNT(*)::bigint AS total
+FROM shipments
+WHERE tenant_id = $1
+GROUP BY status
+`
+
+type CountShipmentsByStatusRow struct {
+	Status string `db:"status" json:"status"`
+	Total  int64  `db:"total" json:"total"`
+}
+
+func (q *Queries) CountShipmentsByStatus(ctx context.Context, tenantID pgtype.UUID) ([]CountShipmentsByStatusRow, error) {
+	rows, err := q.db.Query(ctx, countShipmentsByStatus, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Shipment{}
+	items := []CountShipmentsByStatusRow{}
 	for rows.Next() {
-		var i Shipment
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.TrackingNumber,
-			&i.OriginAddress,
-			&i.OriginCoordinates,
-			&i.DestinationAddress,
-			&i.DestinationCoordinates,
-			&i.CustomerName,
-			&i.CustomerPhone,
-			&i.CargoDescription,
-			&i.CargoWeight,
-			&i.CargoValue,
-			&i.SpecialInstructions,
-			&i.DriverID,
-			&i.VehicleID,
-			&i.Status,
-			&i.StatusNote,
-			&i.StatusReason,
-			&i.EstimatedDelivery,
-			&i.ActualDelivery,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.CreatedBy,
-			&i.StatusChangedAt,
-		); err != nil {
+		var i CountShipmentsByStatusRow
+		if err := rows.Scan(&i.Status, &i.Total); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -101,156 +134,18 @@ func (q *Queries) AdvancedSearchShipments(ctx context.Context, arg AdvancedSearc
 	return items, nil
 }
 
-const assignDriverToShipment = `-- name: AssignDriverToShipment :one
-UPDATE shipments
-SET driver_id = $1, status = 'assigned', updated_at = NOW()
-WHERE id = $2 AND tenant_id = $3
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
+const countShipmentsCreatedSince = `-- name: CountShipmentsCreatedSince :one
+SELECT COUNT(*) FROM shipments
+WHERE tenant_id = $1 AND created_at >= $2
 `
 
-type AssignDriverToShipmentParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	ID       pgtype.UUID `db:"id" json:"id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+type CountShipmentsCreatedSinceParams struct {
+	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-func (q *Queries) AssignDriverToShipment(ctx context.Context, arg AssignDriverToShipmentParams) (Shipment, error) {
-	row := q.db.QueryRow(ctx, assignDriverToShipment, arg.DriverID, arg.ID, arg.TenantID)
-	var i Shipment
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.TrackingNumber,
-		&i.OriginAddress,
-		&i.OriginCoordinates,
-		&i.DestinationAddress,
-		&i.DestinationCoordinates,
-		&i.CustomerName,
-		&i.CustomerPhone,
-		&i.CargoDescription,
-		&i.CargoWeight,
-		&i.CargoValue,
-		&i.SpecialInstructions,
-		&i.DriverID,
-		&i.VehicleID,
-		&i.Status,
-		&i.StatusNote,
-		&i.StatusReason,
-		&i.EstimatedDelivery,
-		&i.ActualDelivery,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.CreatedBy,
-		&i.StatusChangedAt,
-	)
-	return i, err
-}
-
-const cancelShipment = `-- name: CancelShipment :one
-UPDATE shipments
-SET status = 'cancelled', status_reason = $2, updated_at = NOW()
-WHERE id = $1 AND tenant_id = $3
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
-`
-
-type CancelShipmentParams struct {
-	ID           pgtype.UUID `db:"id" json:"id"`
-	StatusReason *string     `db:"status_reason" json:"status_reason"`
-	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-func (q *Queries) CancelShipment(ctx context.Context, arg CancelShipmentParams) (Shipment, error) {
-	row := q.db.QueryRow(ctx, cancelShipment, arg.ID, arg.StatusReason, arg.TenantID)
-	var i Shipment
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.TrackingNumber,
-		&i.OriginAddress,
-		&i.OriginCoordinates,
-		&i.DestinationAddress,
-		&i.DestinationCoordinates,
-		&i.CustomerName,
-		&i.CustomerPhone,
-		&i.CargoDescription,
-		&i.CargoWeight,
-		&i.CargoValue,
-		&i.SpecialInstructions,
-		&i.DriverID,
-		&i.VehicleID,
-		&i.Status,
-		&i.StatusNote,
-		&i.StatusReason,
-		&i.EstimatedDelivery,
-		&i.ActualDelivery,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.CreatedBy,
-		&i.StatusChangedAt,
-	)
-	return i, err
-}
-
-const countActiveShipmentsByTenant = `-- name: CountActiveShipmentsByTenant :one
-SELECT COUNT(*) FROM shipments 
-WHERE tenant_id = $1 
-  AND status = ANY($2::text[])
-`
-
-type CountActiveShipmentsByTenantParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Column2  []string    `db:"column_2" json:"column_2"`
-}
-
-func (q *Queries) CountActiveShipmentsByTenant(ctx context.Context, arg CountActiveShipmentsByTenantParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveShipmentsByTenant, arg.TenantID, arg.Column2)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countDeliveriesToday = `-- name: CountDeliveriesToday :one
-SELECT COUNT(*) FROM shipments 
-WHERE tenant_id = $1 
-  AND status = 'delivered' 
-  AND actual_delivery >= $2
-`
-
-type CountDeliveriesTodayParams struct {
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ActualDelivery pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
-}
-
-func (q *Queries) CountDeliveriesToday(ctx context.Context, arg CountDeliveriesTodayParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countDeliveriesToday, arg.TenantID, arg.ActualDelivery)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countShipmentsByStatus = `-- name: CountShipmentsByStatus :one
-SELECT COUNT(*) FROM shipments 
-WHERE tenant_id = $1 AND status = $2
-`
-
-type CountShipmentsByStatusParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Status   string      `db:"status" json:"status"`
-}
-
-func (q *Queries) CountShipmentsByStatus(ctx context.Context, arg CountShipmentsByStatusParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countShipmentsByStatus, arg.TenantID, arg.Status)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countShipmentsByTenant = `-- name: CountShipmentsByTenant :one
-SELECT COUNT(*) FROM shipments WHERE tenant_id = $1
-`
-
-func (q *Queries) CountShipmentsByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countShipmentsByTenant, tenantID)
+func (q *Queries) CountShipmentsCreatedSince(ctx context.Context, arg CountShipmentsCreatedSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countShipmentsCreatedSince, arg.TenantID, arg.CreatedAt)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -258,25 +153,37 @@ func (q *Queries) CountShipmentsByTenant(ctx context.Context, tenantID pgtype.UU
 
 const createShipment = `-- name: CreateShipment :one
 INSERT INTO shipments (
-    tenant_id, tracking_number,
-    origin_address,
-    destination_address,
+    tenant_id, tracking_number, priority,
+    origin_city, origin_address, origin_lat, origin_lng,
+    destination_city, destination_address, destination_lat, destination_lng, destination_precise,
     customer_name, customer_phone,
     cargo_description, cargo_weight, cargo_value, special_instructions,
-    driver_id, vehicle_id,
-    status, status_note,
-    estimated_delivery,
-    created_by
+    driver_id, vehicle_id, status, estimated_delivery, eta_manual, created_by, status_changed_at,
+    planned_pickup_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
-) RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
+    $1, $2, $3,
+    $4, $5, $6, $7,
+    $8, $9, $10, $11, $12,
+    $13, $14,
+    $15, $16, $17, $18,
+    $19, $20, $21, $22, $23, $24, NOW(),
+    $25
+) RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
 `
 
 type CreateShipmentParams struct {
 	TenantID            pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
 	TrackingNumber      string             `db:"tracking_number" json:"tracking_number"`
+	Priority            string             `db:"priority" json:"priority"`
+	OriginCity          *string            `db:"origin_city" json:"origin_city"`
 	OriginAddress       string             `db:"origin_address" json:"origin_address"`
+	OriginLat           *float64           `db:"origin_lat" json:"origin_lat"`
+	OriginLng           *float64           `db:"origin_lng" json:"origin_lng"`
+	DestinationCity     *string            `db:"destination_city" json:"destination_city"`
 	DestinationAddress  string             `db:"destination_address" json:"destination_address"`
+	DestinationLat      *float64           `db:"destination_lat" json:"destination_lat"`
+	DestinationLng      *float64           `db:"destination_lng" json:"destination_lng"`
+	DestinationPrecise  bool               `db:"destination_precise" json:"destination_precise"`
 	CustomerName        string             `db:"customer_name" json:"customer_name"`
 	CustomerPhone       string             `db:"customer_phone" json:"customer_phone"`
 	CargoDescription    *string            `db:"cargo_description" json:"cargo_description"`
@@ -286,17 +193,26 @@ type CreateShipmentParams struct {
 	DriverID            pgtype.UUID        `db:"driver_id" json:"driver_id"`
 	VehicleID           pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
 	Status              string             `db:"status" json:"status"`
-	StatusNote          *string            `db:"status_note" json:"status_note"`
 	EstimatedDelivery   pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
 	CreatedBy           pgtype.UUID        `db:"created_by" json:"created_by"`
+	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
 }
 
 func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error) {
 	row := q.db.QueryRow(ctx, createShipment,
 		arg.TenantID,
 		arg.TrackingNumber,
+		arg.Priority,
+		arg.OriginCity,
 		arg.OriginAddress,
+		arg.OriginLat,
+		arg.OriginLng,
+		arg.DestinationCity,
 		arg.DestinationAddress,
+		arg.DestinationLat,
+		arg.DestinationLng,
+		arg.DestinationPrecise,
 		arg.CustomerName,
 		arg.CustomerPhone,
 		arg.CargoDescription,
@@ -306,9 +222,10 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		arg.DriverID,
 		arg.VehicleID,
 		arg.Status,
-		arg.StatusNote,
 		arg.EstimatedDelivery,
+		arg.EtaManual,
 		arg.CreatedBy,
+		arg.PlannedPickupAt,
 	)
 	var i Shipment
 	err := row.Scan(
@@ -316,9 +233,7 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		&i.TenantID,
 		&i.TrackingNumber,
 		&i.OriginAddress,
-		&i.OriginCoordinates,
 		&i.DestinationAddress,
-		&i.DestinationCoordinates,
 		&i.CustomerName,
 		&i.CustomerPhone,
 		&i.CargoDescription,
@@ -336,127 +251,77 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		&i.UpdatedAt,
 		&i.CreatedBy,
 		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
 
-const getDashboardActivity = `-- name: GetDashboardActivity :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE tenant_id = $1
-ORDER BY updated_at DESC
-LIMIT $2
+const getShipmentByConfirmToken = `-- name: GetShipmentByConfirmToken :one
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
+WHERE confirm_token = $1
 `
 
-type GetDashboardActivityParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Limit    int32       `db:"limit" json:"limit"`
-}
-
-func (q *Queries) GetDashboardActivity(ctx context.Context, arg GetDashboardActivityParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, getDashboardActivity, arg.TenantID, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Shipment{}
-	for rows.Next() {
-		var i Shipment
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.TrackingNumber,
-			&i.OriginAddress,
-			&i.OriginCoordinates,
-			&i.DestinationAddress,
-			&i.DestinationCoordinates,
-			&i.CustomerName,
-			&i.CustomerPhone,
-			&i.CargoDescription,
-			&i.CargoWeight,
-			&i.CargoValue,
-			&i.SpecialInstructions,
-			&i.DriverID,
-			&i.VehicleID,
-			&i.Status,
-			&i.StatusNote,
-			&i.StatusReason,
-			&i.EstimatedDelivery,
-			&i.ActualDelivery,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.CreatedBy,
-			&i.StatusChangedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getDashboardAlerts = `-- name: GetDashboardAlerts :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE tenant_id = $1
-  AND status IN ('issue', 'delayed')
-ORDER BY updated_at DESC
-LIMIT $2
-`
-
-type GetDashboardAlertsParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Limit    int32       `db:"limit" json:"limit"`
-}
-
-func (q *Queries) GetDashboardAlerts(ctx context.Context, arg GetDashboardAlertsParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, getDashboardAlerts, arg.TenantID, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Shipment{}
-	for rows.Next() {
-		var i Shipment
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.TrackingNumber,
-			&i.OriginAddress,
-			&i.OriginCoordinates,
-			&i.DestinationAddress,
-			&i.DestinationCoordinates,
-			&i.CustomerName,
-			&i.CustomerPhone,
-			&i.CargoDescription,
-			&i.CargoWeight,
-			&i.CargoValue,
-			&i.SpecialInstructions,
-			&i.DriverID,
-			&i.VehicleID,
-			&i.Status,
-			&i.StatusNote,
-			&i.StatusReason,
-			&i.EstimatedDelivery,
-			&i.ActualDelivery,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.CreatedBy,
-			&i.StatusChangedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GetShipmentByConfirmToken(ctx context.Context, confirmToken *string) (Shipment, error) {
+	row := q.db.QueryRow(ctx, getShipmentByConfirmToken, confirmToken)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
 }
 
 const getShipmentByID = `-- name: GetShipmentByID :one
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -473,9 +338,7 @@ func (q *Queries) GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams
 		&i.TenantID,
 		&i.TrackingNumber,
 		&i.OriginAddress,
-		&i.OriginCoordinates,
 		&i.DestinationAddress,
-		&i.DestinationCoordinates,
 		&i.CustomerName,
 		&i.CustomerPhone,
 		&i.CargoDescription,
@@ -493,12 +356,86 @@ func (q *Queries) GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams
 		&i.UpdatedAt,
 		&i.CreatedBy,
 		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
+const getShipmentByIDForUpdate = `-- name: GetShipmentByIDForUpdate :one
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
+WHERE id = $1 AND tenant_id = $2
+FOR UPDATE
+`
+
+type GetShipmentByIDForUpdateParams struct {
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// Row lock for the read-modify-write of a status transition, so two
+// concurrent updates (a driver's sync and a dispatcher's click) serialise
+// instead of both validating against the same stale status.
+func (q *Queries) GetShipmentByIDForUpdate(ctx context.Context, arg GetShipmentByIDForUpdateParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, getShipmentByIDForUpdate, arg.ID, arg.TenantID)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
 
 const getShipmentByTrackingNumber = `-- name: GetShipmentByTrackingNumber :one
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
 WHERE tracking_number = $1
 `
 
@@ -510,9 +447,7 @@ func (q *Queries) GetShipmentByTrackingNumber(ctx context.Context, trackingNumbe
 		&i.TenantID,
 		&i.TrackingNumber,
 		&i.OriginAddress,
-		&i.OriginCoordinates,
 		&i.DestinationAddress,
-		&i.DestinationCoordinates,
 		&i.CustomerName,
 		&i.CustomerPhone,
 		&i.CargoDescription,
@@ -530,83 +465,69 @@ func (q *Queries) GetShipmentByTrackingNumber(ctx context.Context, trackingNumbe
 		&i.UpdatedAt,
 		&i.CreatedBy,
 		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }
 
-const getShipmentsForSync = `-- name: GetShipmentsForSync :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE driver_id = $1
-  AND tenant_id = $2
-  AND (
-    status IN ('assigned', 'in_transit', 'delayed', 'arrived')
-    OR $3::timestamptz IS NULL
-    OR updated_at > $3::timestamptz
-  )
-ORDER BY created_at DESC
+const getVehicleLoad = `-- name: GetVehicleLoad :one
+SELECT COALESCE(SUM(s.cargo_weight), 0)::float8 AS weight_kg,
+       COALESCE(MIN(u.full_name) FILTER (WHERE s.driver_id IS DISTINCT FROM $1::uuid), '')::text AS other_driver
+FROM shipments s
+LEFT JOIN users u ON u.id = s.driver_id
+WHERE s.tenant_id = $2 AND s.vehicle_id = $3
+  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+  AND s.id IS DISTINCT FROM $4::uuid
 `
 
-type GetShipmentsForSyncParams struct {
-	DriverID  pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+type GetVehicleLoadParams struct {
+	DriverID  pgtype.UUID `db:"driver_id" json:"driver_id"`
+	TenantID  pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	VehicleID pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
+	Exclude   pgtype.UUID `db:"exclude" json:"exclude"`
 }
 
-// A NULL cursor means the client has never synced, so there is no lower bound
-// and everything assigned to the driver is returned. Without the explicit NULL
-// check, "updated_at > NULL" evaluates to NULL rather than true, and a first
-// sync silently pulled only shipments already in an active status.
-func (q *Queries) GetShipmentsForSync(ctx context.Context, arg GetShipmentsForSyncParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, getShipmentsForSync, arg.DriverID, arg.TenantID, arg.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Shipment{}
-	for rows.Next() {
-		var i Shipment
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.TrackingNumber,
-			&i.OriginAddress,
-			&i.OriginCoordinates,
-			&i.DestinationAddress,
-			&i.DestinationCoordinates,
-			&i.CustomerName,
-			&i.CustomerPhone,
-			&i.CargoDescription,
-			&i.CargoWeight,
-			&i.CargoValue,
-			&i.SpecialInstructions,
-			&i.DriverID,
-			&i.VehicleID,
-			&i.Status,
-			&i.StatusNote,
-			&i.StatusReason,
-			&i.EstimatedDelivery,
-			&i.ActualDelivery,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.CreatedBy,
-			&i.StatusChangedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type GetVehicleLoadRow struct {
+	WeightKg    float64 `db:"weight_kg" json:"weight_kg"`
+	OtherDriver string  `db:"other_driver" json:"other_driver"`
+}
+
+// What a vehicle carries already: the weight of its active shipments other
+// than this one, and another driver on any of them.
+func (q *Queries) GetVehicleLoad(ctx context.Context, arg GetVehicleLoadParams) (GetVehicleLoadRow, error) {
+	row := q.db.QueryRow(ctx, getVehicleLoad,
+		arg.DriverID,
+		arg.TenantID,
+		arg.VehicleID,
+		arg.Exclude,
+	)
+	var i GetVehicleLoadRow
+	err := row.Scan(&i.WeightKg, &i.OtherDriver)
+	return i, err
 }
 
 const listActiveShipmentsByDriver = `-- name: ListActiveShipmentsByDriver :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE driver_id = $1 
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
+WHERE driver_id = $1
   AND tenant_id = $2
-  AND status IN ('assigned', 'in_transit', 'delayed', 'arrived')
-ORDER BY created_at DESC
+  AND status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
+         estimated_delivery ASC NULLS LAST,
+         created_at ASC
 `
 
 type ListActiveShipmentsByDriverParams struct {
@@ -628,9 +549,7 @@ func (q *Queries) ListActiveShipmentsByDriver(ctx context.Context, arg ListActiv
 			&i.TenantID,
 			&i.TrackingNumber,
 			&i.OriginAddress,
-			&i.OriginCoordinates,
 			&i.DestinationAddress,
-			&i.DestinationCoordinates,
 			&i.CustomerName,
 			&i.CustomerPhone,
 			&i.CargoDescription,
@@ -648,6 +567,21 @@ func (q *Queries) ListActiveShipmentsByDriver(ctx context.Context, arg ListActiv
 			&i.UpdatedAt,
 			&i.CreatedBy,
 			&i.StatusChangedAt,
+			&i.Priority,
+			&i.OriginCity,
+			&i.DestinationCity,
+			&i.OriginLat,
+			&i.OriginLng,
+			&i.DestinationLat,
+			&i.DestinationLng,
+			&i.DestinationPrecise,
+			&i.PickedUpAt,
+			&i.ConfirmToken,
+			&i.CustomerConfirmedAt,
+			&i.CustomerFeedback,
+			&i.EtaManual,
+			&i.PlannedPickupAt,
+			&i.AnonymisedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -659,27 +593,197 @@ func (q *Queries) ListActiveShipmentsByDriver(ctx context.Context, arg ListActiv
 	return items, nil
 }
 
-const listShipmentsByDriver = `-- name: ListShipmentsByDriver :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE driver_id = $1 AND tenant_id = $2
-ORDER BY created_at DESC
-LIMIT $3 OFFSET $4
+const listActiveShipmentsForMap = `-- name: ListActiveShipmentsForMap :many
+SELECT s.id, s.tracking_number, s.status, s.priority,
+       s.destination_city, s.destination_lat, s.destination_lng,
+       s.origin_city, s.origin_lat, s.origin_lng, s.driver_id,
+       d.full_name AS driver_name, s.customer_name, s.estimated_delivery
+FROM shipments s
+LEFT JOIN users d ON d.id = s.driver_id
+WHERE s.tenant_id = $1
+  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+ORDER BY s.created_at DESC
+LIMIT 500
 `
 
-type ListShipmentsByDriverParams struct {
+type ListActiveShipmentsForMapRow struct {
+	ID                pgtype.UUID        `db:"id" json:"id"`
+	TrackingNumber    string             `db:"tracking_number" json:"tracking_number"`
+	Status            string             `db:"status" json:"status"`
+	Priority          string             `db:"priority" json:"priority"`
+	DestinationCity   *string            `db:"destination_city" json:"destination_city"`
+	DestinationLat    *float64           `db:"destination_lat" json:"destination_lat"`
+	DestinationLng    *float64           `db:"destination_lng" json:"destination_lng"`
+	OriginCity        *string            `db:"origin_city" json:"origin_city"`
+	OriginLat         *float64           `db:"origin_lat" json:"origin_lat"`
+	OriginLng         *float64           `db:"origin_lng" json:"origin_lng"`
+	DriverID          pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	DriverName        *string            `db:"driver_name" json:"driver_name"`
+	CustomerName      string             `db:"customer_name" json:"customer_name"`
+	EstimatedDelivery pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+}
+
+func (q *Queries) ListActiveShipmentsForMap(ctx context.Context, tenantID pgtype.UUID) ([]ListActiveShipmentsForMapRow, error) {
+	rows, err := q.db.Query(ctx, listActiveShipmentsForMap, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveShipmentsForMapRow{}
+	for rows.Next() {
+		var i ListActiveShipmentsForMapRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TrackingNumber,
+			&i.Status,
+			&i.Priority,
+			&i.DestinationCity,
+			&i.DestinationLat,
+			&i.DestinationLng,
+			&i.OriginCity,
+			&i.OriginLat,
+			&i.OriginLng,
+			&i.DriverID,
+			&i.DriverName,
+			&i.CustomerName,
+			&i.EstimatedDelivery,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOverdueShipments = `-- name: ListOverdueShipments :many
+SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.estimated_delivery,
+       floor(extract(epoch FROM s.estimated_delivery))::bigint::text AS episode
+FROM shipments s
+WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
+  AND s.estimated_delivery IS NOT NULL
+  AND s.estimated_delivery < NOW()
+  AND NOT EXISTS (
+      SELECT 1 FROM alerts a
+      WHERE a.tenant_id = s.tenant_id AND a.alert_type = 'eta_exceeded' AND a.shipment_id = s.id
+        AND a.episode = floor(extract(epoch FROM s.estimated_delivery))::bigint::text)
+ORDER BY s.estimated_delivery
+LIMIT 1000
+`
+
+type ListOverdueShipmentsRow struct {
+	ID                pgtype.UUID        `db:"id" json:"id"`
+	TenantID          pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	TrackingNumber    string             `db:"tracking_number" json:"tracking_number"`
+	DriverID          pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	EstimatedDelivery pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+	Episode           string             `db:"episode" json:"episode"`
+}
+
+// Across tenants: the job that raises ETA alerts runs once for the platform.
+// Only loads on the road can be late; one not yet collected is caught by
+// ListPickupOverdue. The episode identifies the ETA the alert is about.
+// Loads already alerted for that ETA are left out, so a backlog of more
+// than a run's worth is worked through, oldest first, over the next runs.
+func (q *Queries) ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error) {
+	rows, err := q.db.Query(ctx, listOverdueShipments)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOverdueShipmentsRow{}
+	for rows.Next() {
+		var i ListOverdueShipmentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.DriverID,
+			&i.EstimatedDelivery,
+			&i.Episode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPickupOverdue = `-- name: ListPickupOverdue :many
+SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.status, s.planned_pickup_at,
+       floor(extract(epoch FROM s.planned_pickup_at))::bigint::text AS episode
+FROM shipments s
+WHERE s.status IN ('pending', 'assigned')
+  AND s.planned_pickup_at IS NOT NULL
+  AND s.planned_pickup_at < $1
+  AND NOT EXISTS (
+      SELECT 1 FROM alerts a
+      WHERE a.tenant_id = s.tenant_id AND a.alert_type = 'pickup_overdue' AND a.shipment_id = s.id
+        AND a.episode = floor(extract(epoch FROM s.planned_pickup_at))::bigint::text)
+ORDER BY s.planned_pickup_at
+LIMIT 1000
+`
+
+type ListPickupOverdueRow struct {
+	ID              pgtype.UUID        `db:"id" json:"id"`
+	TenantID        pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	TrackingNumber  string             `db:"tracking_number" json:"tracking_number"`
+	DriverID        pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	Status          string             `db:"status" json:"status"`
+	PlannedPickupAt pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
+	Episode         string             `db:"episode" json:"episode"`
+}
+
+// Loads still waiting to be collected well after their planned pickup, not
+// yet alerted for that pickup time, oldest first.
+func (q *Queries) ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error) {
+	rows, err := q.db.Query(ctx, listPickupOverdue, dueBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPickupOverdueRow{}
+	for rows.Next() {
+		var i ListPickupOverdueRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.DriverID,
+			&i.Status,
+			&i.PlannedPickupAt,
+			&i.Episode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentShipmentsByDriver = `-- name: ListRecentShipmentsByDriver :many
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
+WHERE driver_id = $1 AND tenant_id = $2
+ORDER BY created_at DESC
+LIMIT $3
+`
+
+type ListRecentShipmentsByDriverParams struct {
 	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
 	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 	Limit    int32       `db:"limit" json:"limit"`
-	Offset   int32       `db:"offset" json:"offset"`
 }
 
-func (q *Queries) ListShipmentsByDriver(ctx context.Context, arg ListShipmentsByDriverParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, listShipmentsByDriver,
-		arg.DriverID,
-		arg.TenantID,
-		arg.Limit,
-		arg.Offset,
-	)
+func (q *Queries) ListRecentShipmentsByDriver(ctx context.Context, arg ListRecentShipmentsByDriverParams) ([]Shipment, error) {
+	rows, err := q.db.Query(ctx, listRecentShipmentsByDriver, arg.DriverID, arg.TenantID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -692,9 +796,7 @@ func (q *Queries) ListShipmentsByDriver(ctx context.Context, arg ListShipmentsBy
 			&i.TenantID,
 			&i.TrackingNumber,
 			&i.OriginAddress,
-			&i.OriginCoordinates,
 			&i.DestinationAddress,
-			&i.DestinationCoordinates,
 			&i.CustomerName,
 			&i.CustomerPhone,
 			&i.CargoDescription,
@@ -712,6 +814,21 @@ func (q *Queries) ListShipmentsByDriver(ctx context.Context, arg ListShipmentsBy
 			&i.UpdatedAt,
 			&i.CreatedBy,
 			&i.StatusChangedAt,
+			&i.Priority,
+			&i.OriginCity,
+			&i.DestinationCity,
+			&i.OriginLat,
+			&i.OriginLng,
+			&i.DestinationLat,
+			&i.DestinationLng,
+			&i.DestinationPrecise,
+			&i.PickedUpAt,
+			&i.ConfirmToken,
+			&i.CustomerConfirmedAt,
+			&i.CustomerFeedback,
+			&i.EtaManual,
+			&i.PlannedPickupAt,
+			&i.AnonymisedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -723,258 +840,962 @@ func (q *Queries) ListShipmentsByDriver(ctx context.Context, arg ListShipmentsBy
 	return items, nil
 }
 
-const listShipmentsByStatus = `-- name: ListShipmentsByStatus :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE tenant_id = $1 AND status = $2
-ORDER BY created_at DESC
-LIMIT $3 OFFSET $4
+const listRecentShipmentsByVehicle = `-- name: ListRecentShipmentsByVehicle :many
+SELECT s.id, s.tenant_id, s.tracking_number, s.origin_address, s.destination_address, s.customer_name, s.customer_phone, s.cargo_description, s.cargo_weight, s.cargo_value, s.special_instructions, s.driver_id, s.vehicle_id, s.status, s.status_note, s.status_reason, s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at, s.created_by, s.status_changed_at, s.priority, s.origin_city, s.destination_city, s.origin_lat, s.origin_lng, s.destination_lat, s.destination_lng, s.destination_precise, s.picked_up_at, s.confirm_token, s.customer_confirmed_at, s.customer_feedback, s.eta_manual, s.planned_pickup_at, s.anonymised_at, d.full_name AS driver_name
+FROM shipments s
+LEFT JOIN users d ON d.id = s.driver_id
+WHERE s.vehicle_id = $1 AND s.tenant_id = $2
+ORDER BY s.created_at DESC
+LIMIT $3
 `
 
-type ListShipmentsByStatusParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Status   string      `db:"status" json:"status"`
-	Limit    int32       `db:"limit" json:"limit"`
-	Offset   int32       `db:"offset" json:"offset"`
+type ListRecentShipmentsByVehicleParams struct {
+	VehicleID pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
+	TenantID  pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	Limit     int32       `db:"limit" json:"limit"`
 }
 
-func (q *Queries) ListShipmentsByStatus(ctx context.Context, arg ListShipmentsByStatusParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, listShipmentsByStatus,
-		arg.TenantID,
-		arg.Status,
-		arg.Limit,
-		arg.Offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Shipment{}
-	for rows.Next() {
-		var i Shipment
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.TrackingNumber,
-			&i.OriginAddress,
-			&i.OriginCoordinates,
-			&i.DestinationAddress,
-			&i.DestinationCoordinates,
-			&i.CustomerName,
-			&i.CustomerPhone,
-			&i.CargoDescription,
-			&i.CargoWeight,
-			&i.CargoValue,
-			&i.SpecialInstructions,
-			&i.DriverID,
-			&i.VehicleID,
-			&i.Status,
-			&i.StatusNote,
-			&i.StatusReason,
-			&i.EstimatedDelivery,
-			&i.ActualDelivery,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.CreatedBy,
-			&i.StatusChangedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listShipmentsByTenant = `-- name: ListShipmentsByTenant :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE tenant_id = $1
-ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
-`
-
-type ListShipmentsByTenantParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Limit    int32       `db:"limit" json:"limit"`
-	Offset   int32       `db:"offset" json:"offset"`
-}
-
-func (q *Queries) ListShipmentsByTenant(ctx context.Context, arg ListShipmentsByTenantParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, listShipmentsByTenant, arg.TenantID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Shipment{}
-	for rows.Next() {
-		var i Shipment
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.TrackingNumber,
-			&i.OriginAddress,
-			&i.OriginCoordinates,
-			&i.DestinationAddress,
-			&i.DestinationCoordinates,
-			&i.CustomerName,
-			&i.CustomerPhone,
-			&i.CargoDescription,
-			&i.CargoWeight,
-			&i.CargoValue,
-			&i.SpecialInstructions,
-			&i.DriverID,
-			&i.VehicleID,
-			&i.Status,
-			&i.StatusNote,
-			&i.StatusReason,
-			&i.EstimatedDelivery,
-			&i.ActualDelivery,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.CreatedBy,
-			&i.StatusChangedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const searchShipments = `-- name: SearchShipments :many
-SELECT id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at FROM shipments
-WHERE tenant_id = $1
-  AND (
-    tracking_number ILIKE '%' || $2 || '%'
-    OR customer_name ILIKE '%' || $2 || '%'
-    OR customer_phone ILIKE '%' || $2 || '%'
-  )
-ORDER BY created_at DESC
-LIMIT $3 OFFSET $4
-`
-
-type SearchShipmentsParams struct {
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Column2  *string     `db:"column_2" json:"column_2"`
-	Limit    int32       `db:"limit" json:"limit"`
-	Offset   int32       `db:"offset" json:"offset"`
-}
-
-func (q *Queries) SearchShipments(ctx context.Context, arg SearchShipmentsParams) ([]Shipment, error) {
-	rows, err := q.db.Query(ctx, searchShipments,
-		arg.TenantID,
-		arg.Column2,
-		arg.Limit,
-		arg.Offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Shipment{}
-	for rows.Next() {
-		var i Shipment
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.TrackingNumber,
-			&i.OriginAddress,
-			&i.OriginCoordinates,
-			&i.DestinationAddress,
-			&i.DestinationCoordinates,
-			&i.CustomerName,
-			&i.CustomerPhone,
-			&i.CargoDescription,
-			&i.CargoWeight,
-			&i.CargoValue,
-			&i.SpecialInstructions,
-			&i.DriverID,
-			&i.VehicleID,
-			&i.Status,
-			&i.StatusNote,
-			&i.StatusReason,
-			&i.EstimatedDelivery,
-			&i.ActualDelivery,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.CreatedBy,
-			&i.StatusChangedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const updateShipment = `-- name: UpdateShipment :one
-UPDATE shipments
-SET
-    origin_address = COALESCE($3, origin_address),
-    destination_address = COALESCE($4, destination_address),
-    customer_name = COALESCE($5, customer_name),
-    customer_phone = COALESCE($6, customer_phone),
-    cargo_description = COALESCE($7, cargo_description),
-    cargo_weight = COALESCE($8, cargo_weight),
-    cargo_value = COALESCE($9, cargo_value),
-    special_instructions = COALESCE($10, special_instructions),
-    driver_id = COALESCE($11, driver_id),
-    vehicle_id = COALESCE($12, vehicle_id),
-    status = COALESCE($13, status),
-    status_note = COALESCE($14, status_note),
-    status_reason = COALESCE($15, status_reason),
-    estimated_delivery = COALESCE($16, estimated_delivery),
-    actual_delivery = COALESCE($17, actual_delivery)
-WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
-`
-
-type UpdateShipmentParams struct {
+type ListRecentShipmentsByVehicleRow struct {
 	ID                  pgtype.UUID        `db:"id" json:"id"`
 	TenantID            pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	OriginAddress       *string            `db:"origin_address" json:"origin_address"`
-	DestinationAddress  *string            `db:"destination_address" json:"destination_address"`
-	CustomerName        *string            `db:"customer_name" json:"customer_name"`
-	CustomerPhone       *string            `db:"customer_phone" json:"customer_phone"`
+	TrackingNumber      string             `db:"tracking_number" json:"tracking_number"`
+	OriginAddress       string             `db:"origin_address" json:"origin_address"`
+	DestinationAddress  string             `db:"destination_address" json:"destination_address"`
+	CustomerName        string             `db:"customer_name" json:"customer_name"`
+	CustomerPhone       string             `db:"customer_phone" json:"customer_phone"`
 	CargoDescription    *string            `db:"cargo_description" json:"cargo_description"`
 	CargoWeight         pgtype.Numeric     `db:"cargo_weight" json:"cargo_weight"`
 	CargoValue          pgtype.Numeric     `db:"cargo_value" json:"cargo_value"`
 	SpecialInstructions *string            `db:"special_instructions" json:"special_instructions"`
 	DriverID            pgtype.UUID        `db:"driver_id" json:"driver_id"`
 	VehicleID           pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
-	Status              *string            `db:"status" json:"status"`
+	Status              string             `db:"status" json:"status"`
 	StatusNote          *string            `db:"status_note" json:"status_note"`
 	StatusReason        *string            `db:"status_reason" json:"status_reason"`
 	EstimatedDelivery   pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
 	ActualDelivery      pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CreatedBy           pgtype.UUID        `db:"created_by" json:"created_by"`
+	StatusChangedAt     pgtype.Timestamptz `db:"status_changed_at" json:"status_changed_at"`
+	Priority            string             `db:"priority" json:"priority"`
+	OriginCity          *string            `db:"origin_city" json:"origin_city"`
+	DestinationCity     *string            `db:"destination_city" json:"destination_city"`
+	OriginLat           *float64           `db:"origin_lat" json:"origin_lat"`
+	OriginLng           *float64           `db:"origin_lng" json:"origin_lng"`
+	DestinationLat      *float64           `db:"destination_lat" json:"destination_lat"`
+	DestinationLng      *float64           `db:"destination_lng" json:"destination_lng"`
+	DestinationPrecise  bool               `db:"destination_precise" json:"destination_precise"`
+	PickedUpAt          pgtype.Timestamptz `db:"picked_up_at" json:"picked_up_at"`
+	ConfirmToken        *string            `db:"confirm_token" json:"confirm_token"`
+	CustomerConfirmedAt pgtype.Timestamptz `db:"customer_confirmed_at" json:"customer_confirmed_at"`
+	CustomerFeedback    *string            `db:"customer_feedback" json:"customer_feedback"`
+	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
+	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
+	AnonymisedAt        pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
+	DriverName          *string            `db:"driver_name" json:"driver_name"`
 }
 
-func (q *Queries) UpdateShipment(ctx context.Context, arg UpdateShipmentParams) (Shipment, error) {
-	row := q.db.QueryRow(ctx, updateShipment,
+func (q *Queries) ListRecentShipmentsByVehicle(ctx context.Context, arg ListRecentShipmentsByVehicleParams) ([]ListRecentShipmentsByVehicleRow, error) {
+	rows, err := q.db.Query(ctx, listRecentShipmentsByVehicle, arg.VehicleID, arg.TenantID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecentShipmentsByVehicleRow{}
+	for rows.Next() {
+		var i ListRecentShipmentsByVehicleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.OriginAddress,
+			&i.DestinationAddress,
+			&i.CustomerName,
+			&i.CustomerPhone,
+			&i.CargoDescription,
+			&i.CargoWeight,
+			&i.CargoValue,
+			&i.SpecialInstructions,
+			&i.DriverID,
+			&i.VehicleID,
+			&i.Status,
+			&i.StatusNote,
+			&i.StatusReason,
+			&i.EstimatedDelivery,
+			&i.ActualDelivery,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CreatedBy,
+			&i.StatusChangedAt,
+			&i.Priority,
+			&i.OriginCity,
+			&i.DestinationCity,
+			&i.OriginLat,
+			&i.OriginLng,
+			&i.DestinationLat,
+			&i.DestinationLng,
+			&i.DestinationPrecise,
+			&i.PickedUpAt,
+			&i.ConfirmToken,
+			&i.CustomerConfirmedAt,
+			&i.CustomerFeedback,
+			&i.EtaManual,
+			&i.PlannedPickupAt,
+			&i.AnonymisedAt,
+			&i.DriverName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listShipments = `-- name: ListShipments :many
+SELECT s.id, s.tenant_id, s.tracking_number, s.origin_address, s.destination_address, s.customer_name, s.customer_phone, s.cargo_description, s.cargo_weight, s.cargo_value, s.special_instructions, s.driver_id, s.vehicle_id, s.status, s.status_note, s.status_reason, s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at, s.created_by, s.status_changed_at, s.priority, s.origin_city, s.destination_city, s.origin_lat, s.origin_lng, s.destination_lat, s.destination_lng, s.destination_precise, s.picked_up_at, s.confirm_token, s.customer_confirmed_at, s.customer_feedback, s.eta_manual, s.planned_pickup_at, s.anonymised_at,
+       d.full_name AS driver_name,
+       v.plate_number AS vehicle_plate,
+       sm.last_sync_at AS driver_last_sync
+FROM shipments s
+LEFT JOIN users d ON d.id = s.driver_id
+LEFT JOIN vehicles v ON v.id = s.vehicle_id
+LEFT JOIN sync_metadata sm ON sm.driver_id = s.driver_id
+WHERE s.tenant_id = $1
+  AND (cardinality($2::text[]) = 0 OR s.status = ANY($2::text[]))
+  AND ($3::uuid IS NULL OR s.driver_id = $3::uuid)
+  AND ($4::uuid IS NULL OR s.vehicle_id = $4::uuid)
+  AND ($5::text IS NULL OR s.priority = $5::text)
+  AND ($6::timestamptz IS NULL OR s.created_at >= $6::timestamptz)
+  AND ($7::timestamptz IS NULL OR s.created_at < $7::timestamptz)
+  AND ($8::text IS NULL
+       OR s.origin_city ILIKE $8::text
+       OR s.origin_address ILIKE '%' || $8::text || '%')
+  AND ($9::text IS NULL
+       OR s.destination_city ILIKE $9::text
+       OR s.destination_address ILIKE '%' || $9::text || '%')
+  AND ($10::text IS NULL
+       OR s.tracking_number ILIKE '%' || $10::text || '%'
+       OR s.customer_name ILIKE '%' || $10::text || '%'
+       OR s.customer_phone ILIKE '%' || $10::text || '%'
+       OR d.full_name ILIKE '%' || $10::text || '%')
+ORDER BY
+  CASE WHEN $11::text = 'created_asc' THEN s.created_at END ASC,
+  CASE WHEN $11::text = 'eta_asc' THEN s.estimated_delivery END ASC NULLS LAST,
+  CASE WHEN $11::text = 'eta_desc' THEN s.estimated_delivery END DESC NULLS LAST,
+  CASE WHEN $11::text = 'updated_desc' THEN s.updated_at END DESC,
+  -- Statuses sort in the order a shipment goes through them.
+  CASE WHEN $11::text = 'status' THEN array_position(ARRAY['pending', 'assigned', 'in_transit', 'delayed', 'arrived', 'issue', 'delivered', 'cancelled'], s.status) END ASC,
+  CASE WHEN $11::text = 'status_desc' THEN array_position(ARRAY['pending', 'assigned', 'in_transit', 'delayed', 'arrived', 'issue', 'delivered', 'cancelled'], s.status) END DESC,
+  CASE WHEN $11::text = 'customer' THEN lower(s.customer_name) END ASC,
+  CASE WHEN $11::text = 'customer_desc' THEN lower(s.customer_name) END DESC,
+  CASE WHEN $11::text = 'tracking' THEN s.tracking_number END ASC,
+  CASE WHEN $11::text = 'tracking_desc' THEN s.tracking_number END DESC,
+  CASE WHEN $11::text = 'driver' THEN lower(d.full_name) END ASC NULLS LAST,
+  CASE WHEN $11::text = 'driver_desc' THEN lower(d.full_name) END DESC NULLS LAST,
+  CASE WHEN $11::text = 'route' THEN lower(COALESCE(s.origin_city, s.origin_address)) END ASC,
+  CASE WHEN $11::text = 'route' THEN lower(COALESCE(s.destination_city, s.destination_address)) END ASC,
+  CASE WHEN $11::text = 'route_desc' THEN lower(COALESCE(s.origin_city, s.origin_address)) END DESC,
+  CASE WHEN $11::text = 'route_desc' THEN lower(COALESCE(s.destination_city, s.destination_address)) END DESC,
+  CASE WHEN $11::text = 'priority' THEN
+      CASE s.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END
+  END ASC,
+  s.created_at DESC
+LIMIT $13 OFFSET $12
+`
+
+type ListShipmentsParams struct {
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Statuses    []string           `db:"statuses" json:"statuses"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	VehicleID   pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
+	Priority    *string            `db:"priority" json:"priority"`
+	DateFrom    pgtype.Timestamptz `db:"date_from" json:"date_from"`
+	DateTo      pgtype.Timestamptz `db:"date_to" json:"date_to"`
+	Origin      *string            `db:"origin" json:"origin"`
+	Destination *string            `db:"destination" json:"destination"`
+	Query       *string            `db:"query" json:"query"`
+	Sort        string             `db:"sort" json:"sort"`
+	RowOffset   int32              `db:"row_offset" json:"row_offset"`
+	RowLimit    int32              `db:"row_limit" json:"row_limit"`
+}
+
+type ListShipmentsRow struct {
+	Shipment       Shipment           `db:"shipment" json:"shipment"`
+	DriverName     *string            `db:"driver_name" json:"driver_name"`
+	VehiclePlate   *string            `db:"vehicle_plate" json:"vehicle_plate"`
+	DriverLastSync pgtype.Timestamptz `db:"driver_last_sync" json:"driver_last_sync"`
+}
+
+// Every filter is optional: an empty status list or a NULL argument means "no
+// constraint". Sorting goes through a whitelist of keys rather than
+// interpolated SQL.
+func (q *Queries) ListShipments(ctx context.Context, arg ListShipmentsParams) ([]ListShipmentsRow, error) {
+	rows, err := q.db.Query(ctx, listShipments,
+		arg.TenantID,
+		arg.Statuses,
+		arg.DriverID,
+		arg.VehicleID,
+		arg.Priority,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.Origin,
+		arg.Destination,
+		arg.Query,
+		arg.Sort,
+		arg.RowOffset,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListShipmentsRow{}
+	for rows.Next() {
+		var i ListShipmentsRow
+		if err := rows.Scan(
+			&i.Shipment.ID,
+			&i.Shipment.TenantID,
+			&i.Shipment.TrackingNumber,
+			&i.Shipment.OriginAddress,
+			&i.Shipment.DestinationAddress,
+			&i.Shipment.CustomerName,
+			&i.Shipment.CustomerPhone,
+			&i.Shipment.CargoDescription,
+			&i.Shipment.CargoWeight,
+			&i.Shipment.CargoValue,
+			&i.Shipment.SpecialInstructions,
+			&i.Shipment.DriverID,
+			&i.Shipment.VehicleID,
+			&i.Shipment.Status,
+			&i.Shipment.StatusNote,
+			&i.Shipment.StatusReason,
+			&i.Shipment.EstimatedDelivery,
+			&i.Shipment.ActualDelivery,
+			&i.Shipment.CreatedAt,
+			&i.Shipment.UpdatedAt,
+			&i.Shipment.CreatedBy,
+			&i.Shipment.StatusChangedAt,
+			&i.Shipment.Priority,
+			&i.Shipment.OriginCity,
+			&i.Shipment.DestinationCity,
+			&i.Shipment.OriginLat,
+			&i.Shipment.OriginLng,
+			&i.Shipment.DestinationLat,
+			&i.Shipment.DestinationLng,
+			&i.Shipment.DestinationPrecise,
+			&i.Shipment.PickedUpAt,
+			&i.Shipment.ConfirmToken,
+			&i.Shipment.CustomerConfirmedAt,
+			&i.Shipment.CustomerFeedback,
+			&i.Shipment.EtaManual,
+			&i.Shipment.PlannedPickupAt,
+			&i.Shipment.AnonymisedAt,
+			&i.DriverName,
+			&i.VehiclePlate,
+			&i.DriverLastSync,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listShipmentsByCustomerPhone = `-- name: ListShipmentsByCustomerPhone :many
+SELECT s.tracking_number, s.status, s.origin_city, s.destination_city,
+       s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at,
+       t.name AS company_name
+FROM shipments s
+JOIN tenants t ON t.id = s.tenant_id
+WHERE s.customer_phone = $1
+  AND s.created_at > NOW() - INTERVAL '90 days'
+ORDER BY s.created_at DESC
+LIMIT 50
+`
+
+type ListShipmentsByCustomerPhoneRow struct {
+	TrackingNumber    string             `db:"tracking_number" json:"tracking_number"`
+	Status            string             `db:"status" json:"status"`
+	OriginCity        *string            `db:"origin_city" json:"origin_city"`
+	DestinationCity   *string            `db:"destination_city" json:"destination_city"`
+	EstimatedDelivery pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+	ActualDelivery    pgtype.Timestamptz `db:"actual_delivery" json:"actual_delivery"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CompanyName       string             `db:"company_name" json:"company_name"`
+}
+
+func (q *Queries) ListShipmentsByCustomerPhone(ctx context.Context, customerPhone string) ([]ListShipmentsByCustomerPhoneRow, error) {
+	rows, err := q.db.Query(ctx, listShipmentsByCustomerPhone, customerPhone)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListShipmentsByCustomerPhoneRow{}
+	for rows.Next() {
+		var i ListShipmentsByCustomerPhoneRow
+		if err := rows.Scan(
+			&i.TrackingNumber,
+			&i.Status,
+			&i.OriginCity,
+			&i.DestinationCity,
+			&i.EstimatedDelivery,
+			&i.ActualDelivery,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompanyName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listShipmentsForDriverSync = `-- name: ListShipmentsForDriverSync :many
+SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
+WHERE driver_id = $1
+  AND tenant_id = $2
+  AND (
+    status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+    OR updated_at > NOW() - INTERVAL '7 days'
+    OR ($3::timestamptz IS NOT NULL AND updated_at > $3::timestamptz)
+  )
+ORDER BY created_at DESC
+LIMIT 200
+`
+
+type ListShipmentsForDriverSyncParams struct {
+	DriverID pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	TenantID pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Since    pgtype.Timestamptz `db:"since" json:"since"`
+}
+
+// Everything the driver's device should hold: active work, plus recently
+// finished work so the completed list survives a reinstall. On an incremental
+// sync anything changed since the cursor is included as well, so a
+// cancellation or a dispatcher edit reaches the device.
+func (q *Queries) ListShipmentsForDriverSync(ctx context.Context, arg ListShipmentsForDriverSyncParams) ([]Shipment, error) {
+	rows, err := q.db.Query(ctx, listShipmentsForDriverSync, arg.DriverID, arg.TenantID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Shipment{}
+	for rows.Next() {
+		var i Shipment
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.TrackingNumber,
+			&i.OriginAddress,
+			&i.DestinationAddress,
+			&i.CustomerName,
+			&i.CustomerPhone,
+			&i.CargoDescription,
+			&i.CargoWeight,
+			&i.CargoValue,
+			&i.SpecialInstructions,
+			&i.DriverID,
+			&i.VehicleID,
+			&i.Status,
+			&i.StatusNote,
+			&i.StatusReason,
+			&i.EstimatedDelivery,
+			&i.ActualDelivery,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CreatedBy,
+			&i.StatusChangedAt,
+			&i.Priority,
+			&i.OriginCity,
+			&i.DestinationCity,
+			&i.OriginLat,
+			&i.OriginLng,
+			&i.DestinationLat,
+			&i.DestinationLng,
+			&i.DestinationPrecise,
+			&i.PickedUpAt,
+			&i.ConfirmToken,
+			&i.CustomerConfirmedAt,
+			&i.CustomerFeedback,
+			&i.EtaManual,
+			&i.PlannedPickupAt,
+			&i.AnonymisedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const routeTransitHours = `-- name: RouteTransitHours :many
+SELECT (EXTRACT(EPOCH FROM (actual_delivery - COALESCE(picked_up_at, created_at))) / 3600.0)::float8 AS hours
+FROM shipments
+WHERE tenant_id = $1
+  AND status = 'delivered'
+  AND origin_city = $2
+  AND destination_city = $3
+  AND actual_delivery IS NOT NULL
+  AND actual_delivery > COALESCE(picked_up_at, created_at)
+ORDER BY actual_delivery DESC
+LIMIT 50
+`
+
+type RouteTransitHoursParams struct {
+	TenantID        pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	OriginCity      *string     `db:"origin_city" json:"origin_city"`
+	DestinationCity *string     `db:"destination_city" json:"destination_city"`
+}
+
+// Hours from departure to delivery for recent deliveries between two cities.
+// ETA estimation takes the median once enough history exists.
+func (q *Queries) RouteTransitHours(ctx context.Context, arg RouteTransitHoursParams) ([]float64, error) {
+	rows, err := q.db.Query(ctx, routeTransitHours, arg.TenantID, arg.OriginCity, arg.DestinationCity)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []float64{}
+	for rows.Next() {
+		var hours float64
+		if err := rows.Scan(&hours); err != nil {
+			return nil, err
+		}
+		items = append(items, hours)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setCustomerConfirmation = `-- name: SetCustomerConfirmation :one
+UPDATE shipments
+SET customer_confirmed_at = COALESCE(customer_confirmed_at, NOW()),
+    customer_feedback = COALESCE($1, customer_feedback),
+    updated_at = NOW()
+WHERE id = $2 AND tenant_id = $3
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
+`
+
+type SetCustomerConfirmationParams struct {
+	Feedback *string     `db:"feedback" json:"feedback"`
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) SetCustomerConfirmation(ctx context.Context, arg SetCustomerConfirmationParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setCustomerConfirmation, arg.Feedback, arg.ID, arg.TenantID)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
+const setCustomerFeedback = `-- name: SetCustomerFeedback :one
+UPDATE shipments
+SET customer_feedback = $1, updated_at = NOW()
+WHERE id = $2 AND tenant_id = $3
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
+`
+
+type SetCustomerFeedbackParams struct {
+	Feedback *string     `db:"feedback" json:"feedback"`
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// A problem report: the customer has answered but not confirmed receipt.
+func (q *Queries) SetCustomerFeedback(ctx context.Context, arg SetCustomerFeedbackParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setCustomerFeedback, arg.Feedback, arg.ID, arg.TenantID)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
+const setShipmentAssignment = `-- name: SetShipmentAssignment :one
+UPDATE shipments
+SET driver_id = $3,
+    vehicle_id = $4,
+    status = $5,
+    status_changed_at = CASE WHEN status <> $5 THEN NOW() ELSE status_changed_at END,
+    updated_at = NOW()
+WHERE id = $1 AND tenant_id = $2
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
+`
+
+type SetShipmentAssignmentParams struct {
+	ID        pgtype.UUID `db:"id" json:"id"`
+	TenantID  pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	DriverID  pgtype.UUID `db:"driver_id" json:"driver_id"`
+	VehicleID pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
+	Status    string      `db:"status" json:"status"`
+}
+
+func (q *Queries) SetShipmentAssignment(ctx context.Context, arg SetShipmentAssignmentParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setShipmentAssignment,
 		arg.ID,
 		arg.TenantID,
+		arg.DriverID,
+		arg.VehicleID,
+		arg.Status,
+	)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
+const setShipmentConfirmToken = `-- name: SetShipmentConfirmToken :exec
+UPDATE shipments SET confirm_token = $1
+WHERE id = $2 AND tenant_id = $3 AND confirm_token IS NULL
+`
+
+type SetShipmentConfirmTokenParams struct {
+	ConfirmToken *string     `db:"confirm_token" json:"confirm_token"`
+	ID           pgtype.UUID `db:"id" json:"id"`
+	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) SetShipmentConfirmToken(ctx context.Context, arg SetShipmentConfirmTokenParams) error {
+	_, err := q.db.Exec(ctx, setShipmentConfirmToken, arg.ConfirmToken, arg.ID, arg.TenantID)
+	return err
+}
+
+const setShipmentDriver = `-- name: SetShipmentDriver :one
+UPDATE shipments
+SET driver_id = $1, updated_at = NOW()
+WHERE id = $2 AND tenant_id = $3
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
+`
+
+type SetShipmentDriverParams struct {
+	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
+	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// Credits a delivery to the driver who made it, when the office accepts a
+// proof recorded after the shipment was handed to someone else.
+func (q *Queries) SetShipmentDriver(ctx context.Context, arg SetShipmentDriverParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setShipmentDriver, arg.DriverID, arg.ID, arg.TenantID)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
+const setShipmentETA = `-- name: SetShipmentETA :exec
+UPDATE shipments SET estimated_delivery = $3
+WHERE id = $1 AND tenant_id = $2 AND NOT eta_manual
+`
+
+type SetShipmentETAParams struct {
+	ID                pgtype.UUID        `db:"id" json:"id"`
+	TenantID          pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	EstimatedDelivery pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+}
+
+// Recalculated estimates never overwrite one a dispatcher entered by hand.
+func (q *Queries) SetShipmentETA(ctx context.Context, arg SetShipmentETAParams) error {
+	_, err := q.db.Exec(ctx, setShipmentETA, arg.ID, arg.TenantID, arg.EstimatedDelivery)
+	return err
+}
+
+const setShipmentStatus = `-- name: SetShipmentStatus :one
+UPDATE shipments
+SET status = $1,
+    status_note = $2,
+    status_reason = $3,
+    status_changed_at = $4,
+    actual_delivery = CASE
+        WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, $5, $4)
+        ELSE actual_delivery
+    END,
+    picked_up_at = CASE
+        WHEN $1 IN ('in_transit', 'arrived') THEN COALESCE(picked_up_at, $4)
+        WHEN $1 = 'delivered' THEN COALESCE(picked_up_at, $5, $4)
+        ELSE picked_up_at
+    END,
+    updated_at = NOW()
+WHERE id = $6 AND tenant_id = $7
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
+`
+
+type SetShipmentStatusParams struct {
+	Status       string             `db:"status" json:"status"`
+	StatusNote   *string            `db:"status_note" json:"status_note"`
+	StatusReason *string            `db:"status_reason" json:"status_reason"`
+	ChangedAt    pgtype.Timestamptz `db:"changed_at" json:"changed_at"`
+	DeliveredAt  pgtype.Timestamptz `db:"delivered_at" json:"delivered_at"`
+	ID           pgtype.UUID        `db:"id" json:"id"`
+	TenantID     pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+}
+
+// actual_delivery is stamped the first time a shipment is delivered and kept
+// thereafter; picked_up_at likewise records the first departure. Both use the
+// time the change happened, which for an offline driver is earlier than now.
+// A delivery accepted on review is stamped with when the proof was recorded
+// (delivered_at), not when the office accepted it. A shipment delivered
+// without being marked departed (a proof of delivery straight from
+// assigned) left then too, as far as anyone knows.
+func (q *Queries) SetShipmentStatus(ctx context.Context, arg SetShipmentStatusParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setShipmentStatus,
+		arg.Status,
+		arg.StatusNote,
+		arg.StatusReason,
+		arg.ChangedAt,
+		arg.DeliveredAt,
+		arg.ID,
+		arg.TenantID,
+	)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
+const setShipmentStatusDetail = `-- name: SetShipmentStatusDetail :one
+UPDATE shipments
+SET status_reason = $1, status_note = $2, updated_at = NOW()
+WHERE id = $3 AND tenant_id = $4
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
+`
+
+type SetShipmentStatusDetailParams struct {
+	StatusReason *string     `db:"status_reason" json:"status_reason"`
+	StatusNote   *string     `db:"status_note" json:"status_note"`
+	ID           pgtype.UUID `db:"id" json:"id"`
+	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// A new cause for the status a shipment is already in, such as a second
+// delay. When the status was entered is unchanged.
+func (q *Queries) SetShipmentStatusDetail(ctx context.Context, arg SetShipmentStatusDetailParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, setShipmentStatusDetail,
+		arg.StatusReason,
+		arg.StatusNote,
+		arg.ID,
+		arg.TenantID,
+	)
+	var i Shipment
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.TrackingNumber,
+		&i.OriginAddress,
+		&i.DestinationAddress,
+		&i.CustomerName,
+		&i.CustomerPhone,
+		&i.CargoDescription,
+		&i.CargoWeight,
+		&i.CargoValue,
+		&i.SpecialInstructions,
+		&i.DriverID,
+		&i.VehicleID,
+		&i.Status,
+		&i.StatusNote,
+		&i.StatusReason,
+		&i.EstimatedDelivery,
+		&i.ActualDelivery,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CreatedBy,
+		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
+	)
+	return i, err
+}
+
+const updateShipmentDetails = `-- name: UpdateShipmentDetails :one
+UPDATE shipments
+SET priority = $3,
+    origin_city = $4,
+    origin_address = $5,
+    origin_lat = $6,
+    origin_lng = $7,
+    destination_city = $8,
+    destination_address = $9,
+    destination_lat = $10,
+    destination_lng = $11,
+    destination_precise = $12,
+    customer_name = $13,
+    customer_phone = $14,
+    cargo_description = $15,
+    cargo_weight = $16,
+    cargo_value = $17,
+    special_instructions = $18,
+    estimated_delivery = $19,
+    eta_manual = $20,
+    planned_pickup_at = $21,
+    updated_at = NOW()
+WHERE id = $1 AND tenant_id = $2
+RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
+`
+
+type UpdateShipmentDetailsParams struct {
+	ID                  pgtype.UUID        `db:"id" json:"id"`
+	TenantID            pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Priority            string             `db:"priority" json:"priority"`
+	OriginCity          *string            `db:"origin_city" json:"origin_city"`
+	OriginAddress       string             `db:"origin_address" json:"origin_address"`
+	OriginLat           *float64           `db:"origin_lat" json:"origin_lat"`
+	OriginLng           *float64           `db:"origin_lng" json:"origin_lng"`
+	DestinationCity     *string            `db:"destination_city" json:"destination_city"`
+	DestinationAddress  string             `db:"destination_address" json:"destination_address"`
+	DestinationLat      *float64           `db:"destination_lat" json:"destination_lat"`
+	DestinationLng      *float64           `db:"destination_lng" json:"destination_lng"`
+	DestinationPrecise  bool               `db:"destination_precise" json:"destination_precise"`
+	CustomerName        string             `db:"customer_name" json:"customer_name"`
+	CustomerPhone       string             `db:"customer_phone" json:"customer_phone"`
+	CargoDescription    *string            `db:"cargo_description" json:"cargo_description"`
+	CargoWeight         pgtype.Numeric     `db:"cargo_weight" json:"cargo_weight"`
+	CargoValue          pgtype.Numeric     `db:"cargo_value" json:"cargo_value"`
+	SpecialInstructions *string            `db:"special_instructions" json:"special_instructions"`
+	EstimatedDelivery   pgtype.Timestamptz `db:"estimated_delivery" json:"estimated_delivery"`
+	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
+	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
+}
+
+// Edits replace every editable field; the form always submits all of them.
+func (q *Queries) UpdateShipmentDetails(ctx context.Context, arg UpdateShipmentDetailsParams) (Shipment, error) {
+	row := q.db.QueryRow(ctx, updateShipmentDetails,
+		arg.ID,
+		arg.TenantID,
+		arg.Priority,
+		arg.OriginCity,
 		arg.OriginAddress,
+		arg.OriginLat,
+		arg.OriginLng,
+		arg.DestinationCity,
 		arg.DestinationAddress,
+		arg.DestinationLat,
+		arg.DestinationLng,
+		arg.DestinationPrecise,
 		arg.CustomerName,
 		arg.CustomerPhone,
 		arg.CargoDescription,
 		arg.CargoWeight,
 		arg.CargoValue,
 		arg.SpecialInstructions,
-		arg.DriverID,
-		arg.VehicleID,
-		arg.Status,
-		arg.StatusNote,
-		arg.StatusReason,
 		arg.EstimatedDelivery,
-		arg.ActualDelivery,
+		arg.EtaManual,
+		arg.PlannedPickupAt,
 	)
 	var i Shipment
 	err := row.Scan(
@@ -982,9 +1803,7 @@ func (q *Queries) UpdateShipment(ctx context.Context, arg UpdateShipmentParams) 
 		&i.TenantID,
 		&i.TrackingNumber,
 		&i.OriginAddress,
-		&i.OriginCoordinates,
 		&i.DestinationAddress,
-		&i.DestinationCoordinates,
 		&i.CustomerName,
 		&i.CustomerPhone,
 		&i.CargoDescription,
@@ -1002,70 +1821,21 @@ func (q *Queries) UpdateShipment(ctx context.Context, arg UpdateShipmentParams) 
 		&i.UpdatedAt,
 		&i.CreatedBy,
 		&i.StatusChangedAt,
-	)
-	return i, err
-}
-
-const updateShipmentStatus = `-- name: UpdateShipmentStatus :one
-UPDATE shipments
-SET status = $1,
-    status_note = $2,
-    status_reason = $3,
-    actual_delivery = CASE
-        WHEN $1 = 'delivered' THEN COALESCE(actual_delivery, NOW())
-        ELSE actual_delivery
-    END,
-    status_changed_at = NOW(),
-    updated_at = NOW()
-WHERE id = $4 AND tenant_id = $5
-RETURNING id, tenant_id, tracking_number, origin_address, origin_coordinates, destination_address, destination_coordinates, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at
-`
-
-type UpdateShipmentStatusParams struct {
-	Status       string      `db:"status" json:"status"`
-	StatusNote   *string     `db:"status_note" json:"status_note"`
-	StatusReason *string     `db:"status_reason" json:"status_reason"`
-	ID           pgtype.UUID `db:"id" json:"id"`
-	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-}
-
-// actual_delivery is stamped the first time a shipment reaches 'delivered' and
-// preserved thereafter, so a re-sent status update cannot move the timestamp.
-// The driver stats and delivery-count queries read this column.
-func (q *Queries) UpdateShipmentStatus(ctx context.Context, arg UpdateShipmentStatusParams) (Shipment, error) {
-	row := q.db.QueryRow(ctx, updateShipmentStatus,
-		arg.Status,
-		arg.StatusNote,
-		arg.StatusReason,
-		arg.ID,
-		arg.TenantID,
-	)
-	var i Shipment
-	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.TrackingNumber,
-		&i.OriginAddress,
-		&i.OriginCoordinates,
-		&i.DestinationAddress,
-		&i.DestinationCoordinates,
-		&i.CustomerName,
-		&i.CustomerPhone,
-		&i.CargoDescription,
-		&i.CargoWeight,
-		&i.CargoValue,
-		&i.SpecialInstructions,
-		&i.DriverID,
-		&i.VehicleID,
-		&i.Status,
-		&i.StatusNote,
-		&i.StatusReason,
-		&i.EstimatedDelivery,
-		&i.ActualDelivery,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.CreatedBy,
-		&i.StatusChangedAt,
+		&i.Priority,
+		&i.OriginCity,
+		&i.DestinationCity,
+		&i.OriginLat,
+		&i.OriginLng,
+		&i.DestinationLat,
+		&i.DestinationLng,
+		&i.DestinationPrecise,
+		&i.PickedUpAt,
+		&i.ConfirmToken,
+		&i.CustomerConfirmedAt,
+		&i.CustomerFeedback,
+		&i.EtaManual,
+		&i.PlannedPickupAt,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }

@@ -2,241 +2,209 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"math"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/internal/geo"
+	"github.com/natnael-alemayehu/logistics/internal/model"
 )
 
-type TrackingService struct {
-	queries      *db.Queries
-	auditService *AuditService
+// TrackingService records driver positions and serves the live map
+// (FR-025–028).
+type TrackingService struct{ *core }
+
+// Driver connectivity on the map: live within 15 minutes, stale within four
+// hours (the offline-alert threshold), offline beyond.
+const (
+	liveWindow  = 15 * time.Minute
+	staleWindow = 4 * time.Hour
+)
+
+// DriverPin is a driver's last known position on the dispatcher map.
+type DriverPin struct {
+	ID       string     `json:"id"`
+	Name     string     `json:"name"`
+	Phone    string     `json:"phone"`
+	Lat      float64    `json:"lat"`
+	Lng      float64    `json:"lng"`
+	SpeedKPH float64    `json:"speed_kph"`
+	Battery  *int32     `json:"battery"`
+	At       time.Time  `json:"at"`
+	LastSync *time.Time `json:"last_sync"`
+	Paused   bool       `json:"paused"`
+	// PowerSaving: the phone records a position every 15 minutes.
+	PowerSaving bool   `json:"power_saving"`
+	State       string `json:"state"`
+	// Region is the region of the nearest known town, for the map filter.
+	Region string `json:"region"`
 }
 
-func NewTrackingService(queries *db.Queries, auditService *AuditService) *TrackingService {
-	return &TrackingService{queries: queries, auditService: auditService}
-}
-
-type TrackingEventOutput struct {
+// ShipmentPin is an active shipment on the map: its destination, and the
+// line from where it was collected.
+type ShipmentPin struct {
 	ID             string     `json:"id"`
-	ShipmentID     string     `json:"shipment_id"`
-	DriverID       string     `json:"driver_id,omitempty"`
-	Latitude       float64    `json:"latitude"`
-	Longitude      float64    `json:"longitude"`
-	AccuracyMeters float64    `json:"accuracy_meters,omitempty"`
-	SpeedKph       float64    `json:"speed_kph,omitempty"`
-	Heading        float64    `json:"heading,omitempty"`
-	EventType      string     `json:"event_type"`
-	Status         string     `json:"status,omitempty"`
-	Note           string     `json:"note,omitempty"`
-	RecordedAt     time.Time  `json:"recorded_at"`
-	SyncedAt       *time.Time `json:"synced_at,omitempty"`
-	DeviceID       string     `json:"device_id,omitempty"`
-	BatteryLevel   int        `json:"battery_level,omitempty"`
+	TrackingNumber string     `json:"tracking_number"`
+	Status         string     `json:"status"`
+	StatusLabel    string     `json:"status_label"`
+	Priority       string     `json:"priority"`
+	Customer       string     `json:"customer"`
+	Origin         string     `json:"origin"`
+	OriginLat      *float64   `json:"origin_lat"`
+	OriginLng      *float64   `json:"origin_lng"`
+	Destination    string     `json:"destination"`
+	Lat            *float64   `json:"lat"`
+	Lng            *float64   `json:"lng"`
+	ETA            *time.Time `json:"eta"`
+	DriverID       string     `json:"driver_id"`
+	DriverName     string     `json:"driver_name"`
+	// Regions are the regions of the origin and the destination, for the
+	// map filter.
+	Regions []string `json:"regions"`
 }
 
-type DriverLocationOutput struct {
-	DriverID     string     `json:"driver_id"`
-	Latitude     float64    `json:"latitude"`
-	Longitude    float64    `json:"longitude"`
-	RecordedAt   time.Time  `json:"recorded_at"`
-	SyncedAt     *time.Time `json:"synced_at,omitempty"`
-	Accuracy     float64    `json:"accuracy_meters,omitempty"`
-	SpeedKph     float64    `json:"speed_kph,omitempty"`
-	Heading      float64    `json:"heading,omitempty"`
-	EventType    string     `json:"event_type"`
-	BatteryLevel int        `json:"battery_level,omitempty"`
+// MapData is everything the live map draws.
+type MapData struct {
+	Drivers   []DriverPin   `json:"drivers"`
+	Shipments []ShipmentPin `json:"shipments"`
 }
 
-type PODOutput struct {
-	ID                     string     `json:"id"`
-	ShipmentID             string     `json:"shipment_id"`
-	DriverID               string     `json:"driver_id"`
-	RecipientName          string     `json:"recipient_name"`
-	RecipientPhone         string     `json:"recipient_phone,omitempty"`
-	SignatureURL           string     `json:"signature_url,omitempty"`
-	PhotoURLs              []string   `json:"photo_urls,omitempty"`
-	DeliveryAddress        string     `json:"delivery_address,omitempty"`
-	DeliveryLat            float64    `json:"delivery_lat,omitempty"`
-	DeliveryLng            float64    `json:"delivery_lng,omitempty"`
-	DeliveryNotes          string     `json:"delivery_notes,omitempty"`
-	LocationVerified       bool       `json:"location_verified"`
-	LocationMismatchMeters float64    `json:"location_mismatch_meters,omitempty"`
-	RecordedAt             time.Time  `json:"recorded_at"`
-	SyncedAt               *time.Time `json:"synced_at,omitempty"`
-}
-
-func (s *TrackingService) ListTrackingEventsByShipment(ctx context.Context, tenantID, shipmentID string, page, perPage int) ([]TrackingEventOutput, int, error) {
-	offset := (page - 1) * perPage
-
-	events, err := s.queries.ListTrackingEventsByShipment(ctx, db.ListTrackingEventsByShipmentParams{
-		ShipmentID: toUUID(shipmentID),
-		TenantID:   toUUID(tenantID),
-		Limit:      int32(perPage),
-		Offset:     int32(offset),
-	})
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list tracking events: %w", err)
-	}
-
-	total, err := s.queries.CountTrackingEventsByShipment(ctx, toUUID(shipmentID))
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count tracking events: %w", err)
-	}
-
-	result := make([]TrackingEventOutput, len(events))
-	for i, e := range events {
-		result[i] = dbTrackingEventToOutput(&e)
-	}
-
-	return result, int(total), nil
-}
-
-func (s *TrackingService) GetDriverLocation(ctx context.Context, tenantID, driverID string) (*DriverLocationOutput, error) {
-	events, err := s.queries.ListTrackingEventsByDriver(ctx, db.ListTrackingEventsByDriverParams{
-		DriverID: toUUID(driverID),
-		TenantID: toUUID(tenantID),
-		Limit:    1,
-		Offset:   0,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get driver location: %w", err)
-	}
-
-	if len(events) == 0 {
-		return nil, fmt.Errorf("no tracking events found for driver")
-	}
-
-	e := events[0]
-	output := &DriverLocationOutput{
-		DriverID:   e.DriverID.String(),
-		Latitude:   toFloat64(e.Latitude),
-		Longitude:  toFloat64(e.Longitude),
-		RecordedAt: e.RecordedAt.Time,
-		EventType:  e.EventType,
-	}
-
-	if e.AccuracyMeters.Valid {
-		output.Accuracy = toFloat64FromNumeric(e.AccuracyMeters)
-	}
-	if e.SpeedKph.Valid {
-		output.SpeedKph = toFloat64FromNumeric(e.SpeedKph)
-	}
-	if e.Heading.Valid {
-		output.Heading = toFloat64FromNumeric(e.Heading)
-	}
-	if e.SyncedAt.Valid {
-		output.SyncedAt = &e.SyncedAt.Time
-	}
-	if e.BatteryLevel != nil {
-		output.BatteryLevel = int(*e.BatteryLevel)
-	}
-
-	return output, nil
-}
-
-func (s *TrackingService) GetPODByShipment(ctx context.Context, tenantID, shipmentID string) (*PODOutput, error) {
-	pod, err := s.queries.GetPODByShipmentID(ctx, db.GetPODByShipmentIDParams{
-		ShipmentID: toUUID(shipmentID),
-		TenantID:   toUUID(tenantID),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("POD not found: %w", err)
-	}
-
-	output := &PODOutput{
-		ID:            pod.ID.String(),
-		ShipmentID:    pod.ShipmentID.String(),
-		DriverID:      pod.DriverID.String(),
-		RecipientName: pod.RecipientName,
-		PhotoURLs:     pod.PhotoUrls,
-		RecordedAt:    pod.RecordedAt.Time,
-	}
-
-	if pod.RecipientPhone != nil {
-		output.RecipientPhone = *pod.RecipientPhone
-	}
-	if pod.SignatureUrl != nil {
-		output.SignatureURL = *pod.SignatureUrl
-	}
-	if pod.DeliveryAddress != nil {
-		output.DeliveryAddress = *pod.DeliveryAddress
-	}
-	if pod.DeliveryLongitude != nil {
-		output.DeliveryLng = toFloat64(pod.DeliveryLongitude)
-	}
-	if pod.DeliveryLatitude != nil {
-		output.DeliveryLat = toFloat64(pod.DeliveryLatitude)
-	}
-	if pod.DeliveryNotes != nil {
-		output.DeliveryNotes = *pod.DeliveryNotes
-	}
-	if pod.LocationVerified != nil {
-		output.LocationVerified = *pod.LocationVerified
-	}
-	if pod.LocationMismatchMeters.Valid {
-		output.LocationMismatchMeters = toFloat64FromNumeric(pod.LocationMismatchMeters)
-	}
-	if pod.SyncedAt.Valid {
-		output.SyncedAt = &pod.SyncedAt.Time
-	}
-
-	return output, nil
-}
-
-func dbTrackingEventToOutput(e *db.ListTrackingEventsByShipmentRow) TrackingEventOutput {
-	output := TrackingEventOutput{
-		ID:         e.ID.String(),
-		ShipmentID: e.ShipmentID.String(),
-		DriverID:   e.DriverID.String(),
-		Latitude:   toFloat64(e.Latitude),
-		Longitude:  toFloat64(e.Longitude),
-		EventType:  e.EventType,
-		RecordedAt: e.RecordedAt.Time,
-	}
-
-	if e.AccuracyMeters.Valid {
-		output.AccuracyMeters = toFloat64FromNumeric(e.AccuracyMeters)
-	}
-	if e.SpeedKph.Valid {
-		output.SpeedKph = toFloat64FromNumeric(e.SpeedKph)
-	}
-	if e.Heading.Valid {
-		output.Heading = toFloat64FromNumeric(e.Heading)
-	}
-	if e.Status != nil {
-		output.Status = *e.Status
-	}
-	if e.Note != nil {
-		output.Note = *e.Note
-	}
-	if e.SyncedAt.Valid {
-		output.SyncedAt = &e.SyncedAt.Time
-	}
-	if e.DeviceID != nil {
-		output.DeviceID = *e.DeviceID
-	}
-	if e.BatteryLevel != nil {
-		output.BatteryLevel = int(*e.BatteryLevel)
-	}
-
-	return output
-}
-
-func toFloat64(v interface{}) float64 {
-	switch val := v.(type) {
-	case float64:
-		return val
-	case float32:
-		return float64(val)
+// ConnectionState classifies how recently a device was heard from.
+func ConnectionState(last time.Time, now time.Time) string {
+	switch age := now.Sub(last); {
+	case last.IsZero():
+		return "never"
+	case age <= liveWindow:
+		return "live"
+	case age <= staleWindow:
+		return "stale"
 	default:
-		return 0
+		return "offline"
 	}
 }
 
-func toFloat64FromNumeric(n pgtype.Numeric) float64 {
-	var f float64
-	n.Scan(&f)
-	return f
+// Map returns driver positions from the last week and active shipments.
+func (s *TrackingService) Map(ctx context.Context, tenantID pgtype.UUID) (*MapData, error) {
+	locs, err := s.q.GetLatestDriverLocations(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	m := &MapData{Drivers: make([]DriverPin, 0, len(locs)), Shipments: []ShipmentPin{}}
+	for _, l := range locs {
+		last := l.RecordedAt.Time
+		if l.LastSyncAt.Valid && l.LastSyncAt.Time.After(last) {
+			last = l.LastSyncAt.Time
+		}
+		m.Drivers = append(m.Drivers, DriverPin{
+			ID: l.DriverID.String(), Name: l.DriverName, Phone: deref(l.DriverPhone),
+			Lat: l.Latitude, Lng: l.Longitude, SpeedKPH: numericOr(l.SpeedKph), Battery: l.BatteryLevel,
+			At: l.RecordedAt.Time, LastSync: timePtr(l.LastSyncAt), Paused: deref(l.TrackingPaused), PowerSaving: l.PowerSaving,
+			State: ConnectionState(last, now), Region: regionAt(l.Latitude, l.Longitude),
+		})
+	}
+	ships, err := s.q.ListActiveShipmentsForMap(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	for _, sh := range ships {
+		pin := ShipmentPin{
+			ID: sh.ID.String(), TrackingNumber: sh.TrackingNumber, Status: sh.Status, StatusLabel: model.StatusLabel(sh.Status),
+			Priority: sh.Priority, Customer: sh.CustomerName,
+			Origin: deref(sh.OriginCity), OriginLat: sh.OriginLat, OriginLng: sh.OriginLng,
+			Destination: deref(sh.DestinationCity), Lat: sh.DestinationLat, Lng: sh.DestinationLng,
+			ETA: timePtr(sh.EstimatedDelivery), DriverID: uuidString(sh.DriverID), DriverName: deref(sh.DriverName),
+			Regions: []string{},
+		}
+		for _, end := range [][2]*float64{{sh.OriginLat, sh.OriginLng}, {sh.DestinationLat, sh.DestinationLng}} {
+			if end[0] == nil || end[1] == nil {
+				continue
+			}
+			if r := regionAt(*end[0], *end[1]); r != "" && !slices.Contains(pin.Regions, r) {
+				pin.Regions = append(pin.Regions, r)
+			}
+		}
+		m.Shipments = append(m.Shipments, pin)
+	}
+	return m, nil
+}
+
+// regionAt names the region of the known town nearest a point, or nothing
+// when no town is within 150 km: a point that far out is in no region the
+// map filter offers.
+func regionAt(lat, lng float64) string {
+	p, d := geo.Nearest(lat, lng)
+	if d > 150000 {
+		return ""
+	}
+	return p.Region
+}
+
+// Ping is one GPS fix from a driver's device.
+type Ping struct {
+	ClientID   string
+	ShipmentID pgtype.UUID
+	Lat, Lng   float64
+	Accuracy   *float64
+	Speed      *float64
+	Heading    *float64
+	Battery    *int
+	RecordedAt time.Time
+}
+
+// record stores a batch of fixes for a driver, discarding ones that cannot be
+// real, and pushes the newest to the map. allowed is the set of shipments the
+// driver may attribute positions to.
+func (s *TrackingService) record(ctx context.Context, a Actor, deviceID string, pings []Ping, allowed map[pgtype.UUID]bool) (stored int, rejected []string) {
+	var newest *Ping
+	now := s.now()
+	for i := range pings {
+		p := &pings[i]
+		switch {
+		case !allowed[p.ShipmentID],
+			math.IsNaN(p.Lat) || math.IsNaN(p.Lng) || !geo.InServiceArea(p.Lat, p.Lng),
+			p.Accuracy != nil && *p.Accuracy > 5000,
+			p.RecordedAt.After(now.Add(time.Minute)),
+			p.RecordedAt.Before(now.Add(-30 * 24 * time.Hour)):
+			rejected = append(rejected, p.ClientID)
+			continue
+		}
+		var battery *int32
+		if p.Battery != nil && *p.Battery >= 0 && *p.Battery <= 100 {
+			b := int32(*p.Battery)
+			battery = &b
+		}
+		params := db.CreateTrackingEventParams{
+			TenantID: a.TenantID, ShipmentID: p.ShipmentID, DriverID: a.UserID,
+			Longitude: p.Lng, Latitude: p.Lat, EventType: "gps_ping", RecordedAt: toTimestamp(p.RecordedAt),
+			DeviceID: toText(deviceID), BatteryLevel: battery, ClientID: toText(p.ClientID),
+		}
+		if p.Accuracy != nil {
+			params.AccuracyMeters = toNumeric(*p.Accuracy)
+		}
+		if p.Speed != nil && *p.Speed >= 0 && *p.Speed < 200 {
+			params.SpeedKph = toNumeric(*p.Speed)
+		}
+		if p.Heading != nil && *p.Heading >= 0 && *p.Heading < 360 {
+			params.Heading = toNumeric(*p.Heading)
+		}
+		if _, err := s.q.CreateTrackingEvent(ctx, params); err != nil && !isNoRows(err) {
+			s.log.Error().Err(err).Msg("store gps fix")
+			continue
+		}
+		stored++
+		if newest == nil || p.RecordedAt.After(newest.RecordedAt) {
+			newest = p
+		}
+	}
+	if newest != nil {
+		s.publish(a.TenantID, "location", map[string]any{
+			"driver_id": a.UserID.String(), "name": a.Name, "lat": newest.Lat, "lng": newest.Lng,
+			"at": newest.RecordedAt, "speed_kph": newest.Speed, "battery": newest.Battery,
+		})
+	}
+	return stored, rejected
 }

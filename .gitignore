@@ -50,3 +50,18 @@ temp/
 # Test coverage
 coverage.html
 coverage.out
+# Signatures and delivery photos stored locally
+uploads/
+
+# The token Prometheus sends to /metrics: the same secret as METRICS_TOKEN
+backend/deployments/prometheus/metrics_token
+
+# `go build ./cmd/server` run from backend/
+/backend/server
+
+# The provider sandbox's throwaway telebirr keys (make sandbox-keys)
+backend/sandbox-keys/
+
+# Provider keys for production, mounted at /run/secrets
+backend/deployments/secrets/*
+!backend/deployments/secrets/README.md

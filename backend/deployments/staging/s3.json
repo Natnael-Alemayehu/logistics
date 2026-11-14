@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "menged",
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"],
+      "credentials": [{ "accessKey": "staging-access-key", "secretKey": "staging-secret-key-0123456789" }]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Provider sandbox</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/sandbox.css">
+<script src="/static/sandbox.js" defer></script>
+</head>{{end}}
+
+{{define "layout"}}{{template "head" .}}
+<body>
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="/"><span class="badge">Sandbox</span> <span>Providers for {{.AppName}}</span></a>
+    <nav aria-label="Sandbox">
+      <a href="/" {{if eq .Nav "home"}}aria-current="page"{{end}}>Phones</a>
+      <a href="/controls" {{if eq .Nav "controls"}}aria-current="page"{{end}}>Faults{{with .FaultsOn}} <span class="pill warn">{{.}} on</span>{{end}}</a>
+      <a href="/log" {{if eq .Nav "log"}}aria-current="page"{{end}}>Log</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+{{template "content" .}}
+</main>
+<footer class="wrap foot small">Plays Ethio telecom's SMS gateway, telebirr and CBE Birr for {{.AppName}} at <span class="mono">{{.AppURL}}</span>. No text reaches a phone and no money moves.</footer>
+</body>
+</html>{{end}}
+
+{{define "bare"}}{{template "head" .}}
+<body class="bare">
+<main>
+{{template "content" .}}
+</main>
+</body>
+</html>{{end}}
+
+{{define "events"}}{{if .}}
+<ol class="events">
+  {{range .}}
+  <li class="ev ev-{{.Dir}}">
+    <details data-id="{{.ID}}">
+      <summary>
+        <span class="mono small muted">{{clock .At}}</span>
+        <span class="svc">{{.Service}}</span>
+        <span class="dir small">{{if eq .Dir "in"}}→ sandbox{{else if eq .Dir "out"}}→ app{{else}}held{{end}}</span>
+        <span class="code code-{{statusClass .Status}}">{{if .Status}}{{.Status}}{{else}}—{{end}}</span>
+        <span class="what">{{.Summary}}{{with .Error}} <span class="text-bad">({{.}})</span>{{end}}</span>
+        {{if ne .Dir "held"}}<span class="small muted took">{{.TookMS}} ms</span>{{end}}
+      </summary>
+      <div class="ev-body">
+        <p class="mono small">{{.Method}} {{.URL}}</p>
+        <div class="ev-parts">
+          <div><h4>Request</h4><pre>{{or .Request "(empty)"}}</pre></div>
+          <div><h4>Answer</h4><pre>{{if eq .Dir "held"}}(not sent){{else}}{{or .Response "(none)"}}{{end}}</pre></div>
+        </div>
+      </div>
+    </details>
+  </li>
+  {{end}}
+</ol>
+{{else}}<p class="empty">No calls yet.</p>{{end}}{{end}}

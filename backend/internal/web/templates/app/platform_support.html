@@ -1,0 +1,33 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <h1>Support</h1>
+    <p class="muted">Companies' questions. Each answer is emailed to whoever asked.</p>
+  </div>
+</div>
+<nav class="tabs" aria-label="Tickets">
+  <a href="/app/platform/support" {{if eq $d.Status "open"}}aria-current="page"{{end}}>Waiting for an answer{{if .Waiting}} ({{.Waiting}}){{end}}</a>
+  <a href="/app/platform/support?status=answered" {{if eq $d.Status "answered"}}aria-current="page"{{end}}>Answered</a>
+  <a href="/app/platform/support?status=closed" {{if eq $d.Status "closed"}}aria-current="page"{{end}}>Closed</a>
+  <a href="/app/platform/support?status=all" {{if eq $d.Status "all"}}aria-current="page"{{end}}>All</a>
+</nav>
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table rows-link">
+  <thead><tr><th>Question</th><th>Company</th><th>Status</th><th class="num">Last update</th></tr></thead>
+  <tbody>
+  {{range $d.Tickets}}{{$href := printf "/app/platform/support/%s" (uuid .ID)}}
+  <tr data-href="{{$href}}">
+    <td><a href="{{$href}}"><strong>{{.Subject}}</strong></a><div class="small muted">#{{.Number}}{{with .OpenedByName}} · {{.}}{{end}} · {{.Messages}} {{if eq .Messages 1}}message{{else}}messages{{end}}</div></td>
+    <td>{{.TenantName}}</td>
+    <td>{{template "ticket-status" .Status}}</td>
+    <td class="num nowrap">{{ago .UpdatedAt}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="4" class="muted">{{if eq $d.Status "open"}}Nothing is waiting for an answer.{{else}}No tickets here.{{end}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{end}}

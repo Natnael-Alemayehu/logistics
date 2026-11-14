@@ -1,121 +1,148 @@
+# Production: the app, PostGIS and Caddy (automatic HTTPS for DOMAIN).
+#
+#   cp .env.example .env    # then set DOMAIN, DB_PASSWORD, SMS_* ...
+#   docker compose -f deployments/docker-compose.prod.yml --env-file .env up -d
+#
+# Add `--profile monitoring` for Prometheus and Grafana. Provider keys (the
+# telebirr key files) go in deployments/secrets/, seen by the app at
+# /run/secrets. deployments/staging/ runs this same file, with the provider
+# sandbox in place of the providers.
+#
+# Each container runs with the least it needs: no privilege escalation, no
+# Linux capabilities beyond binding ports 80 and 443, and a read-only root
+# filesystem where the program writes only to its volumes. Logs rotate.
+name: menged
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
 services:
-  api:
+  app:
     build:
       context: ..
-      dockerfile: Dockerfile
-    container_name: logistics-api
     restart: unless-stopped
+    env_file: ../.env
     environment:
-      - PORT=8080
-      - DATABASE_URL=postgres://logistics:${DB_PASSWORD}@postgres:5432/logistics?sslmode=disable
-      - REDIS_URL=redis:6379
-      - ENVIRONMENT=production
-      - LOG_LEVEL=info
-    env_file:
-      - ../.env
+      # The password is passed on its own, so it may contain any character.
+      DATABASE_URL: postgres://logistics@postgres:5432/logistics?sslmode=disable
+      PGPASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN}
+      ENVIRONMENT: production
+      TRUST_PROXY: "true"
+    volumes:
+      - app-data:/data
+      - ./secrets:/run/secrets:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # The app gives requests in progress and the text or email being sent
+    # 30 seconds to finish.
+    stop_grace_period: 45s
+    logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - logistics-network
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   postgres:
     image: postgis/postgis:15-3.3-alpine
-    container_name: logistics-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=logistics
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=logistics
+      POSTGRES_USER: logistics
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: logistics
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    networks:
-      - logistics-network
+    # Docker's 64 MB is too little for parallel queries.
+    shm_size: 256m
+    security_opt: [no-new-privileges:true]
+    # Time for the shutdown checkpoint, so the next start needs no recovery.
+    stop_grace_period: 60s
+    logging: *logging
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U logistics"]
+      # Over TCP: on first start the image's set-up server answers on the
+      # socket only, and the app connects over the network.
+      test: ["CMD-SHELL", "pg_isready -U logistics -h 127.0.0.1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  redis:
-    image: redis:7-alpine
-    container_name: logistics-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis-data:/data
-    networks:
-      - logistics-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  nginx:
-    image: nginx:alpine
-    container_name: logistics-nginx
+  caddy:
+    image: caddy:2.10-alpine
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN}
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - certbot-www:/var/www/certbot
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
     depends_on:
-      - api
-    networks:
-      - logistics-network
+      - app
 
   prometheus:
-    image: prom/prometheus:latest
-    container_name: logistics-prometheus
+    image: prom/prometheus:v3.5.0
     restart: unless-stopped
+    profiles: [monitoring]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # The same value as METRICS_TOKEN, on one line.
+      - ./prometheus/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    networks:
-      - logistics-network
-    profiles:
-      - monitoring
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
 
   grafana:
-    image: grafana/grafana:latest
-    container_name: logistics-grafana
+    image: grafana/grafana:12.1.0
     restart: unless-stopped
+    profiles: [monitoring]
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # The alert rules (grafana/provisioning/alerting) email this address,
+      # through the app's mail server.
+      GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:?set GRAFANA_ALERT_EMAIL}
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${SMTP_ADDR:-}
+      GF_SMTP_USER: ${SMTP_USERNAME:-}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_ALERT_FROM:?set GRAFANA_ALERT_FROM}
+      GF_SMTP_FROM_NAME: Menged monitoring
+    ports:
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
+      # The Prometheus data source, the Menged dashboard and its alerts.
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
     depends_on:
       - prometheus
-    networks:
-      - logistics-network
-    profiles:
-      - monitoring
-
-networks:
-  logistics-network:
-    driver: bridge
 
 volumes:
+  app-data:
   postgres-data:
-  redis-data:
+  caddy-data:
+  caddy-config:
   prometheus-data:
   grafana-data:
-  certbot-www:

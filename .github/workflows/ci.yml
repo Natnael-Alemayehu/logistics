@@ -1,0 +1,112 @@
+# On every pull request and every push to main: the checks and unit tests,
+# the integration tests against PostGIS, and staging (the production compose
+# file and images, with the provider sandbox) tested end to end over HTTPS.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request replaces its run; every commit on main runs.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: backend
+
+env:
+  # The Dockerfile's Go release: the two move together.
+  GO_VERSION: "1.27"
+  SQLC_VERSION: "1.30.0"
+
+jobs:
+  checks:
+    name: Vet, unit tests and checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: make vet
+      - run: make test
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Run gofmt -w on:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: internal/db is sqlc's output for sqlc/queries
+        run: |
+          curl -fsSL "https://github.com/sqlc-dev/sqlc/releases/download/v${SQLC_VERSION}/sqlc_${SQLC_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" sqlc
+          "$RUNNER_TEMP/sqlc" diff -f sqlc/sqlc.yaml
+      - name: Known vulnerabilities, in the code and in Go itself
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Shell scripts
+        run: docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 scripts/*.sh
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgis/postgis:15-3.3-alpine
+        env:
+          POSTGRES_USER: logistics
+          POSTGRES_PASSWORD: logistics
+        ports:
+          - 5432:5432
+        # Over TCP: on first start the image's set-up server answers on the
+        # socket only.
+        options: >-
+          --health-cmd "pg_isready -U logistics -h 127.0.0.1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      # Each run makes its own database on this server; the S3 tests start
+      # their store with testcontainers.
+      - run: make test-integration
+        env:
+          TEST_DATABASE_URL: postgres://logistics:logistics@localhost:5432/postgres?sslmode=disable
+
+  e2e:
+    name: Staging, end to end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: make staging-up
+      - run: make test-e2e
+      - name: Staging's logs
+        if: failure()
+        run: docker compose -p menged-staging logs --no-color --timestamps
+      - if: always()
+        run: make staging-down

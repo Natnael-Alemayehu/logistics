@@ -1,0 +1,32 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}{{$v := $d.V}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/vehicles">Vehicles</a>{{if $v}} / <a href="/app/vehicles/{{uuid $v.ID}}">{{$v.PlateNumber}}</a>{{end}}</p>
+    <h1>{{if $v}}Edit vehicle{{else}}Add a vehicle{{end}}</h1>
+  </div>
+</div>
+{{template "form-error" .}}
+<form method="post" action="{{if $v}}/app/vehicles/{{uuid $v.ID}}/edit{{else}}/app/vehicles{{end}}" class="card form-narrow stack" novalidate>
+  <label>Plate number
+    <input name="plate_number" value="{{field $f "plate_number" ""}}" required autocomplete="off" placeholder="e.g. 3-A12345 AA" class="mono" {{if index $e "plate_number"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "plate_number")}}
+  </label>
+  <label>Type
+    <select name="vehicle_type" {{if index $e "vehicle_type"}}aria-invalid="true"{{end}}>
+      <option value="">Choose…</option>
+      {{$t := field $f "vehicle_type" ""}}
+      {{range $d.Types}}<option value="{{.Code}}" {{if eq $t .Code}}selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+    {{template "field-error" (index $e "vehicle_type")}}
+  </label>
+  <label>Load capacity (kg) <span class="muted">(optional)</span>
+    <input name="capacity_kg" inputmode="decimal" value="{{field $f "capacity_kg" ""}}" {{if index $e "capacity_kg"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "capacity_kg")}}
+  </label>
+  <label class="check"><input type="checkbox" name="active" value="on" {{if field $f "active" ""}}checked{{end}}> In service</label>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{{if $v}}Save changes{{else}}Add vehicle{{end}}</button>
+    <a class="btn btn-ghost" href="/app/vehicles">Cancel</a>
+  </div>
+</form>
+{{end}}

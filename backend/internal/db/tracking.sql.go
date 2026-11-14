@@ -12,11 +12,16 @@ import (
 )
 
 const countTrackingEventsByShipment = `-- name: CountTrackingEventsByShipment :one
-SELECT COUNT(*) FROM tracking_events WHERE shipment_id = $1
+SELECT COUNT(*) FROM tracking_events WHERE shipment_id = $1 AND tenant_id = $2
 `
 
-func (q *Queries) CountTrackingEventsByShipment(ctx context.Context, shipmentID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countTrackingEventsByShipment, shipmentID)
+type CountTrackingEventsByShipmentParams struct {
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) CountTrackingEventsByShipment(ctx context.Context, arg CountTrackingEventsByShipmentParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTrackingEventsByShipment, arg.ShipmentID, arg.TenantID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -27,18 +32,24 @@ INSERT INTO tracking_events (
     tenant_id, shipment_id, driver_id,
     coordinates, accuracy_meters, speed_kph, heading,
     event_type, status, note,
-    recorded_at, device_id, battery_level, client_id
+    recorded_at, synced_at, device_id, battery_level, client_id
 ) VALUES (
-    $1, $2, $3, ST_MakePoint($4, $5)::geometry(Point, 4326), $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
-) RETURNING id, tenant_id, shipment_id, driver_id, coordinates, accuracy_meters, speed_kph, heading, event_type, status, note, recorded_at, synced_at, device_id, battery_level, client_id
+    $1, $2, $3,
+    ST_SetSRID(ST_MakePoint($4::float8, $5::float8), 4326),
+    $6, $7, $8,
+    $9, $10, $11,
+    $12, NOW(), $13, $14, $15
+)
+ON CONFLICT (device_id, client_id) WHERE client_id IS NOT NULL AND device_id IS NOT NULL DO NOTHING
+RETURNING id
 `
 
 type CreateTrackingEventParams struct {
 	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
 	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
 	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	StMakepoint    interface{}        `db:"st_makepoint" json:"st_makepoint"`
-	StMakepoint_2  interface{}        `db:"st_makepoint_2" json:"st_makepoint_2"`
+	Longitude      float64            `db:"longitude" json:"longitude"`
+	Latitude       float64            `db:"latitude" json:"latitude"`
 	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
 	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
 	Heading        pgtype.Numeric     `db:"heading" json:"heading"`
@@ -53,15 +64,14 @@ type CreateTrackingEventParams struct {
 
 // client_id carries the offline client's own row identifier. Paired with
 // device_id it is what a retried batch conflicts on, so replaying a batch whose
-// response was lost cannot duplicate telemetry. Clients that send no client_id
-// are excluded from the unique index and behave as before.
-func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (TrackingEvent, error) {
+// response was lost cannot duplicate telemetry.
+func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, createTrackingEvent,
 		arg.TenantID,
 		arg.ShipmentID,
 		arg.DriverID,
-		arg.StMakepoint,
-		arg.StMakepoint_2,
+		arg.Longitude,
+		arg.Latitude,
 		arg.AccuracyMeters,
 		arg.SpeedKph,
 		arg.Heading,
@@ -73,61 +83,92 @@ func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEve
 		arg.BatteryLevel,
 		arg.ClientID,
 	)
-	var i TrackingEvent
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteOldTrackingEvents = `-- name: DeleteOldTrackingEvents :exec
+DELETE FROM tracking_events WHERE recorded_at < $1
+`
+
+func (q *Queries) DeleteOldTrackingEvents(ctx context.Context, recordedAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteOldTrackingEvents, recordedAt)
+	return err
+}
+
+const getLatestDriverLocation = `-- name: GetLatestDriverLocation :one
+SELECT ST_Y(coordinates)::float8 AS latitude,
+       ST_X(coordinates)::float8 AS longitude,
+       accuracy_meters, speed_kph, battery_level, recorded_at, synced_at
+FROM tracking_events
+WHERE tenant_id = $1 AND driver_id = $2
+ORDER BY recorded_at DESC
+LIMIT 1
+`
+
+type GetLatestDriverLocationParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
+}
+
+type GetLatestDriverLocationRow struct {
+	Latitude       float64            `db:"latitude" json:"latitude"`
+	Longitude      float64            `db:"longitude" json:"longitude"`
+	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
+	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
+	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
+	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	SyncedAt       pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
+}
+
+func (q *Queries) GetLatestDriverLocation(ctx context.Context, arg GetLatestDriverLocationParams) (GetLatestDriverLocationRow, error) {
+	row := q.db.QueryRow(ctx, getLatestDriverLocation, arg.TenantID, arg.DriverID)
+	var i GetLatestDriverLocationRow
 	err := row.Scan(
-		&i.ID,
-		&i.TenantID,
-		&i.ShipmentID,
-		&i.DriverID,
-		&i.Coordinates,
+		&i.Latitude,
+		&i.Longitude,
 		&i.AccuracyMeters,
 		&i.SpeedKph,
-		&i.Heading,
-		&i.EventType,
-		&i.Status,
-		&i.Note,
+		&i.BatteryLevel,
 		&i.RecordedAt,
 		&i.SyncedAt,
-		&i.DeviceID,
-		&i.BatteryLevel,
-		&i.ClientID,
 	)
 	return i, err
 }
 
 const getLatestDriverLocations = `-- name: GetLatestDriverLocations :many
 SELECT DISTINCT ON (t.driver_id)
-       t.id, t.tenant_id, t.shipment_id, t.driver_id,
-       ST_X(t.coordinates::geometry) as longitude,
-       ST_Y(t.coordinates::geometry) as latitude,
-       t.accuracy_meters, t.speed_kph, t.heading,
-       t.event_type, t.status, t.note,
-       t.recorded_at, t.synced_at, t.device_id, t.battery_level,
-       u.full_name as driver_name
+       t.driver_id,
+       u.full_name AS driver_name,
+       u.phone AS driver_phone,
+       ST_Y(t.coordinates)::float8 AS latitude,
+       ST_X(t.coordinates)::float8 AS longitude,
+       t.speed_kph, t.battery_level, t.recorded_at,
+       sm.last_sync_at, sm.tracking_paused,
+       COALESCE(sm.power_saving, false)::bool AS power_saving
 FROM tracking_events t
-JOIN users u ON t.driver_id = u.id
-WHERE t.tenant_id = $1 AND t.driver_id IS NOT NULL
+JOIN users u ON u.id = t.driver_id
+LEFT JOIN sync_metadata sm ON sm.driver_id = t.driver_id
+WHERE t.tenant_id = $1
+  AND t.driver_id IS NOT NULL
+  AND u.is_active
+  AND t.recorded_at > NOW() - INTERVAL '7 days'
 ORDER BY t.driver_id, t.recorded_at DESC
 `
 
 type GetLatestDriverLocationsRow struct {
-	ID             pgtype.UUID        `db:"id" json:"id"`
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
 	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	Longitude      interface{}        `db:"longitude" json:"longitude"`
-	Latitude       interface{}        `db:"latitude" json:"latitude"`
-	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
-	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
-	Heading        pgtype.Numeric     `db:"heading" json:"heading"`
-	EventType      string             `db:"event_type" json:"event_type"`
-	Status         *string            `db:"status" json:"status"`
-	Note           *string            `db:"note" json:"note"`
-	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	SyncedAt       pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
-	DeviceID       *string            `db:"device_id" json:"device_id"`
-	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
 	DriverName     string             `db:"driver_name" json:"driver_name"`
+	DriverPhone    *string            `db:"driver_phone" json:"driver_phone"`
+	Latitude       float64            `db:"latitude" json:"latitude"`
+	Longitude      float64            `db:"longitude" json:"longitude"`
+	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
+	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
+	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	LastSyncAt     pgtype.Timestamptz `db:"last_sync_at" json:"last_sync_at"`
+	TrackingPaused *bool              `db:"tracking_paused" json:"tracking_paused"`
+	PowerSaving    bool               `db:"power_saving" json:"power_saving"`
 }
 
 func (q *Queries) GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error) {
@@ -140,23 +181,17 @@ func (q *Queries) GetLatestDriverLocations(ctx context.Context, tenantID pgtype.
 	for rows.Next() {
 		var i GetLatestDriverLocationsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.ShipmentID,
 			&i.DriverID,
-			&i.Longitude,
-			&i.Latitude,
-			&i.AccuracyMeters,
-			&i.SpeedKph,
-			&i.Heading,
-			&i.EventType,
-			&i.Status,
-			&i.Note,
-			&i.RecordedAt,
-			&i.SyncedAt,
-			&i.DeviceID,
-			&i.BatteryLevel,
 			&i.DriverName,
+			&i.DriverPhone,
+			&i.Latitude,
+			&i.Longitude,
+			&i.SpeedKph,
+			&i.BatteryLevel,
+			&i.RecordedAt,
+			&i.LastSyncAt,
+			&i.TrackingPaused,
+			&i.PowerSaving,
 		); err != nil {
 			return nil, err
 		}
@@ -168,234 +203,123 @@ func (q *Queries) GetLatestDriverLocations(ctx context.Context, tenantID pgtype.
 	return items, nil
 }
 
-const getTrackingEventsForSync = `-- name: GetTrackingEventsForSync :many
-SELECT id, tenant_id, shipment_id, driver_id,
-       ST_X(coordinates::geometry) as longitude,
-       ST_Y(coordinates::geometry) as latitude,
-       accuracy_meters, speed_kph, heading,
-       event_type, status, note,
-       recorded_at, synced_at, device_id, battery_level
+const getLatestShipmentPosition = `-- name: GetLatestShipmentPosition :one
+SELECT ST_Y(coordinates)::float8 AS latitude,
+       ST_X(coordinates)::float8 AS longitude,
+       recorded_at
 FROM tracking_events
-WHERE driver_id = $1
-  AND tenant_id = $2
-  AND recorded_at > $3
-  AND synced_at IS NULL
-ORDER BY recorded_at ASC
+WHERE tenant_id = $1
+  AND (
+    shipment_id = $2
+    OR ($3::uuid IS NOT NULL
+        AND driver_id = $3::uuid
+        AND recorded_at >= $4)
+  )
+ORDER BY recorded_at DESC
+LIMIT 1
 `
 
-type GetTrackingEventsForSyncParams struct {
-	DriverID   pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	TenantID   pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+type GetLatestShipmentPositionParams struct {
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID  pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	WindowStart pgtype.Timestamptz `db:"window_start" json:"window_start"`
+}
+
+type GetLatestShipmentPositionRow struct {
+	Latitude   float64            `db:"latitude" json:"latitude"`
+	Longitude  float64            `db:"longitude" json:"longitude"`
 	RecordedAt pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
 }
 
-type GetTrackingEventsForSyncRow struct {
-	ID             pgtype.UUID        `db:"id" json:"id"`
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	Longitude      interface{}        `db:"longitude" json:"longitude"`
-	Latitude       interface{}        `db:"latitude" json:"latitude"`
-	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
-	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
-	Heading        pgtype.Numeric     `db:"heading" json:"heading"`
-	EventType      string             `db:"event_type" json:"event_type"`
-	Status         *string            `db:"status" json:"status"`
-	Note           *string            `db:"note" json:"note"`
-	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	SyncedAt       pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
-	DeviceID       *string            `db:"device_id" json:"device_id"`
-	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
-}
-
-func (q *Queries) GetTrackingEventsForSync(ctx context.Context, arg GetTrackingEventsForSyncParams) ([]GetTrackingEventsForSyncRow, error) {
-	rows, err := q.db.Query(ctx, getTrackingEventsForSync, arg.DriverID, arg.TenantID, arg.RecordedAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetTrackingEventsForSyncRow{}
-	for rows.Next() {
-		var i GetTrackingEventsForSyncRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.ShipmentID,
-			&i.DriverID,
-			&i.Longitude,
-			&i.Latitude,
-			&i.AccuracyMeters,
-			&i.SpeedKph,
-			&i.Heading,
-			&i.EventType,
-			&i.Status,
-			&i.Note,
-			&i.RecordedAt,
-			&i.SyncedAt,
-			&i.DeviceID,
-			&i.BatteryLevel,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTrackingEventsByDriver = `-- name: ListTrackingEventsByDriver :many
-SELECT id, tenant_id, shipment_id, driver_id,
-       ST_X(coordinates::geometry) as longitude,
-       ST_Y(coordinates::geometry) as latitude,
-       accuracy_meters, speed_kph, heading,
-       event_type, status, note,
-       recorded_at, synced_at, device_id, battery_level
-FROM tracking_events
-WHERE driver_id = $1 AND tenant_id = $2
-ORDER BY recorded_at DESC
-LIMIT $3 OFFSET $4
-`
-
-type ListTrackingEventsByDriverParams struct {
-	DriverID pgtype.UUID `db:"driver_id" json:"driver_id"`
-	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Limit    int32       `db:"limit" json:"limit"`
-	Offset   int32       `db:"offset" json:"offset"`
-}
-
-type ListTrackingEventsByDriverRow struct {
-	ID             pgtype.UUID        `db:"id" json:"id"`
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	Longitude      interface{}        `db:"longitude" json:"longitude"`
-	Latitude       interface{}        `db:"latitude" json:"latitude"`
-	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
-	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
-	Heading        pgtype.Numeric     `db:"heading" json:"heading"`
-	EventType      string             `db:"event_type" json:"event_type"`
-	Status         *string            `db:"status" json:"status"`
-	Note           *string            `db:"note" json:"note"`
-	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	SyncedAt       pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
-	DeviceID       *string            `db:"device_id" json:"device_id"`
-	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
-}
-
-func (q *Queries) ListTrackingEventsByDriver(ctx context.Context, arg ListTrackingEventsByDriverParams) ([]ListTrackingEventsByDriverRow, error) {
-	rows, err := q.db.Query(ctx, listTrackingEventsByDriver,
-		arg.DriverID,
+// Where the shipment was last seen, for the public tracking page.
+func (q *Queries) GetLatestShipmentPosition(ctx context.Context, arg GetLatestShipmentPositionParams) (GetLatestShipmentPositionRow, error) {
+	row := q.db.QueryRow(ctx, getLatestShipmentPosition,
 		arg.TenantID,
-		arg.Limit,
-		arg.Offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListTrackingEventsByDriverRow{}
-	for rows.Next() {
-		var i ListTrackingEventsByDriverRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.TenantID,
-			&i.ShipmentID,
-			&i.DriverID,
-			&i.Longitude,
-			&i.Latitude,
-			&i.AccuracyMeters,
-			&i.SpeedKph,
-			&i.Heading,
-			&i.EventType,
-			&i.Status,
-			&i.Note,
-			&i.RecordedAt,
-			&i.SyncedAt,
-			&i.DeviceID,
-			&i.BatteryLevel,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTrackingEventsByShipment = `-- name: ListTrackingEventsByShipment :many
-SELECT id, tenant_id, shipment_id, driver_id,
-       ST_X(coordinates::geometry) as longitude,
-       ST_Y(coordinates::geometry) as latitude,
-       accuracy_meters, speed_kph, heading,
-       event_type, status, note,
-       recorded_at, synced_at, device_id, battery_level
-FROM tracking_events
-WHERE shipment_id = $1 AND tenant_id = $2
-ORDER BY recorded_at DESC
-LIMIT $3 OFFSET $4
-`
-
-type ListTrackingEventsByShipmentParams struct {
-	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
-	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	Limit      int32       `db:"limit" json:"limit"`
-	Offset     int32       `db:"offset" json:"offset"`
-}
-
-type ListTrackingEventsByShipmentRow struct {
-	ID             pgtype.UUID        `db:"id" json:"id"`
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	Longitude      interface{}        `db:"longitude" json:"longitude"`
-	Latitude       interface{}        `db:"latitude" json:"latitude"`
-	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
-	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
-	Heading        pgtype.Numeric     `db:"heading" json:"heading"`
-	EventType      string             `db:"event_type" json:"event_type"`
-	Status         *string            `db:"status" json:"status"`
-	Note           *string            `db:"note" json:"note"`
-	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	SyncedAt       pgtype.Timestamptz `db:"synced_at" json:"synced_at"`
-	DeviceID       *string            `db:"device_id" json:"device_id"`
-	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
-}
-
-func (q *Queries) ListTrackingEventsByShipment(ctx context.Context, arg ListTrackingEventsByShipmentParams) ([]ListTrackingEventsByShipmentRow, error) {
-	rows, err := q.db.Query(ctx, listTrackingEventsByShipment,
 		arg.ShipmentID,
+		arg.DriverID,
+		arg.WindowStart,
+	)
+	var i GetLatestShipmentPositionRow
+	err := row.Scan(&i.Latitude, &i.Longitude, &i.RecordedAt)
+	return i, err
+}
+
+const listShipmentRoute = `-- name: ListShipmentRoute :many
+SELECT latest.id, latest.shipment_id, latest.event_type, latest.note, latest.latitude, latest.longitude, latest.accuracy_meters, latest.speed_kph, latest.battery_level, latest.recorded_at FROM (
+    SELECT id, shipment_id, event_type, note,
+           ST_Y(coordinates)::float8 AS latitude,
+           ST_X(coordinates)::float8 AS longitude,
+           accuracy_meters, speed_kph, battery_level, recorded_at
+    FROM tracking_events
+    WHERE tenant_id = $1
+      AND (
+        shipment_id = $2
+        OR ($3::uuid IS NOT NULL
+            AND driver_id = $3::uuid
+            AND recorded_at >= $4
+            AND recorded_at <= $5)
+      )
+    ORDER BY recorded_at DESC
+    LIMIT $6
+) latest
+ORDER BY latest.recorded_at ASC
+`
+
+type ListShipmentRouteParams struct {
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID  pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	DriverID    pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	WindowStart pgtype.Timestamptz `db:"window_start" json:"window_start"`
+	WindowEnd   pgtype.Timestamptz `db:"window_end" json:"window_end"`
+	MaxPoints   int32              `db:"max_points" json:"max_points"`
+}
+
+type ListShipmentRouteRow struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	EventType      string             `db:"event_type" json:"event_type"`
+	Note           *string            `db:"note" json:"note"`
+	Latitude       float64            `db:"latitude" json:"latitude"`
+	Longitude      float64            `db:"longitude" json:"longitude"`
+	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
+	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
+	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
+	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
+// A truck carries several shipments at once and its pings are attributed to
+// only one of them, so a shipment's route is the driver's track over the time
+// the shipment was on board, plus anything explicitly tagged to it.
+// The newest max_points positions, oldest first, so a long trip still ends
+// where the truck is now.
+func (q *Queries) ListShipmentRoute(ctx context.Context, arg ListShipmentRouteParams) ([]ListShipmentRouteRow, error) {
+	rows, err := q.db.Query(ctx, listShipmentRoute,
 		arg.TenantID,
-		arg.Limit,
-		arg.Offset,
+		arg.ShipmentID,
+		arg.DriverID,
+		arg.WindowStart,
+		arg.WindowEnd,
+		arg.MaxPoints,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListTrackingEventsByShipmentRow{}
+	items := []ListShipmentRouteRow{}
 	for rows.Next() {
-		var i ListTrackingEventsByShipmentRow
+		var i ListShipmentRouteRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.TenantID,
 			&i.ShipmentID,
-			&i.DriverID,
-			&i.Longitude,
+			&i.EventType,
+			&i.Note,
 			&i.Latitude,
+			&i.Longitude,
 			&i.AccuracyMeters,
 			&i.SpeedKph,
-			&i.Heading,
-			&i.EventType,
-			&i.Status,
-			&i.Note,
-			&i.RecordedAt,
-			&i.SyncedAt,
-			&i.DeviceID,
 			&i.BatteryLevel,
+			&i.RecordedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -405,15 +329,4 @@ func (q *Queries) ListTrackingEventsByShipment(ctx context.Context, arg ListTrac
 		return nil, err
 	}
 	return items, nil
-}
-
-const markTrackingEventsSynced = `-- name: MarkTrackingEventsSynced :exec
-UPDATE tracking_events
-SET synced_at = NOW()
-WHERE id = ANY($1::uuid[])
-`
-
-func (q *Queries) MarkTrackingEventsSynced(ctx context.Context, dollar_1 []pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, markTrackingEventsSynced, dollar_1)
-	return err
 }

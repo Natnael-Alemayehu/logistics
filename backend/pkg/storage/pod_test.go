@@ -2,8 +2,11 @@ package storage
 
 import (
 	"bytes"
+	"compress/zlib"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -59,6 +62,40 @@ func createTestImage() string {
 	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
+// hugePNG is a valid, blank one-bit PNG of the given size, written without
+// holding its pixels in memory.
+func hugePNG(t *testing.T, w, h int) string {
+	t.Helper()
+	var out bytes.Buffer
+	out.WriteString("\x89PNG\r\n\x1a\n")
+	chunk := func(kind string, data []byte) {
+		binary.Write(&out, binary.BigEndian, uint32(len(data)))
+		c := crc32.NewIEEE()
+		c.Write([]byte(kind))
+		c.Write(data)
+		out.WriteString(kind)
+		out.Write(data)
+		binary.Write(&out, binary.BigEndian, c.Sum32())
+	}
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], uint32(w))
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(h))
+	ihdr[8], ihdr[9] = 1, 0 // one bit, greyscale
+	chunk("IHDR", ihdr)
+	var idat bytes.Buffer
+	z := zlib.NewWriter(&idat)
+	row := make([]byte, 1+(w+7)/8) // a filter byte, then the pixels
+	for range h {
+		if _, err := z.Write(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	require.NoError(t, z.Close())
+	chunk("IDAT", idat.Bytes())
+	chunk("IEND", nil)
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(out.Bytes())
+}
+
 func createLargeTestImage() string {
 	img := image.NewRGBA(image.Rect(0, 0, 800, 600))
 	for y := 0; y < 600; y++ {
@@ -84,19 +121,31 @@ func TestPODStorage_UploadSignature(t *testing.T) {
 		assert.Contains(t, path, ".png")
 	})
 
-	t.Run("uploads SVG signature successfully", func(t *testing.T) {
-		svgData := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte("<svg></svg>"))
-		path, err := pod.UploadSignature(ctx, "shipment-456", svgData)
-		require.NoError(t, err)
-		assert.Contains(t, path, "pod/shipment-456/signature_")
-		assert.Contains(t, path, ".svg")
+	// An SVG can carry script and would be served from the dashboard's
+	// origin.
+	t.Run("rejects SVG signatures", func(t *testing.T) {
+		for _, svgData := range []string{
+			"data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)),
+			"data:image/svg+xml,<svg></svg>",
+		} {
+			uploads := len(mock.uploads)
+			_, err := pod.UploadSignature(ctx, "shipment-456", svgData)
+			assert.ErrorIs(t, err, ErrInvalidSignature)
+			assert.Equal(t, uploads, len(mock.uploads), "nothing stored")
+		}
 	})
 
-	t.Run("uploads raw SVG signature", func(t *testing.T) {
-		svgData := "data:image/svg+xml,<svg></svg>"
-		path, err := pod.UploadSignature(ctx, "shipment-789", svgData)
-		require.NoError(t, err)
-		assert.Contains(t, path, ".svg")
+	// A blank 8000×8000 PNG is a few kilobytes but would take 256 MB to
+	// decode.
+	t.Run("rejects huge images before decoding them", func(t *testing.T) {
+		_, err := pod.UploadSignature(ctx, "shipment-123", hugePNG(t, 300, 100))
+		require.NoError(t, err, "the same image, small")
+		huge := hugePNG(t, 8000, 8000)
+		assert.Less(t, len(huge), 300*1024)
+		_, err = pod.UploadSignature(ctx, "shipment-123", huge)
+		assert.ErrorIs(t, err, ErrImageTooLarge)
+		_, err = pod.UploadPhoto(ctx, "shipment-123", huge, 0)
+		assert.ErrorIs(t, err, ErrImageTooLarge)
 	})
 
 	t.Run("rejects empty signature", func(t *testing.T) {
@@ -213,27 +262,27 @@ func TestPODStorage_UploadMultiplePhotos(t *testing.T) {
 	})
 }
 
-func TestPODStorage_GetPODURLs(t *testing.T) {
+func TestPODStorage_UniquePaths(t *testing.T) {
 	mock := newMockStorage()
 	pod := NewPODStorage(mock)
 	ctx := context.Background()
 
-	t.Run("returns POD URLs", func(t *testing.T) {
-		urls, err := pod.GetPODURLs(ctx, "shipment-123")
-		require.NoError(t, err)
-		require.NotNil(t, urls)
-	})
+	a, err := pod.UploadPhoto(ctx, "shipment-123", createTestImage(), 0)
+	require.NoError(t, err)
+	b, err := pod.UploadPhoto(ctx, "shipment-123", createTestImage(), 0)
+	require.NoError(t, err)
+	assert.NotEqual(t, a, b, "two proofs in the same second must not overwrite each other")
+	assert.Len(t, mock.uploads, 2)
 }
 
-func TestPODStorage_DeletePODFiles(t *testing.T) {
+func TestPODStorage_FailedPhotosLeaveNothing(t *testing.T) {
 	mock := newMockStorage()
 	pod := NewPODStorage(mock)
 	ctx := context.Background()
 
-	t.Run("deletes POD files", func(t *testing.T) {
-		err := pod.DeletePODFiles(ctx, "shipment-123")
-		require.NoError(t, err)
-	})
+	_, err := pod.UploadMultiplePhotos(ctx, "shipment-123", []string{createTestImage(), "data:image/jpeg;base64,!!!"})
+	require.Error(t, err)
+	assert.Empty(t, mock.uploads)
 }
 
 func TestPODStorage_DecodeBase64Image(t *testing.T) {
@@ -360,16 +409,6 @@ func TestPODErrors(t *testing.T) {
 	assert.Equal(t, "exceeded maximum photos per delivery", ErrTooManyPhotos.Error())
 	assert.Equal(t, "invalid image data", ErrInvalidImageData.Error())
 	assert.Equal(t, "invalid signature data", ErrInvalidSignature.Error())
-}
-
-func TestPODURLs(t *testing.T) {
-	urls := &PODURLs{
-		SignatureURL: "http://localhost/signature.png",
-		PhotoURLs:    []string{"http://localhost/photo1.jpg", "http://localhost/photo2.jpg"},
-	}
-
-	assert.Equal(t, "http://localhost/signature.png", urls.SignatureURL)
-	assert.Len(t, urls.PhotoURLs, 2)
 }
 
 func BenchmarkPODStorage_UploadPhoto(b *testing.B) {

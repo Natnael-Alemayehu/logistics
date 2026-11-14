@@ -1,0 +1,18 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <h1>Alerts</h1>
+    <p class="muted">{{if $d.All}}All alerts{{else}}{{$d.Total}} waiting to be dealt with{{end}}</p>
+  </div>
+</div>
+<nav class="tabs" aria-label="Alert filter">
+  <a href="/app/alerts" {{if and (not $d.All) (not $d.Severity)}}aria-current="page"{{end}}>Open</a>
+  <a href="/app/alerts?severity=critical" {{if eq $d.Severity "critical"}}aria-current="page"{{end}}>Critical</a>
+  <a href="/app/alerts?all=1" {{if $d.All}}aria-current="page"{{end}}>All, including dismissed</a>
+</nav>
+<section class="card">
+  {{template "alert-items" (dict "Alerts" $d.Alerts "Back" (print .Path "?" .Query.Encode))}}
+</section>
+{{template "pager" (dict "Page" $d.Page "Pages" $d.Pages "Query" .Query)}}
+<p class="muted small">Alerts are raised when a shipment passes its due time, a driver reports a delay or problem, a delivery is recorded away from the destination, a driver's app has been silent for four hours with work assigned, or a customer reports a problem.</p>
+{{end}}

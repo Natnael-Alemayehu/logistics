@@ -2,6 +2,7 @@ package sms
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -9,7 +10,7 @@ func TestMockProvider_Send_StoresMessage(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	err := provider.Send(context.Background(), "+251912345678", "Test message", MessageTypeNotification)
+	_, err := provider.Send(context.Background(), "+251912345678", "Test message", MessageTypeNotification)
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -34,7 +35,7 @@ func TestMockProvider_Send_NormalizesPhone(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeOTP)
+	_, err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeOTP)
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -53,46 +54,9 @@ func TestMockProvider_Send_InvalidPhone(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	err := provider.Send(context.Background(), "invalid", "Test message", MessageTypeNotification)
+	_, err := provider.Send(context.Background(), "invalid", "Test message", MessageTypeNotification)
 	if err == nil {
 		t.Error("Send() should return error for invalid phone number")
-	}
-}
-
-func TestMockProvider_SendBatch(t *testing.T) {
-	logger := &mockLogger{}
-	provider := NewMockProvider(logger)
-
-	recipients := []string{
-		"+251912345678",
-		"+251923456789",
-		"+251934567890",
-	}
-
-	err := provider.SendBatch(context.Background(), recipients, "Batch message", MessageTypeAlert)
-	if err != nil {
-		t.Fatalf("SendBatch() error = %v", err)
-	}
-
-	if provider.Count() != len(recipients) {
-		t.Errorf("Count() = %d, want %d", provider.Count(), len(recipients))
-	}
-}
-
-func TestMockProvider_SendBatch_PartialFailure(t *testing.T) {
-	logger := &mockLogger{}
-	provider := NewMockProvider(logger)
-
-	recipients := []string{
-		"+251912345678",
-		"invalid-phone",
-		"+251934567890",
-	}
-
-	provider.SendBatch(context.Background(), recipients, "Batch message", MessageTypeNotification)
-
-	if provider.Count() != 2 {
-		t.Errorf("Count() = %d, want 2 (valid recipients only)", provider.Count())
 	}
 }
 
@@ -244,15 +208,15 @@ func TestMockProvider_MessageID(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "+251912345678", "Test", MessageTypeNotification)
+	id, _ := provider.Send(context.Background(), "+251912345678", "Test", MessageTypeNotification)
 
 	messages := provider.GetMessages()
 	if len(messages) != 1 {
 		t.Fatal("expected one message")
 	}
 
-	if messages[0].ID == "" {
-		t.Error("message.ID should not be empty")
+	if messages[0].ID == "" || messages[0].ID != id {
+		t.Errorf("message.ID = %q, Send returned %q", messages[0].ID, id)
 	}
 }
 
@@ -269,5 +233,24 @@ func TestMockProvider_MessageCreatedAt(t *testing.T) {
 
 	if messages[0].CreatedAt.IsZero() {
 		t.Error("message.CreatedAt should be set")
+	}
+}
+
+func TestMockProvider_KeepsTheMostRecent(t *testing.T) {
+	provider := NewMockProvider(&mockLogger{})
+	for i := range mockKeep + 5 {
+		if _, err := provider.Send(context.Background(), "0911234567", fmt.Sprintf("message %d", i), MessageTypeNotification); err != nil {
+			t.Fatal(err)
+		}
+	}
+	messages := provider.GetMessages()
+	if len(messages) != mockKeep {
+		t.Fatalf("kept %d messages, want %d", len(messages), mockKeep)
+	}
+	if want := fmt.Sprintf("message %d", mockKeep+4); messages[len(messages)-1].Message != want {
+		t.Errorf("newest message %q, want %q", messages[len(messages)-1].Message, want)
+	}
+	if want := "message 5"; messages[0].Message != want {
+		t.Errorf("oldest message %q, want %q", messages[0].Message, want)
 	}
 }

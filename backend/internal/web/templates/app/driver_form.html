@@ -1,0 +1,33 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}{{$p := $d.Person}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/drivers">Drivers</a>{{if $p}} / <a href="/app/drivers/{{uuid $p.ID}}">{{$p.FullName}}</a>{{end}}</p>
+    <h1>{{if $p}}Edit driver{{else}}Add a driver{{end}}</h1>
+  </div>
+</div>
+{{template "form-error" .}}
+<form method="post" action="{{if $p}}/app/drivers/{{uuid $p.ID}}/edit{{else}}/app/drivers{{end}}" class="card form-narrow stack" novalidate>
+  <label>Full name
+    <input name="full_name" value="{{field $f "full_name" ""}}" required autocomplete="off" {{if index $e "full_name"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "full_name")}}
+  </label>
+  <label>Mobile number
+    <input name="phone" type="tel" inputmode="tel" value="{{field $f "phone" ""}}" placeholder="09… or +251…" required {{if index $e "phone"}}aria-invalid="true"{{end}}>
+    <span class="hint">The driver signs in with this number{{if not $p}} and receives their PIN by SMS{{end}}.</span>
+    {{template "field-error" (index $e "phone")}}
+  </label>
+  <label>Usual vehicle <span class="muted">(optional)</span>
+    <select name="vehicle_id" {{if index $e "vehicle_id"}}aria-invalid="true"{{end}}>
+      <option value="">None</option>
+      {{$sel := field $f "vehicle_id" ""}}
+      {{range $d.Vehicles}}<option value="{{uuid .ID}}" {{if eq $sel (uuid .ID)}}selected{{end}}>{{.PlateNumber}}{{with .VehicleType}} · {{vehicleType .}}{{end}}</option>{{end}}
+    </select>
+    {{template "field-error" (index $e "vehicle_id")}}
+    {{if not $d.Vehicles}}<span class="hint"><a href="/app/vehicles/new">Add a vehicle</a> first to pick one here.</span>{{end}}
+  </label>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{{if $p}}Save changes{{else}}Add driver{{end}}</button>
+    <a class="btn btn-ghost" href="{{if $p}}/app/drivers/{{uuid $p.ID}}{{else}}/app/drivers{{end}}">Cancel</a>
+  </div>
+</form>
+{{end}}

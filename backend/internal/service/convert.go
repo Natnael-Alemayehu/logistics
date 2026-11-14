@@ -102,3 +102,58 @@ func toInt32Ptr(i int) *int32 {
 func toBoolPtr(b bool) *bool {
 	return &b
 }
+
+// numericFloat reads a pgtype.Numeric as a float, with ok false for NULL.
+//
+// The previous helper called Numeric.Scan(&f), which scans *into* the Numeric
+// rather than out of it, so every accuracy, speed and mismatch distance the API
+// returned was zero.
+func numericFloat(n pgtype.Numeric) (float64, bool) {
+	if !n.Valid {
+		return 0, false
+	}
+	f, err := n.Float64Value()
+	if err != nil || !f.Valid {
+		return 0, false
+	}
+	return f.Float64, true
+}
+
+// numericOr reads a pgtype.Numeric as a float, defaulting NULL to zero.
+func numericOr(n pgtype.Numeric) float64 {
+	f, _ := numericFloat(n)
+	return f
+}
+
+func deref[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// optFloat returns nil for a zero value, for optional coordinates.
+func optFloat(f float64) *float64 {
+	if f == 0 {
+		return nil
+	}
+	return &f
+}
+
+func timePtr(t pgtype.Timestamptz) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	v := t.Time
+	return &v
+}
+
+func uuidString(u pgtype.UUID) string {
+	if !u.Valid {
+		return ""
+	}
+	return u.String()
+}
