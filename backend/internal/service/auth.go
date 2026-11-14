@@ -318,6 +318,14 @@ func (s *AuthService) Authenticate(ctx context.Context, token, kind string) (*Pr
 }
 
 // Logout ends the current session.
+// SessionActive reports whether a session still lets its holder in: not
+// signed out or expired, the person active, and their company not
+// suspended. Connections that stay open, like the dashboard's live feed,
+// ask it now and then.
+func (s *AuthService) SessionActive(ctx context.Context, id pgtype.UUID) (bool, error) {
+	return s.q.SessionStillValid(ctx, id)
+}
+
 func (s *AuthService) Logout(ctx context.Context, p *Principal, ci ClientInfo) error {
 	if err := s.q.RevokeSession(ctx, p.SessionID); err != nil {
 		return err

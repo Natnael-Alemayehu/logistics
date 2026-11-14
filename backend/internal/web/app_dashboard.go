@@ -183,6 +183,33 @@ func (s *Server) live(w http.ResponseWriter, r *http.Request) {
 	s.hub.Register <- c
 	go c.WritePump()
 	go c.ReadPump()
+	go s.watchSession(c, p.SessionID)
+}
+
+// liveSessionCheck is how often an open live feed checks that the session
+// it was opened with still lets its holder in.
+const liveSessionCheck = 30 * time.Second
+
+// watchSession closes a live feed whose session has ended: signed out,
+// expired, the person deactivated or their company suspended. Otherwise the
+// feed would carry on for as long as the browser kept it open.
+func (s *Server) watchSession(c *websocket.Client, session pgtype.UUID) {
+	t := time.NewTicker(liveSessionCheck)
+	defer t.Stop()
+	for {
+		select {
+		case <-c.Done():
+			return
+		case <-t.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ok, err := s.svc.Auth.SessionActive(ctx, session)
+			cancel()
+			if err == nil && !ok {
+				c.Disconnect()
+				return
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------

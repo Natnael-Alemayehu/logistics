@@ -75,3 +75,15 @@ WHERE user_id = $1 AND id != $2 AND revoked_at IS NULL;
 -- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '7 days'
    OR revoked_at < NOW() - INTERVAL '7 days';
+
+-- name: SessionStillValid :one
+-- Whether a session still lets its holder in, for connections that outlive
+-- the request that opened them: not signed out or expired, the person
+-- active, and their company not suspended.
+SELECT EXISTS (
+    SELECT 1 FROM sessions s
+    JOIN users u ON u.id = s.user_id
+    JOIN tenants t ON t.id = u.tenant_id
+    WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW()
+      AND u.is_active AND (t.is_active OR u.role = 'platform_admin')
+);

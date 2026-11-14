@@ -416,6 +416,10 @@ type Querier interface {
 	// Writes a company's subscription as the billing service decided it. The
 	// month's text allowance only ever rises until the month ends.
 	SaveSubscription(ctx context.Context, arg SaveSubscriptionParams) error
+	// Whether a session still lets its holder in, for connections that outlive
+	// the request that opened them: not signed out or expired, the person
+	// active, and their company not suspended.
+	SessionStillValid(ctx context.Context, id pgtype.UUID) (bool, error)
 	SetAlertEmails(ctx context.Context, arg SetAlertEmailsParams) error
 	SetCustomerConfirmation(ctx context.Context, arg SetCustomerConfirmationParams) (Shipment, error)
 	// A problem report: the customer has answered but not confirmed receipt.
