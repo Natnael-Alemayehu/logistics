@@ -1,8 +1,11 @@
 // Service worker for the driver app. The app shell is served network-first so
 // a deploy reaches drivers whenever they have signal, and from the cache when
-// they don't. API calls are never cached: the app keeps its own data in
-// IndexedDB and queues changes there.
-const CACHE = "menged-driver-v1";
+// they don't, or when the network takes more than a few seconds to answer: a
+// weak signal mustn't keep the driver looking at a blank screen. API calls are
+// never cached: the app keeps its own data in IndexedDB and queues changes
+// there.
+const CACHE = "menged-driver-v2";
+const WAIT_MS = 3000;
 const SHELL = [
   "/driver/",
   "/driver/app.js",
@@ -10,6 +13,11 @@ const SHELL = [
   "/driver/manifest.webmanifest",
   "/driver/icon.svg",
   "/driver/icon-maskable.svg",
+  "/driver/icon-192.png",
+  "/driver/icon-512.png",
+  "/driver/icon-maskable-192.png",
+  "/driver/icon-maskable-512.png",
+  "/driver/apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -36,16 +44,35 @@ self.addEventListener("fetch", (event) => {
   if (!cacheable) return;
 
   // Navigations within the app all load the shell.
-  const key = req.mode === "navigate" ? "/driver/" : req;
-  event.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(key, copy));
-        }
-        return res;
-      })
-      .catch(() => caches.match(key).then((hit) => hit || caches.match("/driver/"))),
-  );
+  const navigate = req.mode === "navigate";
+  const key = navigate ? "/driver/" : req;
+  const network = fetch(req).then((res) => {
+    if (res.ok) {
+      const copy = res.clone();
+      return caches.open(CACHE).then((c) => c.put(key, copy)).then(() => res, () => res);
+    }
+    return res;
+  });
+  // The cache is brought up to date even when the answer came from it.
+  event.waitUntil(network.catch(() => {}));
+  event.respondWith(respond(network, key, navigate));
 });
+
+// respond answers from the network, or from the cache if the network fails
+// or is slow. A slow answer that isn't cached is still waited for.
+async function respond(network, key, navigate) {
+  const cached = async () => (await caches.match(key)) || (navigate ? caches.match("/driver/") : undefined);
+  let timer;
+  const slow = new Promise((resolve) => (timer = setTimeout(resolve, WAIT_MS, "slow")));
+  try {
+    const first = await Promise.race([network, slow]);
+    if (first !== "slow") return first;
+    return (await cached()) || (await network);
+  } catch (err) {
+    const hit = await cached();
+    if (hit) return hit;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
