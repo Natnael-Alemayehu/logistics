@@ -100,15 +100,20 @@ const (
 	StandingDue        = "due"
 	StandingPastDue    = "past_due"
 	StandingReadOnly   = "read_only"
+	StandingEnded      = "ended"
 )
 
-// Standing is where a company is with paying for the product. Two states
-// make it read-only: a trial that has ended, and an invoice still unpaid
-// GraceDays after it was due.
+// Standing is where a company is with paying for the product. Three states
+// make it read-only: a trial that has ended, an invoice still unpaid
+// GraceDays after it was due, and a subscription whose renewal was turned
+// off and whose last period is over.
 type Standing struct {
 	State string
 	// TrialEnds is when a trial ends or ended.
 	TrialEnds time.Time
+	// Ends is when a subscription that won't renew ends or ended; zero
+	// while it renews.
+	Ends time.Time
 	// DebtNumber and DebtDue are the oldest unpaid renewal or usage
 	// invoice, and ReadOnlyAt when it makes the company read-only.
 	DebtNumber string
@@ -121,10 +126,12 @@ type Standing struct {
 
 // ReadOnly reports whether booking and adding to the fleet are blocked.
 func (s Standing) ReadOnly() bool {
-	return s.State == StandingTrialEnded || s.State == StandingReadOnly
+	return s.State == StandingTrialEnded || s.State == StandingReadOnly || s.State == StandingEnded
 }
 
-func standingOf(plan string, trialEnds *time.Time, debtNumber string, debtDue *time.Time, now time.Time) Standing {
+// standingOf works out a company's standing. ends is when its subscription
+// ends, if renewal was turned off.
+func standingOf(plan string, trialEnds, ends *time.Time, debtNumber string, debtDue *time.Time, now time.Time) Standing {
 	if plan == model.PlanTrial {
 		st := Standing{State: StandingTrialing}
 		if trialEnds != nil {
@@ -138,6 +145,13 @@ func standingOf(plan string, trialEnds *time.Time, debtNumber string, debtDue *t
 		return st
 	}
 	st := Standing{State: StandingActive}
+	if ends != nil {
+		st.Ends = *ends
+		if !now.Before(*ends) {
+			st.State = StandingEnded
+			return st
+		}
+	}
 	if debtNumber == "" || debtDue == nil {
 		return st
 	}
@@ -162,10 +176,29 @@ func daysUntil(now, t time.Time) int {
 
 // Standing is where the caller's company is with paying.
 func (p *Principal) Standing(now time.Time) Standing {
-	return standingOf(p.TenantPlan, p.TrialEnds, p.DebtNumber, p.DebtDue, now)
+	return standingOf(p.TenantPlan, p.TrialEnds, p.SubscriptionEnds, p.DebtNumber, p.DebtDue, now)
+}
+
+// subscriptionEnds is when t's subscription ends, if its renewal was
+// turned off.
+func subscriptionEnds(t db.Tenant) *time.Time {
+	if !t.RenewalCancelledAt.Valid || !t.PeriodEnd.Valid {
+		return nil
+	}
+	return &t.PeriodEnd.Time
+}
+
+// ended reports whether t's subscription was not renewed and is over.
+func ended(t db.Tenant, now time.Time) bool {
+	e := subscriptionEnds(t)
+	return e != nil && !now.Before(*e)
 }
 
 var errTrialEnded = &Error{Kind: KindLimit, Message: "Your company's free trial has ended, so the account is read-only: " +
+	"shipments on the road carry on, but booking or assigning shipments and adding drivers, vehicles or staff " +
+	"wait until an administrator chooses a plan on the Billing page. Nothing has been deleted."}
+
+var errSubscriptionEnded = &Error{Kind: KindLimit, Message: "Your company's subscription has ended, so the account is read-only: " +
 	"shipments on the road carry on, but booking or assigning shipments and adding drivers, vehicles or staff " +
 	"wait until an administrator chooses a plan on the Billing page. Nothing has been deleted."}
 
@@ -184,9 +217,11 @@ func (c *core) requireWritable(ctx context.Context, q *db.Queries, t db.Tenant) 
 			return err
 		}
 	}
-	switch standingOf(t.Plan, timePtr(t.TrialEndsAt), debtNumber, debtDue, c.now()).State {
+	switch standingOf(t.Plan, timePtr(t.TrialEndsAt), subscriptionEnds(t), debtNumber, debtDue, c.now()).State {
 	case StandingTrialEnded:
 		return errTrialEnded
+	case StandingEnded:
+		return errSubscriptionEnded
 	case StandingReadOnly:
 		return limitReached(fmt.Sprintf("Invoice %s is unpaid, so your company's account is read-only: "+
 			"shipments on the road carry on, but booking or assigning shipments and adding drivers, vehicles or staff "+
@@ -247,6 +282,7 @@ func subscriptionOf(t db.Tenant) db.SaveSubscriptionParams {
 		ID: t.ID, Plan: t.Plan, BillingCycle: t.BillingCycle, MaxDrivers: t.MaxDrivers, SmsQuota: t.SmsQuota,
 		PeriodStart: t.PeriodStart, PeriodEnd: t.PeriodEnd, SubscribedAt: t.SubscribedAt,
 		PendingPlan: t.PendingPlan, PendingCycle: t.PendingCycle, BillingAnchorDay: t.BillingAnchorDay,
+		RenewalCancelledAt: t.RenewalCancelledAt,
 	}
 }
 
@@ -282,10 +318,13 @@ type PlanOption struct {
 
 // BillingOverview is the billing page.
 type BillingOverview struct {
-	Tenant        db.Tenant
-	Standing      Standing
-	Current       PlanOption
-	Subscribed    bool
+	Tenant   db.Tenant
+	Standing Standing
+	Current  PlanOption
+	// Subscribed is a paid period running now, renewing or not.
+	Subscribed bool
+	// Ending is a subscription whose renewal was turned off, still running.
+	Ending        bool
 	Options       []PlanOption
 	Invoices      []db.Invoice
 	Open          []db.Invoice
@@ -301,7 +340,9 @@ func (s *BillingService) Overview(ctx context.Context, p *Principal) (*BillingOv
 	if err != nil {
 		return nil, err
 	}
-	o := &BillingOverview{Tenant: t, Subscribed: subscribed(t)}
+	now := s.now()
+	o := &BillingOverview{Tenant: t, Subscribed: subscribed(t) && !ended(t, now)}
+	o.Ending = o.Subscribed && t.RenewalCancelledAt.Valid
 	if o.ActiveDrivers, err = s.q.CountActiveDriversByTenant(ctx, t.ID); err != nil {
 		return nil, err
 	}
@@ -320,7 +361,7 @@ func (s *BillingService) Overview(ctx context.Context, p *Principal) (*BillingOv
 			debtNumber, debtDue = inv.Number, &inv.DueAt.Time
 		}
 	}
-	o.Standing = standingOf(t.Plan, timePtr(t.TrialEndsAt), debtNumber, debtDue, s.now())
+	o.Standing = standingOf(t.Plan, timePtr(t.TrialEndsAt), subscriptionEnds(t), debtNumber, debtDue, now)
 
 	cur, curErr := s.planTerms(t, t.Plan)
 	for _, plan := range model.Plans {
@@ -349,6 +390,8 @@ func (s *BillingService) Overview(ctx context.Context, p *Principal) (*BillingOv
 		}
 		switch {
 		case !opt.Offered || opt.Current:
+		case o.Ending:
+			opt.Blocked = "Turn renewal back on first."
 		case o.Subscribed && debtNumber != "" && !opt.Pending:
 			opt.Blocked = "Pay invoice " + debtNumber + " first."
 		case o.ActiveDrivers > int64(opt.MaxDrivers):
@@ -359,7 +402,7 @@ func (s *BillingService) Overview(ctx context.Context, p *Principal) (*BillingOv
 		}
 		o.Options = append(o.Options, opt)
 	}
-	if !o.Subscribed {
+	if !o.Subscribed && t.Plan == model.PlanTrial {
 		trial, _ := model.PlanByCode(model.PlanTrial)
 		o.Current = PlanOption{Code: trial.Code, Name: trial.Name, MaxDrivers: t.MaxDrivers, SMSIncluded: t.SmsQuota, Current: true}
 	}
@@ -400,15 +443,19 @@ func (s *BillingService) ChoosePlan(ctx context.Context, p *Principal, code, cyc
 		if err != nil {
 			return err
 		}
+		now := s.now()
+		fresh := !subscribed(t) || ended(t, now)
+		if !fresh && t.RenewalCancelledAt.Valid {
+			return conflict(fmt.Sprintf("Your plan ends on %s and won't renew. Turn renewal back on first, then change your plan.", s.date(t.PeriodEnd.Time)))
+		}
 		drivers, err := q.CountActiveDriversByTenant(ctx, t.ID)
 		if err != nil {
 			return err
 		}
-		if drivers > int64(next.drivers) && code != t.Plan {
+		if drivers > int64(next.drivers) && (code != t.Plan || fresh) {
 			return limitReached(fmt.Sprintf("You have %d active drivers and the %s plan allows %d. Deactivate %d first.",
 				drivers, next.plan.Name, next.drivers, drivers-int64(next.drivers)))
 		}
-		now := s.now()
 		actor := p.Actor(SourceDashboard, ci.IP, ci.UserAgent)
 		audit := func(change string) {
 			s.audit(ctx, q, actor, "plan_chosen", "tenant", t.ID, map[string]any{"plan": t.Plan, "cycle": t.BillingCycle},
@@ -420,7 +467,9 @@ func (s *BillingService) ChoosePlan(ctx context.Context, p *Principal, code, cyc
 			return err
 		}
 
-		if !subscribed(t) {
+		// A trial, or a subscription that ended without renewing, starts
+		// a fresh one.
+		if fresh {
 			if hasOpen && open.Kind == invoiceSubscription && open.Plan == code && open.BillingCycle == cycle {
 				out.Invoice = &open // the same choice, made again
 				return nil
@@ -569,6 +618,107 @@ func (s *BillingService) ChoosePlan(ctx context.Context, p *Principal, code, cyc
 
 // trialNote explains when a first period starts for a company still on its
 // trial.
+// CancelRenewal turns off a company's renewal, for its admin. The plan runs
+// to the end of the period already paid for, then the account becomes
+// read-only until a plan is chosen again. A renewal invoice not yet paid is
+// cancelled with the period it was for, so nothing is owed for it and the
+// plan ends at once.
+func (s *BillingService) CancelRenewal(ctx context.Context, p *Principal, ci ClientInfo) (string, error) {
+	if !p.CanManageCompany() {
+		return "", ErrUnauthorized
+	}
+	var msg string
+	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		t, err := q.GetTenantForUpdate(ctx, p.TenantID)
+		if err != nil {
+			return err
+		}
+		now := s.now()
+		if !subscribed(t) || ended(t, now) {
+			return conflict("There's no subscription renewing to cancel.")
+		}
+		if t.RenewalCancelledAt.Valid {
+			return conflict(fmt.Sprintf("Renewal is already off: your plan ends on %s.", s.date(t.PeriodEnd.Time)))
+		}
+		sub := subscriptionOf(t)
+		sub.PendingPlan, sub.PendingCycle = nil, nil
+		sub.RenewalCancelledAt = toTimestamp(now)
+		var voided *db.Invoice
+		switch inv, err := q.GetOpenRenewal(ctx, t.ID); {
+		case err == nil:
+			if _, err := q.VoidInvoice(ctx, db.VoidInvoiceParams{ID: inv.ID, TenantID: t.ID}); err != nil {
+				return err
+			}
+			if inv.PeriodStart.Valid {
+				sub.PeriodStart, sub.PeriodEnd = inv.PeriodStart, inv.PeriodStart
+			}
+			voided = &inv
+		case !isNoRows(err):
+			return err
+		}
+		if err := q.SaveSubscription(ctx, sub); err != nil {
+			return err
+		}
+		change := map[string]any{"ends": sub.PeriodEnd.Time}
+		if voided != nil {
+			change["invoice_voided"] = voided.Number
+		}
+		s.audit(ctx, q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), "renewal_cancelled", "tenant", t.ID,
+			map[string]any{"plan": t.Plan, "period_end": t.PeriodEnd.Time}, change)
+
+		plan, ends := model.PlanName(t.Plan), s.date(sub.PeriodEnd.Time)
+		var paragraphs []string
+		if voided != nil {
+			msg = fmt.Sprintf("Your %s plan has ended and invoice %s is cancelled. The account is read-only until you choose a plan again.", plan, voided.Number)
+			paragraphs = []string{
+				fmt.Sprintf("%s turned off renewal of %s's %s plan. Invoice %s, for the period from %s, is cancelled: there is nothing to pay on it.",
+					p.Name, t.Name, plan, voided.Number, ends),
+				"The plan ended on " + ends + ", the end of the last period paid for, so the account is now read-only: shipments on the road carry on and nothing is deleted, but booking shipments and adding drivers wait until a plan is chosen again.",
+			}
+		} else {
+			msg = fmt.Sprintf("Your %s plan won't renew. It runs until %s; after that the account is read-only until you choose a plan again.", plan, ends)
+			paragraphs = []string{
+				fmt.Sprintf("%s turned off renewal of %s's %s plan. It runs until %s and no invoice will be issued for after that.", p.Name, t.Name, plan, ends),
+				"From " + ends + " the account is read-only: shipments on the road carry on and nothing is deleted, but booking shipments and adding drivers wait until a plan is chosen again. Until then, renewal can be turned back on on the Billing page.",
+			}
+		}
+		paragraphs = append(paragraphs, s.cfg.BaseURL+"/app/billing")
+		return s.emailBilling(ctx, q, after, t.ID, EmailBilling, "Your plan won't renew", paragraphs...)
+	})
+	return msg, err
+}
+
+// ResumeRenewal turns renewal back on while the period is still running.
+// Once it has ended, the company chooses a plan instead.
+func (s *BillingService) ResumeRenewal(ctx context.Context, p *Principal, ci ClientInfo) (string, error) {
+	if !p.CanManageCompany() {
+		return "", ErrUnauthorized
+	}
+	var msg string
+	err := s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		t, err := q.GetTenantForUpdate(ctx, p.TenantID)
+		if err != nil {
+			return err
+		}
+		switch {
+		case !subscribed(t) || !t.RenewalCancelledAt.Valid:
+			return conflict("Your plan already renews.")
+		case ended(t, s.now()):
+			return conflict("Your plan has ended. Choose a plan below to start again.")
+		}
+		sub := subscriptionOf(t)
+		sub.RenewalCancelledAt = pgtype.Timestamptz{}
+		if err := q.SaveSubscription(ctx, sub); err != nil {
+			return err
+		}
+		s.audit(ctx, q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), "renewal_resumed", "tenant", t.ID, nil,
+			map[string]any{"plan": t.Plan, "renews": t.PeriodEnd.Time})
+		msg = fmt.Sprintf("Your %s plan renews on %s as before.", model.PlanName(t.Plan), s.date(t.PeriodEnd.Time))
+		return nil
+	})
+	return msg, err
+}
+
 func (s *BillingService) trialNote(t db.Tenant, now time.Time) string {
 	if t.Plan == model.PlanTrial && t.TrialEndsAt.Valid && t.TrialEndsAt.Time.After(now) {
 		return ", and not before your free trial ends on " + s.date(t.TrialEndsAt.Time)
@@ -1209,6 +1359,7 @@ func (s *BillingService) settle(ctx context.Context, q *db.Queries, after *after
 		sub.BillingCycle = inv.BillingCycle
 		sub.PeriodStart, sub.PeriodEnd, sub.SubscribedAt = toTimestamp(start), toTimestamp(end), toTimestamp(start)
 		sub.PendingPlan, sub.PendingCycle = nil, nil
+		sub.RenewalCancelledAt = pgtype.Timestamptz{}
 	case invoiceUpgrade:
 		sub = withTerms(sub, s.termsOrDefault(t, inv.Plan))
 		sub.PendingPlan = nil
@@ -1618,7 +1769,7 @@ func (s *BillingService) renew(ctx context.Context, id pgtype.UUID) error {
 			return err
 		}
 		now := s.now()
-		if !subscribed(t) || t.PeriodEnd.Time.After(now) {
+		if !subscribed(t) || t.PeriodEnd.Time.After(now) || t.RenewalCancelledAt.Valid {
 			return nil
 		}
 		if n, err := q.CountOpenRenewals(ctx, t.ID); err != nil || n > 0 {

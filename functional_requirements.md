@@ -1029,7 +1029,9 @@ the requirement, what Menged does instead, and why.
   below 20% when not charging) keeps one coarse position every 15 minutes,
   and after 10 minutes parked the GPS turns off with a check every 5 minutes
   (15 when saving). Background tracking with a notification (AC-019.2) needs
-  a native app; the app can keep the screen on while charging instead.
+  a native app: positions come only while the app is open on screen, and the
+  product says so ("while the driver app is open") rather than promising
+  continuous tracking. The app can keep the screen on while charging.
 - **FR-031, on duty (AC-031.1)**: on duty is worked out, not switched by
   hand. A driver is on duty while carrying a load that has left, or after
   syncing with location on in the last 30 minutes.
@@ -1046,7 +1048,7 @@ the requirement, what Menged does instead, and why.
   replaces the open alert about the earlier one, so the office sees the
   current cause.
 - **Read and unread (AC-033.6)**: alerts count as read once the alerts page
-  is viewed. They can be acknowledged, not marked unread.
+  is viewed, for the person who viewed it; the badge is each person's own. They can be acknowledged, not marked unread.
 - **Email copies (AC-033.4)**: each person chooses which alert types they
   are emailed about, rather than one setting per company.
 - **History (AC-033.5)**: alerts are kept 90 days, not 30, the same as GPS
@@ -1108,6 +1110,14 @@ the requirement, what Menged does instead, and why.
 - **Money that can't be applied**: a payment for an invoice that is already
   paid or cancelled, or for a company that was deleted, is set aside as a
   refund for the operator to send back.
+- **Cancelling**: a company admin turns off renewal on the Billing page
+  rather than cancelling outright. The plan runs to the end of the period
+  paid for, no invoice is issued after it, and the account is then
+  read-only, as after a trial, until a plan is chosen again. Paid periods
+  aren't refunded. A renewal invoice still unpaid when renewal is turned off
+  is cancelled with its period, so the plan ends at once and nothing is
+  owed for time not paid for; usage invoices for texts already sent stay.
+  Renewal can be turned back on while the period runs.
 - **FR-044, read-only (AC-044.6)**: an overdue company becomes read-only
   rather than suspended: new work stops, loads already on the road finish,
   and viewing, exporting and paying keep working. Suspension by the

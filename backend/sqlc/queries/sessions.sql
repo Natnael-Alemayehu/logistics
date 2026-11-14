@@ -23,6 +23,8 @@ SELECT s.id AS session_id, s.kind, s.remember, s.last_seen_at, s.expires_at,
        (u.email_verified_at IS NOT NULL)::bool AS email_verified,
        t.name AS tenant_name, t.is_active AS tenant_active, t.plan AS tenant_plan,
        t.trial_ends_at,
+       -- When a subscription that won't renew ends.
+       (CASE WHEN t.renewal_cancelled_at IS NOT NULL THEN t.period_end END)::timestamptz AS subscription_ends_at,
        -- The oldest unpaid renewal or usage invoice, on which read-only mode
        -- depends.
        COALESCE((SELECT i.number FROM invoices i

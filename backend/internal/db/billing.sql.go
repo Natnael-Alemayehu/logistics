@@ -522,6 +522,43 @@ func (q *Queries) GetOpenPlanInvoice(ctx context.Context, tenantID pgtype.UUID) 
 	return i, err
 }
 
+const getOpenRenewal = `-- name: GetOpenRenewal :one
+SELECT id, tenant_id, number, kind, plan, billing_cycle, period_start, period_end, lines, usage, subtotal_santim, vat_santim, total_santim, status, issued_at, due_at, paid_at, voided_at, customer_name, customer_tin, customer_city, created_by FROM invoices
+WHERE tenant_id = $1 AND status = 'open' AND kind = 'renewal'
+ORDER BY issued_at DESC LIMIT 1
+`
+
+// The renewal invoice waiting for payment, if any. There is at most one.
+func (q *Queries) GetOpenRenewal(ctx context.Context, tenantID pgtype.UUID) (Invoice, error) {
+	row := q.db.QueryRow(ctx, getOpenRenewal, tenantID)
+	var i Invoice
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.Number,
+		&i.Kind,
+		&i.Plan,
+		&i.BillingCycle,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.Lines,
+		&i.Usage,
+		&i.SubtotalSantim,
+		&i.VatSantim,
+		&i.TotalSantim,
+		&i.Status,
+		&i.IssuedAt,
+		&i.DueAt,
+		&i.PaidAt,
+		&i.VoidedAt,
+		&i.CustomerName,
+		&i.CustomerTin,
+		&i.CustomerCity,
+		&i.CreatedBy,
+	)
+	return i, err
+}
+
 const getPayment = `-- name: GetPayment :one
 SELECT p.id, p.tenant_id, p.invoice_id, p.provider, p.reference, p.provider_ref, p.payer_phone, p.amount_santim, p.status, p.raw, p.note, p.refund_due, p.refunded_at, p.refund_reference, p.recorded_by, p.created_at, p.completed_at, p.checked_at, i.number AS invoice_number
 FROM payments p JOIN invoices i ON i.id = p.invoice_id
@@ -644,7 +681,7 @@ func (q *Queries) GetPaymentByReference(ctx context.Context, reference string) (
 
 const getTenantForUpdate = `-- name: GetTenantForUpdate :one
 
-SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day FROM tenants WHERE id = $1 FOR UPDATE
+SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at FROM tenants WHERE id = $1 FOR UPDATE
 `
 
 // Subscriptions, invoices and payments (FR-043 to FR-045).
@@ -687,6 +724,7 @@ func (q *Queries) GetTenantForUpdate(ctx context.Context, id pgtype.UUID) (Tenan
 		&i.Tin,
 		&i.AlertOnDelivery,
 		&i.BillingAnchorDay,
+		&i.RenewalCancelledAt,
 	)
 	return i, err
 }
@@ -1173,7 +1211,7 @@ func (q *Queries) ListRefundsDue(ctx context.Context) ([]ListRefundsDueRow, erro
 }
 
 const listTenantsForUsageBilling = `-- name: ListTenantsForUsageBilling :many
-SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day FROM tenants WHERE sms_billed_month IS NULL OR sms_billed_month < $1
+SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at FROM tenants WHERE sms_billed_month IS NULL OR sms_billed_month < $1
 `
 
 // Companies with a finished month whose texts are not yet settled.
@@ -1222,6 +1260,7 @@ func (q *Queries) ListTenantsForUsageBilling(ctx context.Context, smsBilledMonth
 			&i.Tin,
 			&i.AlertOnDelivery,
 			&i.BillingAnchorDay,
+			&i.RenewalCancelledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1293,15 +1332,17 @@ func (q *Queries) ListTenantsNearLimits(ctx context.Context, monthStart pgtype.T
 
 const listTenantsToRenew = `-- name: ListTenantsToRenew :many
 
-SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day FROM tenants t
+SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at FROM tenants t
 WHERE t.is_active AND t.plan <> 'trial' AND t.period_end IS NOT NULL AND t.period_end <= $1
+  AND t.renewal_cancelled_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.tenant_id = t.id AND i.status = 'open' AND i.kind = 'renewal')
 `
 
 // ---------------------------------------------------------------------------
 // The billing job looks across companies.
 // ---------------------------------------------------------------------------
-// Paid periods that have ended, unless the last renewal is still unpaid.
+// Paid periods that have ended, unless the last renewal is still unpaid or
+// the company turned renewal off.
 func (q *Queries) ListTenantsToRenew(ctx context.Context, periodEnd pgtype.Timestamptz) ([]Tenant, error) {
 	rows, err := q.db.Query(ctx, listTenantsToRenew, periodEnd)
 	if err != nil {
@@ -1347,6 +1388,7 @@ func (q *Queries) ListTenantsToRenew(ctx context.Context, periodEnd pgtype.Times
 			&i.Tin,
 			&i.AlertOnDelivery,
 			&i.BillingAnchorDay,
+			&i.RenewalCancelledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1359,7 +1401,7 @@ func (q *Queries) ListTenantsToRenew(ctx context.Context, periodEnd pgtype.Times
 }
 
 const listTrialsEnding = `-- name: ListTrialsEnding :many
-SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day FROM tenants t
+SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at FROM tenants t
 WHERE t.is_active AND t.plan = 'trial' AND t.trial_ends_at IS NOT NULL AND t.trial_ends_at <= $1
   AND NOT EXISTS (
       SELECT 1 FROM billing_notices n
@@ -1415,6 +1457,7 @@ func (q *Queries) ListTrialsEnding(ctx context.Context, trialEndsAt pgtype.Times
 			&i.Tin,
 			&i.AlertOnDelivery,
 			&i.BillingAnchorDay,
+			&i.RenewalCancelledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1665,22 +1708,24 @@ SET plan = $1,
     pending_plan = $8,
     pending_cycle = $9,
     billing_anchor_day = $10,
+    renewal_cancelled_at = $11,
     updated_at = NOW()
-WHERE id = $11
+WHERE id = $12
 `
 
 type SaveSubscriptionParams struct {
-	Plan             string             `db:"plan" json:"plan"`
-	BillingCycle     string             `db:"billing_cycle" json:"billing_cycle"`
-	MaxDrivers       int32              `db:"max_drivers" json:"max_drivers"`
-	SmsQuota         int32              `db:"sms_quota" json:"sms_quota"`
-	PeriodStart      pgtype.Timestamptz `db:"period_start" json:"period_start"`
-	PeriodEnd        pgtype.Timestamptz `db:"period_end" json:"period_end"`
-	SubscribedAt     pgtype.Timestamptz `db:"subscribed_at" json:"subscribed_at"`
-	PendingPlan      *string            `db:"pending_plan" json:"pending_plan"`
-	PendingCycle     *string            `db:"pending_cycle" json:"pending_cycle"`
-	BillingAnchorDay *int32             `db:"billing_anchor_day" json:"billing_anchor_day"`
-	ID               pgtype.UUID        `db:"id" json:"id"`
+	Plan               string             `db:"plan" json:"plan"`
+	BillingCycle       string             `db:"billing_cycle" json:"billing_cycle"`
+	MaxDrivers         int32              `db:"max_drivers" json:"max_drivers"`
+	SmsQuota           int32              `db:"sms_quota" json:"sms_quota"`
+	PeriodStart        pgtype.Timestamptz `db:"period_start" json:"period_start"`
+	PeriodEnd          pgtype.Timestamptz `db:"period_end" json:"period_end"`
+	SubscribedAt       pgtype.Timestamptz `db:"subscribed_at" json:"subscribed_at"`
+	PendingPlan        *string            `db:"pending_plan" json:"pending_plan"`
+	PendingCycle       *string            `db:"pending_cycle" json:"pending_cycle"`
+	BillingAnchorDay   *int32             `db:"billing_anchor_day" json:"billing_anchor_day"`
+	RenewalCancelledAt pgtype.Timestamptz `db:"renewal_cancelled_at" json:"renewal_cancelled_at"`
+	ID                 pgtype.UUID        `db:"id" json:"id"`
 }
 
 // Writes a company's subscription as the billing service decided it. The
@@ -1697,6 +1742,7 @@ func (q *Queries) SaveSubscription(ctx context.Context, arg SaveSubscriptionPara
 		arg.PendingPlan,
 		arg.PendingCycle,
 		arg.BillingAnchorDay,
+		arg.RenewalCancelledAt,
 		arg.ID,
 	)
 	return err

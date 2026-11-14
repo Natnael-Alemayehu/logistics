@@ -18,6 +18,7 @@ SET plan = sqlc.arg(plan),
     pending_plan = sqlc.narg(pending_plan),
     pending_cycle = sqlc.narg(pending_cycle),
     billing_anchor_day = sqlc.narg(billing_anchor_day),
+    renewal_cancelled_at = sqlc.narg(renewal_cancelled_at),
     updated_at = NOW()
 WHERE id = sqlc.arg(id);
 
@@ -78,6 +79,12 @@ SELECT * FROM invoices WHERE tenant_id = $1 ORDER BY issued_at DESC, number DESC
 SELECT * FROM invoices
 WHERE tenant_id = $1 AND status = 'open' AND kind IN ('renewal', 'usage')
 ORDER BY due_at LIMIT 1;
+
+-- name: GetOpenRenewal :one
+-- The renewal invoice waiting for payment, if any. There is at most one.
+SELECT * FROM invoices
+WHERE tenant_id = $1 AND status = 'open' AND kind = 'renewal'
+ORDER BY issued_at DESC LIMIT 1;
 
 -- name: CountOpenRenewals :one
 SELECT COUNT(*) FROM invoices WHERE tenant_id = $1 AND status = 'open' AND kind = 'renewal';
@@ -211,9 +218,11 @@ WHERE tenant_id = $1 AND direction = 'outbound' AND status = 'sent'
 -- ---------------------------------------------------------------------------
 
 -- name: ListTenantsToRenew :many
--- Paid periods that have ended, unless the last renewal is still unpaid.
+-- Paid periods that have ended, unless the last renewal is still unpaid or
+-- the company turned renewal off.
 SELECT * FROM tenants t
 WHERE t.is_active AND t.plan <> 'trial' AND t.period_end IS NOT NULL AND t.period_end <= $1
+  AND t.renewal_cancelled_at IS NULL
   AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.tenant_id = t.id AND i.status = 'open' AND i.kind = 'renewal');
 
 -- name: ListTenantsForUsageBilling :many

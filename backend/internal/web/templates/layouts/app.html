@@ -104,4 +104,6 @@
 <div class="banner warn">Invoice {{.DebtNumber}} is overdue. If it isn't paid by {{when .ReadOnlyAt}}, the account becomes read-only. {{if $admin}}<a href="/app/billing">Pay it now</a>{{else}}Ask an administrator to pay it.{{end}}</div>
 {{else if eq .State "read_only"}}
 <div class="banner bad"><strong>Invoice {{.DebtNumber}} is unpaid, so the account is read-only.</strong> Shipments on the road carry on, but booking and adding drivers wait until it is paid. {{if $admin}}<a href="/app/billing">Pay it</a>{{else}}Ask an administrator to pay it.{{end}}</div>
+{{else if eq .State "ended"}}
+<div class="banner bad"><strong>Your company's plan ended {{when .Ends}} and wasn't renewed, so the account is read-only.</strong> Shipments on the road carry on and nothing is deleted, but booking and adding drivers wait until {{if $admin}}you <a href="/app/billing">choose a plan</a>{{else}}an administrator chooses a plan{{end}}.</div>
 {{end}}{{end}}{{end}}

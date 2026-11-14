@@ -169,6 +169,8 @@ type Querier interface {
 	GetOldestDebt(ctx context.Context, tenantID pgtype.UUID) (Invoice, error)
 	// The plan choice waiting for payment, if any. There is at most one.
 	GetOpenPlanInvoice(ctx context.Context, tenantID pgtype.UUID) (Invoice, error)
+	// The renewal invoice waiting for payment, if any. There is at most one.
+	GetOpenRenewal(ctx context.Context, tenantID pgtype.UUID) (Invoice, error)
 	// The device's identifier for a proof: a replayed upload finds the first.
 	GetPODByClientID(ctx context.Context, arg GetPODByClientIDParams) (GetPODByClientIDRow, error)
 	GetPODByShipmentID(ctx context.Context, arg GetPODByShipmentIDParams) (GetPODByShipmentIDRow, error)
@@ -322,7 +324,8 @@ type Querier interface {
 	// ---------------------------------------------------------------------------
 	// The billing job looks across companies.
 	// ---------------------------------------------------------------------------
-	// Paid periods that have ended, unless the last renewal is still unpaid.
+	// Paid periods that have ended, unless the last renewal is still unpaid or
+	// the company turned renewal off.
 	ListTenantsToRenew(ctx context.Context, periodEnd pgtype.Timestamptz) ([]Tenant, error)
 	ListTenantsWithStats(ctx context.Context) ([]ListTenantsWithStatsRow, error)
 	ListTicketMessages(ctx context.Context, arg ListTicketMessagesParams) ([]SupportMessage, error)

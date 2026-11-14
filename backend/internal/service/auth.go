@@ -310,6 +310,7 @@ func (s *AuthService) Authenticate(ctx context.Context, token, kind string) (*Pr
 		TenantName:           row.TenantName,
 		TenantPlan:           row.TenantPlan,
 		TrialEnds:            timePtr(row.TrialEndsAt),
+		SubscriptionEnds:     timePtr(row.SubscriptionEndsAt),
 		DebtNumber:           row.DebtNumber,
 		DebtDue:              timePtr(row.DebtDueAt),
 		MustChangeCredential: row.PasswordResetRequired,

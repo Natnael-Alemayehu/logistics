@@ -201,6 +201,9 @@ type Principal struct {
 	TenantName string
 	TenantPlan string
 	TrialEnds  *time.Time
+	// SubscriptionEnds is when the company's plan ends, if its renewal was
+	// turned off.
+	SubscriptionEnds *time.Time
 	// DebtNumber and DebtDue are the company's oldest unpaid renewal or
 	// usage invoice, if any: read-only mode follows from them.
 	DebtNumber string

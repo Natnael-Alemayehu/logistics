@@ -138,6 +138,8 @@ SELECT s.id AS session_id, s.kind, s.remember, s.last_seen_at, s.expires_at,
        (u.email_verified_at IS NOT NULL)::bool AS email_verified,
        t.name AS tenant_name, t.is_active AS tenant_active, t.plan AS tenant_plan,
        t.trial_ends_at,
+       -- When a subscription that won't renew ends.
+       (CASE WHEN t.renewal_cancelled_at IS NOT NULL THEN t.period_end END)::timestamptz AS subscription_ends_at,
        -- The oldest unpaid renewal or usage invoice, on which read-only mode
        -- depends.
        COALESCE((SELECT i.number FROM invoices i
@@ -179,6 +181,7 @@ type GetSessionPrincipalRow struct {
 	TenantActive          bool               `db:"tenant_active" json:"tenant_active"`
 	TenantPlan            string             `db:"tenant_plan" json:"tenant_plan"`
 	TrialEndsAt           pgtype.Timestamptz `db:"trial_ends_at" json:"trial_ends_at"`
+	SubscriptionEndsAt    pgtype.Timestamptz `db:"subscription_ends_at" json:"subscription_ends_at"`
 	DebtNumber            string             `db:"debt_number" json:"debt_number"`
 	DebtDueAt             pgtype.Timestamptz `db:"debt_due_at" json:"debt_due_at"`
 }
@@ -206,6 +209,7 @@ func (q *Queries) GetSessionPrincipal(ctx context.Context, arg GetSessionPrincip
 		&i.TenantActive,
 		&i.TenantPlan,
 		&i.TrialEndsAt,
+		&i.SubscriptionEndsAt,
 		&i.DebtNumber,
 		&i.DebtDueAt,
 	)

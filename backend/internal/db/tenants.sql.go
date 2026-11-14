@@ -15,7 +15,7 @@ const createTenant = `-- name: CreateTenant :one
 INSERT INTO tenants (name, slug, plan, max_drivers, contact_phone, contact_email, region_city, trial_ends_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (slug) DO NOTHING
-RETURNING id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day
+RETURNING id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at
 `
 
 type CreateTenantParams struct {
@@ -79,12 +79,13 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 		&i.Tin,
 		&i.AlertOnDelivery,
 		&i.BillingAnchorDay,
+		&i.RenewalCancelledAt,
 	)
 	return i, err
 }
 
 const getTenantByID = `-- name: GetTenantByID :one
-SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day FROM tenants WHERE id = $1
+SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at FROM tenants WHERE id = $1
 `
 
 func (q *Queries) GetTenantByID(ctx context.Context, id pgtype.UUID) (Tenant, error) {
@@ -126,12 +127,13 @@ func (q *Queries) GetTenantByID(ctx context.Context, id pgtype.UUID) (Tenant, er
 		&i.Tin,
 		&i.AlertOnDelivery,
 		&i.BillingAnchorDay,
+		&i.RenewalCancelledAt,
 	)
 	return i, err
 }
 
 const getTenantBySlug = `-- name: GetTenantBySlug :one
-SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day FROM tenants WHERE slug = $1
+SELECT id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at FROM tenants WHERE slug = $1
 `
 
 func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (Tenant, error) {
@@ -173,12 +175,13 @@ func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (Tenant, err
 		&i.Tin,
 		&i.AlertOnDelivery,
 		&i.BillingAnchorDay,
+		&i.RenewalCancelledAt,
 	)
 	return i, err
 }
 
 const listTenantsWithStats = `-- name: ListTenantsWithStats :many
-SELECT t.id, t.name, t.slug, t.plan, t.max_drivers, t.is_active, t.created_at, t.updated_at, t.contact_phone, t.contact_email, t.region_city, t.max_active_per_driver, t.sms_on_created, t.sms_on_dispatched, t.sms_on_arrived, t.sms_on_delivered, t.sms_on_cancelled, t.sms_on_delayed, t.sms_driver_on_assign, t.trial_ends_at, t.billing_cycle, t.period_start, t.period_end, t.pending_plan, t.pending_cycle, t.enterprise_price_santim, t.enterprise_max_drivers, t.enterprise_sms_quota, t.subscribed_at, t.sms_quota, t.sms_month_quota, t.sms_billed_month, t.tin, t.alert_on_delivery, t.billing_anchor_day,
+SELECT t.id, t.name, t.slug, t.plan, t.max_drivers, t.is_active, t.created_at, t.updated_at, t.contact_phone, t.contact_email, t.region_city, t.max_active_per_driver, t.sms_on_created, t.sms_on_dispatched, t.sms_on_arrived, t.sms_on_delivered, t.sms_on_cancelled, t.sms_on_delayed, t.sms_driver_on_assign, t.trial_ends_at, t.billing_cycle, t.period_start, t.period_end, t.pending_plan, t.pending_cycle, t.enterprise_price_santim, t.enterprise_max_drivers, t.enterprise_sms_quota, t.subscribed_at, t.sms_quota, t.sms_month_quota, t.sms_billed_month, t.tin, t.alert_on_delivery, t.billing_anchor_day, t.renewal_cancelled_at,
        (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role = 'driver' AND u.is_active)::bigint AS drivers,
        (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role <> 'driver' AND u.is_active)::bigint AS staff,
        (SELECT COUNT(*) FROM shipments s WHERE s.tenant_id = t.id AND s.created_at > NOW() - INTERVAL '30 days')::bigint AS shipments_30d,
@@ -225,6 +228,7 @@ type ListTenantsWithStatsRow struct {
 	Tin                   *string            `db:"tin" json:"tin"`
 	AlertOnDelivery       bool               `db:"alert_on_delivery" json:"alert_on_delivery"`
 	BillingAnchorDay      *int32             `db:"billing_anchor_day" json:"billing_anchor_day"`
+	RenewalCancelledAt    pgtype.Timestamptz `db:"renewal_cancelled_at" json:"renewal_cancelled_at"`
 	Drivers               int64              `db:"drivers" json:"drivers"`
 	Staff                 int64              `db:"staff" json:"staff"`
 	Shipments30d          int64              `db:"shipments_30d" json:"shipments_30d"`
@@ -277,6 +281,7 @@ func (q *Queries) ListTenantsWithStats(ctx context.Context) ([]ListTenantsWithSt
 			&i.Tin,
 			&i.AlertOnDelivery,
 			&i.BillingAnchorDay,
+			&i.RenewalCancelledAt,
 			&i.Drivers,
 			&i.Staff,
 			&i.Shipments30d,
@@ -325,7 +330,7 @@ SET name = $2,
     alert_on_delivery = $15,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day
+RETURNING id, name, slug, plan, max_drivers, is_active, created_at, updated_at, contact_phone, contact_email, region_city, max_active_per_driver, sms_on_created, sms_on_dispatched, sms_on_arrived, sms_on_delivered, sms_on_cancelled, sms_on_delayed, sms_driver_on_assign, trial_ends_at, billing_cycle, period_start, period_end, pending_plan, pending_cycle, enterprise_price_santim, enterprise_max_drivers, enterprise_sms_quota, subscribed_at, sms_quota, sms_month_quota, sms_billed_month, tin, alert_on_delivery, billing_anchor_day, renewal_cancelled_at
 `
 
 type UpdateTenantSettingsParams struct {
@@ -401,6 +406,7 @@ func (q *Queries) UpdateTenantSettings(ctx context.Context, arg UpdateTenantSett
 		&i.Tin,
 		&i.AlertOnDelivery,
 		&i.BillingAnchorDay,
+		&i.RenewalCancelledAt,
 	)
 	return i, err
 }
