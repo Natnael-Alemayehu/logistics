@@ -38,6 +38,10 @@ const (
 // to a storage failure worth retrying.
 var ErrMediaInvalid = &Error{Kind: KindInvalid, Field: "photos", Message: "A photo or the signature could not be read."}
 
+// ErrMediaTooLarge is a photo or signature with more pixels than is ever
+// needed, refused before it is decoded.
+var ErrMediaTooLarge = &Error{Kind: KindInvalid, Field: "photos", Message: "A photo or the signature is too large. Take the photo again, or at a lower resolution."}
+
 // SavePOD stores a signature and photos given as data URLs, returning their
 // keys.
 func (m *MediaService) SavePOD(ctx context.Context, shipmentID, signature string, photos []string) (string, []string, error) {
@@ -78,6 +82,9 @@ func (m *MediaService) Delete(ctx context.Context, keys ...string) {
 }
 
 func classifyUpload(err error) error {
+	if errors.Is(err, storage.ErrImageTooLarge) {
+		return ErrMediaTooLarge
+	}
 	msg := err.Error()
 	if errors.Is(err, storage.ErrInvalidImageData) || errors.Is(err, storage.ErrInvalidSignature) ||
 		strings.Contains(msg, "decode") {

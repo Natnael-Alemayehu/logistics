@@ -23,12 +23,18 @@ const (
 	MaxPhotosPerPOD    = 3
 	SignatureMaxWidth  = 400
 	SignatureMaxHeight = 200
+	// MaxImageSide is the most pixels a side an uploaded image may have.
+	// Decoding allocates every pixel, so a small file claiming a huge size
+	// (a blank 8000×8000 PNG is a few kilobytes) would take gigabytes. A
+	// phone camera's photo is about 4000 a side.
+	MaxImageSide = 4096
 )
 
 var (
 	ErrTooManyPhotos    = errors.New("exceeded maximum photos per delivery")
 	ErrInvalidImageData = errors.New("invalid image data")
 	ErrInvalidSignature = errors.New("invalid signature data")
+	ErrImageTooLarge    = errors.New("image too large")
 )
 
 type PODStorage struct {
@@ -44,14 +50,14 @@ func (p *PODStorage) UploadSignature(ctx context.Context, shipmentID, signatureD
 		return "", ErrInvalidSignature
 	}
 
-	var img image.Image
-	var err error
-
+	// An SVG can carry scripts and links, and would be served from the
+	// dashboard's own origin: signatures are images drawn on the phone, sent
+	// as PNG.
 	if strings.HasPrefix(signatureData, "data:image/svg+xml") {
-		return p.uploadSVGSignature(ctx, shipmentID, signatureData)
+		return "", ErrInvalidSignature
 	}
 
-	img, err = p.decodeBase64Image(signatureData)
+	img, err := p.decodeBase64Image(signatureData)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode signature: %w", err)
 	}
@@ -68,29 +74,6 @@ func (p *PODStorage) UploadSignature(ctx context.Context, shipmentID, signatureD
 	reader := bytes.NewReader(buf.Bytes())
 	if _, err := p.storage.Upload(ctx, path, reader, "image/png"); err != nil {
 		return "", fmt.Errorf("failed to upload signature: %w", err)
-	}
-
-	return path, nil
-}
-
-func (p *PODStorage) uploadSVGSignature(ctx context.Context, shipmentID, signatureData string) (string, error) {
-	data := signatureData
-	if strings.HasPrefix(data, "data:image/svg+xml;base64,") {
-		data = strings.TrimPrefix(data, "data:image/svg+xml;base64,")
-	} else if strings.HasPrefix(data, "data:image/svg+xml,") {
-		data = strings.TrimPrefix(data, "data:image/svg+xml,")
-	}
-
-	decoded, err := base64.StdEncoding.DecodeString(data)
-	if err != nil {
-		decoded = []byte(data)
-	}
-
-	path := podPath(shipmentID, "signature", ".svg")
-
-	reader := bytes.NewReader(decoded)
-	if _, err := p.storage.Upload(ctx, path, reader, "image/svg+xml"); err != nil {
-		return "", fmt.Errorf("failed to upload SVG signature: %w", err)
 	}
 
 	return path, nil
@@ -183,8 +166,15 @@ func (p *PODStorage) decodeBase64Image(data string) (image.Image, error) {
 		}
 	}
 
-	reader := bytes.NewReader(decoded)
-	img, _, err := image.Decode(reader)
+	// The size first, from the header alone.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(decoded))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+	if cfg.Width > MaxImageSide || cfg.Height > MaxImageSide {
+		return nil, ErrImageTooLarge
+	}
+	img, _, err := image.Decode(bytes.NewReader(decoded))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
