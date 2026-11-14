@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -84,6 +85,9 @@ func (in *PODInput) Check() error {
 	in.RecipientName = strings.TrimSpace(in.RecipientName)
 	if in.RecipientName == "" {
 		return invalid("recipient_name", "Enter who received the delivery.")
+	}
+	if utf8.RuneCountInString(in.RecipientName) > 120 {
+		return invalid("recipient_name", "That name is too long.")
 	}
 	if p := strings.TrimSpace(in.RecipientPhone); p != "" {
 		n, err := phone.Normalize(p)

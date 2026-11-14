@@ -25,16 +25,16 @@ WHERE tenant_id = sqlc.arg(tenant_id)
   AND (cardinality(sqlc.arg(severities)::text[]) = 0 OR severity = ANY(sqlc.arg(severities)::text[]));
 
 -- name: CountUnreadAlerts :one
-SELECT COUNT(*) FROM alerts
-WHERE tenant_id = $1 AND read_at IS NULL;
+-- One person's badge: open alerts raised since they last opened the list.
+SELECT COUNT(*) FROM alerts a
+WHERE a.tenant_id = sqlc.arg(tenant_id) AND a.read_at IS NULL
+  AND a.created_at > COALESCE(
+      (SELECT u.alerts_seen_at FROM users u WHERE u.id = sqlc.arg(user_id) AND u.tenant_id = sqlc.arg(tenant_id)),
+      '-infinity'::timestamptz);
 
--- name: MarkAlertRead :exec
-UPDATE alerts SET read_at = COALESCE(read_at, NOW())
-WHERE id = $1 AND tenant_id = $2;
-
--- name: MarkAllAlertsRead :exec
-UPDATE alerts SET read_at = NOW()
-WHERE tenant_id = $1 AND read_at IS NULL;
+-- name: MarkAlertsSeen :exec
+UPDATE users SET alerts_seen_at = NOW()
+WHERE id = sqlc.arg(user_id) AND tenant_id = sqlc.arg(tenant_id);
 
 -- name: AcknowledgeAlert :exec
 UPDATE alerts

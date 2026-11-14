@@ -423,6 +423,7 @@ type User struct {
 	AppBatterySaver       bool               `db:"app_battery_saver" json:"app_battery_saver"`
 	AppVibrate            bool               `db:"app_vibrate" json:"app_vibrate"`
 	AnonymisedAt          pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
+	AlertsSeenAt          pgtype.Timestamptz `db:"alerts_seen_at" json:"alerts_seen_at"`
 }
 
 type Vehicle struct {

@@ -186,9 +186,10 @@ func (s *AlertService) List(ctx context.Context, tenantID pgtype.UUID, f AlertFi
 	return rows, total, err
 }
 
-// Unread counts alerts nobody has looked at, for the header badge.
-func (s *AlertService) Unread(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
-	return s.q.CountUnreadAlerts(ctx, tenantID)
+// Unread counts the open alerts raised since this person last opened the
+// alert list, for their header badge. Each person's badge is their own.
+func (s *AlertService) Unread(ctx context.Context, p *Principal) (int64, error) {
+	return s.q.CountUnreadAlerts(ctx, db.CountUnreadAlertsParams{TenantID: p.TenantID, UserID: p.UserID})
 }
 
 // Acknowledge marks an alert handled.
@@ -196,7 +197,7 @@ func (s *AlertService) Acknowledge(ctx context.Context, p *Principal, id pgtype.
 	return s.q.AcknowledgeAlert(ctx, db.AcknowledgeAlertParams{ID: id, TenantID: p.TenantID, AcknowledgedBy: p.UserID})
 }
 
-// MarkAllRead clears the unread badge.
-func (s *AlertService) MarkAllRead(ctx context.Context, tenantID pgtype.UUID) error {
-	return s.q.MarkAllAlertsRead(ctx, tenantID)
+// MarkSeen clears this person's badge, not anyone else's.
+func (s *AlertService) MarkSeen(ctx context.Context, p *Principal) error {
+	return s.q.MarkAlertsSeen(ctx, db.MarkAlertsSeenParams{UserID: p.UserID, TenantID: p.TenantID})
 }

@@ -11,6 +11,7 @@ import (
 	"compress/zlib"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"net/http"
@@ -565,4 +566,66 @@ func blankPNG(w, h int) string {
 	chunk("IDAT", idat.Bytes())
 	chunk("IEND", nil)
 	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(out.Bytes())
+}
+
+// TestAlertBadgeIsPerPerson (W3): one dispatcher opening the alert list
+// clears their own badge, not a colleague's.
+func TestAlertBadgeIsPerPerson(t *testing.T) {
+	e := newEnv(t)
+	admin := e.company("Badge Logistics")
+	email := "dispatch" + phoneNumber() + "@example.et"
+	p := admin.post("/app/team", url.Values{"full_name": {"Dawit Bekele"}, "email": {email}, "phone": {phoneNumber()}, "role": {"dispatcher"}})
+	m := secretRe.FindStringSubmatch(p.Body)
+	if m == nil {
+		t.Fatalf("add dispatcher: status %d %s", p.Status, errorText(p.Body))
+	}
+	disp := e.browser()
+	disp.mustPost("/login", url.Values{"identifier": {email}, "password": {strings.TrimSpace(m[1])}})
+	disp.mustPost("/app/account/password", url.Values{
+		"current_password": {strings.TrimSpace(m[1])}, "new_password": {"dispatch-pass-9"}, "confirm_password": {"dispatch-pass-9"},
+	})
+	badge := func(b *browser) int {
+		t.Helper()
+		var out struct{ Unread int }
+		p := b.get("/app/api/badge")
+		if p.Status != http.StatusOK {
+			t.Fatalf("badge: status %d", p.Status)
+		}
+		if err := json.Unmarshal([]byte(p.Body), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Unread
+	}
+	exec(t, `INSERT INTO alerts (tenant_id, alert_type, severity, message) VALUES ($1, 'driver_offline', 'warning', 'Quiet driver')`, admin.tenant())
+	if a, d := badge(admin), badge(disp); a != 1 || d != 1 {
+		t.Fatalf("badges %d and %d, want 1 each", a, d)
+	}
+	admin.get("/app/alerts")
+	if a, d := badge(admin), badge(disp); a != 0 || d != 1 {
+		t.Errorf("after the admin opened the list: badges %d and %d, want 0 and 1", a, d)
+	}
+	// A new alert shows on both again.
+	exec(t, `INSERT INTO alerts (tenant_id, alert_type, severity, message, created_at) VALUES ($1, 'sms_paused', 'warning', 'Texts paused', NOW() + INTERVAL '1 second')`, admin.tenant())
+	if a, d := badge(admin), badge(disp); a != 1 || d != 2 {
+		t.Errorf("after a new alert: badges %d and %d, want 1 and 2", a, d)
+	}
+}
+
+// TestAmharicNamesFit (W9): name limits count letters, not bytes. An
+// Amharic letter takes three bytes, so 50 letters used to be refused as
+// "too long".
+func TestAmharicNamesFit(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Amharic Names")
+	name := strings.Repeat("ሀ", 100) // 300 bytes
+	p := office.post("/app/drivers", url.Values{"full_name": {name}, "phone": {phoneNumber()}})
+	if strings.Contains(errorText(p.Body), "too long") {
+		t.Fatalf("a 100-letter Amharic name was refused: %s", errorText(p.Body))
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM users WHERE tenant_id = $1 AND full_name = $2`, office.tenant(), name); n != 1 {
+		t.Errorf("%d drivers with the name, want 1 (%d %s)", n, p.Status, errorText(p.Body))
+	}
+	if p := office.post("/app/drivers", url.Values{"full_name": {strings.Repeat("ሀ", 121)}, "phone": {phoneNumber()}}); !strings.Contains(errorText(p.Body), "too long") {
+		t.Errorf("121 letters: %d %s, want too long", p.Status, errorText(p.Body))
+	}
 }

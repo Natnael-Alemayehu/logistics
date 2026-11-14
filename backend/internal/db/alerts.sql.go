@@ -124,12 +124,21 @@ func (q *Queries) CountAlerts(ctx context.Context, arg CountAlertsParams) (int64
 }
 
 const countUnreadAlerts = `-- name: CountUnreadAlerts :one
-SELECT COUNT(*) FROM alerts
-WHERE tenant_id = $1 AND read_at IS NULL
+SELECT COUNT(*) FROM alerts a
+WHERE a.tenant_id = $1 AND a.read_at IS NULL
+  AND a.created_at > COALESCE(
+      (SELECT u.alerts_seen_at FROM users u WHERE u.id = $2 AND u.tenant_id = $1),
+      '-infinity'::timestamptz)
 `
 
-func (q *Queries) CountUnreadAlerts(ctx context.Context, tenantID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countUnreadAlerts, tenantID)
+type CountUnreadAlertsParams struct {
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	UserID   pgtype.UUID `db:"user_id" json:"user_id"`
+}
+
+// One person's badge: open alerts raised since they last opened the list.
+func (q *Queries) CountUnreadAlerts(ctx context.Context, arg CountUnreadAlertsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnreadAlerts, arg.TenantID, arg.UserID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -270,27 +279,17 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 	return items, nil
 }
 
-const markAlertRead = `-- name: MarkAlertRead :exec
-UPDATE alerts SET read_at = COALESCE(read_at, NOW())
+const markAlertsSeen = `-- name: MarkAlertsSeen :exec
+UPDATE users SET alerts_seen_at = NOW()
 WHERE id = $1 AND tenant_id = $2
 `
 
-type MarkAlertReadParams struct {
-	ID       pgtype.UUID `db:"id" json:"id"`
+type MarkAlertsSeenParams struct {
+	UserID   pgtype.UUID `db:"user_id" json:"user_id"`
 	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 }
 
-func (q *Queries) MarkAlertRead(ctx context.Context, arg MarkAlertReadParams) error {
-	_, err := q.db.Exec(ctx, markAlertRead, arg.ID, arg.TenantID)
-	return err
-}
-
-const markAllAlertsRead = `-- name: MarkAllAlertsRead :exec
-UPDATE alerts SET read_at = NOW()
-WHERE tenant_id = $1 AND read_at IS NULL
-`
-
-func (q *Queries) MarkAllAlertsRead(ctx context.Context, tenantID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, markAllAlertsRead, tenantID)
+func (q *Queries) MarkAlertsSeen(ctx context.Context, arg MarkAlertsSeenParams) error {
+	_, err := q.db.Exec(ctx, markAlertsSeen, arg.UserID, arg.TenantID)
 	return err
 }

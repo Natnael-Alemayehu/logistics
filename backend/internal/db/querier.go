@@ -78,7 +78,8 @@ type Querier interface {
 	// limits.
 	CountTenantSMSSegmentsSince(ctx context.Context, arg CountTenantSMSSegmentsSinceParams) (int64, error)
 	CountTrackingEventsByShipment(ctx context.Context, arg CountTrackingEventsByShipmentParams) (int64, error)
-	CountUnreadAlerts(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	// One person's badge: open alerts raised since they last opened the list.
+	CountUnreadAlerts(ctx context.Context, arg CountUnreadAlertsParams) (int64, error)
 	CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	// Counts a try at a code, unless it has had all its tries: then no row.
 	CountVerificationAttempt(ctx context.Context, arg CountVerificationAttemptParams) (int32, error)
@@ -336,8 +337,7 @@ type Querier interface {
 	// Held until the transaction ends: requests for one number and purpose
 	// take turns.
 	LockVerificationSubject(ctx context.Context, subject string) error
-	MarkAlertRead(ctx context.Context, arg MarkAlertReadParams) error
-	MarkAllAlertsRead(ctx context.Context, tenantID pgtype.UUID) error
+	MarkAlertsSeen(ctx context.Context, arg MarkAlertsSeenParams) error
 	MarkEmailFailed(ctx context.Context, arg MarkEmailFailedParams) error
 	MarkEmailRetry(ctx context.Context, arg MarkEmailRetryParams) error
 	MarkEmailSent(ctx context.Context, arg MarkEmailSentParams) error
