@@ -1,0 +1,11 @@
+{{define "content"}}{{$d := .Data}}
+<h1>Log</h1>
+<p class="lead">Every call between {{.AppName}} and the providers, newest first, with what was asked and answered. Secrets are masked.</p>
+<nav class="filters" aria-label="Services">
+  <a href="/log" {{if not $d.Service}}aria-current="true"{{end}}>All</a>
+  {{range $d.Services}}<a href="/log?service={{.}}" {{if eq . $d.Service}}aria-current="true"{{end}}>{{.}}</a>{{end}}
+</nav>
+<section id="log" data-poll>
+  {{template "events" $d.Events}}
+</section>
+{{end}}

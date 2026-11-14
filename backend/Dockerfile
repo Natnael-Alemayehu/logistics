@@ -1,27 +1,52 @@
-FROM golang:alpine AS builder
-
-WORKDIR /app
-
-RUN apk add --no-cache git
-
+# One image, one binary: the dashboard, public tracking, the driver app and
+# background jobs. Templates, static files and migrations are embedded.
+# Go's security fixes reach only its two newest releases: keep this on the
+# newer one, and CI's go-version with it.
+FROM golang:1.27-alpine AS build
+WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-
 COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/menged ./cmd/server
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
+# The provider sandbox (--target sandbox): its own image, for development
+# and staging. The app's image, the last stage, never contains it.
+FROM build AS sandbox-build
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/menged-sandbox ./cmd/sandbox
 
-FROM alpine:latest
+FROM alpine:3.22 AS sandbox
+# /keys belongs to the sandbox, so a new volume there takes its owner and
+# `menged-sandbox keys` can write the key pairs into it.
+RUN apk add --no-cache ca-certificates tzdata \
+ && adduser -D -H -u 10001 sandbox \
+ && mkdir /keys \
+ && chown sandbox /keys
+COPY --from=sandbox-build /out/menged-sandbox /usr/local/bin/menged-sandbox
+USER sandbox
+# Its pages show the time as a phone in Ethiopia would.
+ENV SANDBOX_ADDR=0.0.0.0:8091 \
+    SANDBOX_KEYS_DIR=/keys \
+    TZ=Africa/Addis_Ababa
+EXPOSE 8091
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD wget -qO- http://127.0.0.1:8091/healthz >/dev/null || exit 1
+ENTRYPOINT ["menged-sandbox"]
+CMD ["serve"]
 
-RUN apk --no-cache add ca-certificates tzdata
-
-WORKDIR /app
-
-COPY --from=builder /app/main .
-COPY --from=builder /app/migrations ./migrations
-
-RUN mkdir -p /app/keys
-
+FROM alpine:3.22
+RUN apk add --no-cache ca-certificates tzdata \
+ && adduser -D -H -u 10001 menged \
+ && mkdir -p /data/uploads /data/keys \
+ && chown -R menged /data
+COPY --from=build /out/menged /usr/local/bin/menged
+USER menged
+WORKDIR /data
+ENV PORT=8080 \
+    STORAGE_PATH=/data/uploads \
+    APP_SECRET_FILE=/data/keys/app_secret
+VOLUME /data
 EXPOSE 8080
-
-CMD ["./main"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
+  CMD wget -qO- http://127.0.0.1:8080/readyz >/dev/null || exit 1
+ENTRYPOINT ["menged"]
+CMD ["serve"]

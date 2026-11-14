@@ -1,0 +1,84 @@
+{{define "content"}}{{$d := .Data}}{{$h := $d.Health}}
+<div class="page-head">
+  <div>
+    <h1>System health</h1>
+    <p class="muted">Version {{$d.Version}} · this server up {{span $d.Uptime}}{{with $d.Sockets}} · {{.}} live {{if eq . 1}}connection{{else}}connections{{end}} to dashboards{{end}}</p>
+  </div>
+  <div class="actions"><a class="btn" href="/app/platform/health">Refresh</a></div>
+</div>
+
+<section class="kpis">
+  <div class="kpi"><span class="kpi-n">{{millis $h.DBLatency}}</span><span class="kpi-l">Database round trip</span></div>
+  <div class="kpi"><span class="kpi-n">{{bytes $h.DBSize}}</span><span class="kpi-l">Database size</span></div>
+  <div class="kpi"><span class="kpi-n">{{$h.PoolInUse}} of {{$h.PoolTotal}}</span><span class="kpi-l">Database connections in use</span></div>
+  {{if $d.DiskTotal}}
+  <div class="kpi"><span class="kpi-n {{if $d.DiskLow}}text-bad{{end}}">{{bytes $d.DiskFree}}</span><span class="kpi-l">Free for photos and signatures, of {{bytes $d.DiskTotal}}</span></div>
+  {{else}}
+  <div class="kpi"><span class="kpi-n"><a href="/app/platform/support">{{$h.WaitingTickets}}</a></span><span class="kpi-l">Support tickets waiting</span></div>
+  {{end}}
+</section>
+
+<div class="grid-detail">
+<div class="col-main">
+  <section class="card card-flush">
+    <div class="card-head"><h2>Background jobs</h2><span class="muted small">One server runs them at a time</span></div>
+    <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Job</th><th>Last run</th><th class="num">Took</th><th class="num">Failed</th><th>Last error</th></tr></thead>
+      <tbody>
+      {{range $h.Jobs}}
+      <tr>
+        <td><strong>{{.Label}}</strong> {{if .Late}}<span class="badge s-issue">Not running</span>{{else if and .Run .Run.Error}}<span class="badge s-delayed">Failing</span>{{else}}<span class="badge s-delivered">OK</span>{{end}}
+          <div class="small muted">every {{span .Every}}</div></td>
+        <td class="nowrap">{{with .Run}}{{ago .StartedAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
+        <td class="num nowrap">{{with .Run}}{{grouped .DurationMs}} ms{{end}}</td>
+        <td class="num nowrap">{{with .Run}}{{grouped .Failures}} of {{grouped .Runs}}{{end}}</td>
+        <td class="small">{{with .Run}}{{with .Error}}<span class="text-bad">{{truncate 160 (str .)}}</span>{{end}}{{if and .Error .LastOkAt.Valid}}<div class="muted">Last worked {{ago .LastOkAt}}</div>{{end}}{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="card card-flush">
+    <div class="card-head"><h2>Texts and emails</h2><span class="muted small">Waiting now, and everything from the last 24 hours</span></div>
+    <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Kind</th><th>Status</th><th class="num">Messages</th><th class="num">Oldest</th></tr></thead>
+      <tbody>
+      {{range $h.Outbox}}
+      <tr>
+        <td>{{if eq .Channel "sms"}}Text messages{{else}}Email{{end}}</td>
+        <td>{{if eq .Status "failed"}}<span class="text-bad">failed</span>{{else}}{{.Status}}{{end}}</td>
+        <td class="num">{{grouped .Messages}}</td>
+        <td class="num nowrap">{{ago .Oldest}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="4" class="muted">Nothing waiting or sent in the last day.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+</div>
+
+<aside class="col-side">
+  <section class="card">
+    <h2>Database schema</h2>
+    {{if eq $h.Migration $d.Latest}}<p class="text-good">Up to date</p><p class="small muted">Migration {{$h.Migration}}</p>
+    {{else if lt $h.Migration $d.Latest}}<p class="text-bad">Behind this version</p><p class="small">The database is at {{$h.Migration}}; this version needs {{$d.Latest}}. Start a server with AUTO_MIGRATE on to apply the rest.</p>
+    {{else}}<p class="text-warn">Newer than this version</p><p class="small">The database is at {{$h.Migration}}, ahead of this version's {{$d.Latest}}: a newer release has run against it.</p>{{end}}
+  </section>
+  <section class="card">
+    <h2>Services</h2>
+    {{if or .App.MockSMS .App.MockMail .App.MockPay}}<p class="small muted">Simulated services print what they would send on the server terminal.</p>{{end}}
+    <dl class="facts">
+      {{range $d.Providers}}<div><dt>{{.What}}</dt><dd>{{.Name}}{{if .Mock}} <span class="badge s-delayed">Simulated</span>{{else if .Sandbox}} <span class="badge s-delayed">Sandbox</span>{{end}}</dd></div>{{end}}
+      <div><dt>Photos and signatures</dt><dd>{{if eq $d.Storage "local"}}This server's disk{{else}}S3{{with $d.Bucket}}, bucket {{.}}{{end}}{{end}}</dd></div>
+      <div><dt>Support</dt><dd><a href="/app/platform/support">{{$h.WaitingTickets}} waiting for an answer</a></dd></div>
+    </dl>
+  </section>
+</aside>
+</div>
+{{end}}

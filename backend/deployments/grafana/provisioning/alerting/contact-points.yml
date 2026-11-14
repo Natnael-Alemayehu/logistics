@@ -1,0 +1,20 @@
+# Where the alerts in rules.yml go: email to GRAFANA_ALERT_EMAIL, sent with
+# the SMTP settings the compose file gives Grafana. A provisioning file
+# expands ${VAR} from Grafana's environment.
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: Menged operators
+    receivers:
+      - uid: menged-operators-email
+        type: email
+        settings:
+          addresses: ${GRAFANA_ALERT_EMAIL}
+          singleEmail: true
+policies:
+  - orgId: 1
+    receiver: Menged operators
+    group_by: [grafana_folder, alertname]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h

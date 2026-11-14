@@ -4,431 +4,178 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// fakeGateway answers the Ethio telecom adapter's calls. send decides each
+// /sms/send answer; by default the message is accepted as MSG<n>.
+type fakeGateway struct {
+	mu        sync.Mutex
+	expiresIn int
+	logins    int
+	sends     int
+	tokens    []string
+	requests  []ethioTelecomSMSRequest
+	send      func(n int) (int, any)
+}
+
+func (g *fakeGateway) serve(tb testing.TB) *httptest.Server {
+	tb.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/auth/token":
+			var req ethioTelecomAuthRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			if req.APIKey != "api-key" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			g.logins++
+			json.NewEncoder(w).Encode(map[string]any{"token": fmt.Sprintf("token-%d", g.logins), "expires_in": g.expiresIn})
+		case "/sms/send":
+			g.sends++
+			g.tokens = append(g.tokens, r.Header.Get("Authorization"))
+			var req ethioTelecomSMSRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			g.requests = append(g.requests, req)
+			status, body := http.StatusOK, any(map[string]any{"message_id": fmt.Sprintf("MSG%d", g.sends), "status": "accepted"})
+			if g.send != nil {
+				status, body = g.send(g.sends)
+			}
+			w.WriteHeader(status)
+			json.NewEncoder(w).Encode(body)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	tb.Cleanup(srv.Close)
+	return srv
+}
+
 func TestEthioTelecomProvider_Name(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
+	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{})
 	assert.Equal(t, "ethiotelecom", provider.Name())
 }
 
 func TestEthioTelecomProvider_Send_Success(t *testing.T) {
-	authCalled := false
-	sendCalled := false
+	g := &fakeGateway{expiresIn: 3600}
+	provider := NewEthioTelecomProvider(g.serve(t).URL+"/", "api-key", "SENDER", &mockLogger{})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			authCalled = true
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
-
-		if strings.Contains(r.URL.Path, "sms/send") {
-			sendCalled = true
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"message_id": "MSG123",
-				"status":     "success",
-			})
-		}
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
+	id, err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
 	require.NoError(t, err)
-	assert.True(t, authCalled)
-	assert.True(t, sendCalled)
+	assert.Equal(t, "MSG1", id)
+	assert.Equal(t, []ethioTelecomSMSRequest{{To: "+251912345678", From: "SENDER", Message: "Test message"}}, g.requests)
+	assert.Equal(t, []string{"Bearer token-1"}, g.tokens)
 }
 
 func TestEthioTelecomProvider_Send_InvalidPhone(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
+	g := &fakeGateway{expiresIn: 3600}
+	provider := NewEthioTelecomProvider(g.serve(t).URL, "api-key", "SENDER", &mockLogger{})
 
-	err := provider.Send(context.Background(), "invalid", "Test message", MessageTypeNotification)
-	require.Error(t, err)
-	assert.Equal(t, ErrInvalidPhone, err)
+	_, err := provider.Send(context.Background(), "invalid", "Test message", MessageTypeNotification)
+	assert.ErrorIs(t, err, ErrInvalidPhone)
+	assert.ErrorIs(t, err, ErrRejected)
+	assert.Zero(t, g.logins+g.sends, "nothing is sent for a number that can't be one")
 }
 
-func TestEthioTelecomProvider_Send_OptedOut(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	optOutStore.AddOptOut("+251912345678")
+func TestEthioTelecomProvider_ReusesItsToken(t *testing.T) {
+	g := &fakeGateway{expiresIn: 3600}
+	provider := NewEthioTelecomProvider(g.serve(t).URL, "api-key", "SENDER", &mockLogger{})
 
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
+	for _, body := range []string{"Test 1", "Test 2"} {
+		_, err := provider.Send(context.Background(), "0912345678", body, MessageTypeNotification)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 1, g.logins)
 
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
-	require.Error(t, err)
-	assert.Equal(t, ErrOptedOut, err)
+	// A token about to expire is replaced before it is used.
+	g.expiresIn = 30
+	provider.token = ""
+	for _, body := range []string{"Test 3", "Test 4"} {
+		_, err := provider.Send(context.Background(), "0912345678", body, MessageTypeNotification)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 3, g.logins)
 }
 
-func TestEthioTelecomProvider_Send_RateLimited(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, &alwaysBlockRateLimiter{}, nil)
-
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
-	require.Error(t, err)
-	assert.Equal(t, ErrRateLimited, err)
-}
-
-func TestEthioTelecomProvider_Send_APIError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
+func TestEthioTelecomProvider_SignsInAgainWhenTheTokenIsRefused(t *testing.T) {
+	g := &fakeGateway{expiresIn: 3600}
+	g.send = func(n int) (int, any) {
+		if n == 1 {
+			return http.StatusUnauthorized, map[string]any{"error": "token expired"}
 		}
+		return http.StatusOK, map[string]any{"message_id": "MSG-RETRY", "status": "queued"}
+	}
+	provider := NewEthioTelecomProvider(g.serve(t).URL, "api-key", "SENDER", &mockLogger{})
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "error",
-			"error":  "Invalid request",
-		})
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "API error")
-}
-
-func TestEthioTelecomProvider_SendBatch_Success(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
-
-		if strings.Contains(r.URL.Path, "sms/bulk") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"results": []map[string]interface{}{
-					{"to": "+251912345678", "message_id": "MSG1", "status": "success"},
-					{"to": "+251712345678", "message_id": "MSG2", "status": "success"},
-				},
-			})
-		}
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	err := provider.SendBatch(context.Background(), []string{"0912345678", "0712345678"}, "Test message", MessageTypeNotification)
+	id, err := provider.Send(context.Background(), "0912345678", "Test", MessageTypeNotification)
 	require.NoError(t, err)
-}
+	assert.Equal(t, "MSG-RETRY", id)
+	assert.Equal(t, []string{"Bearer token-1", "Bearer token-2"}, g.tokens)
 
-func TestEthioTelecomProvider_SendBatch_EmptyRecipients(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	err := provider.SendBatch(context.Background(), []string{}, "Test message", MessageTypeNotification)
-	require.NoError(t, err)
-}
-
-func TestEthioTelecomProvider_SendBatch_AllOptedOut(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	optOutStore.AddOptOut("+251912345678")
-	optOutStore.AddOptOut("+251712345678")
-
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	err := provider.SendBatch(context.Background(), []string{"0912345678", "0712345678"}, "Test message", MessageTypeNotification)
-	require.NoError(t, err)
-}
-
-func TestEthioTelecomProvider_SendBatch_PartialFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
-
-		if strings.Contains(r.URL.Path, "sms/bulk") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"results": []map[string]interface{}{
-					{"to": "+251912345678", "message_id": "MSG1", "status": "success"},
-					{"to": "+251712345678", "status": "failed", "error": "Network error"},
-				},
-			})
-		}
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	err := provider.SendBatch(context.Background(), []string{"0912345678", "0712345678"}, "Test message", MessageTypeNotification)
+	// Refused again, the message waits for the outbox to try later.
+	g.send = func(int) (int, any) { return http.StatusUnauthorized, map[string]any{} }
+	_, err = provider.Send(context.Background(), "0912345678", "Test", MessageTypeNotification)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "errors")
+	assert.NotErrorIs(t, err, ErrRejected)
+	assert.Equal(t, 4, g.sends, "one retry, not more")
 }
 
-func TestEthioTelecomProvider_CheckStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
+func TestEthioTelecomProvider_RefusedKey(t *testing.T) {
+	g := &fakeGateway{expiresIn: 3600}
+	provider := NewEthioTelecomProvider(g.serve(t).URL, "wrong-key", "SENDER", &mockLogger{})
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "delivered",
-		})
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	status, err := provider.CheckStatus(context.Background(), "MSG123")
-	require.NoError(t, err)
-	assert.Equal(t, "delivered", status)
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_Stop(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	provider.HandleOptOutMessage("STOP", "0912345678")
-
-	assert.True(t, optOutStore.IsOptedOut("+251912345678"))
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_Quit(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	provider.HandleOptOutMessage("QUIT", "0912345678")
-
-	assert.True(t, optOutStore.IsOptedOut("+251912345678"))
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_Subscribe(t *testing.T) {
-	optOutStore := NewInMemoryOptOutStore()
-	optOutStore.AddOptOut("+251912345678")
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, optOutStore)
-
-	provider.HandleOptOutMessage("SUBSCRIBE", "0912345678")
-
-	assert.False(t, optOutStore.IsOptedOut("+251912345678"))
-}
-
-func TestEthioTelecomProvider_HandleOptOutMessage_NoStore(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	provider.HandleOptOutMessage("STOP", "0912345678")
-}
-
-func TestEthioTelecomProvider_TokenManagement(t *testing.T) {
-	authCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			authCount++
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message_id": "MSG123",
-			"status":     "success",
-		})
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	_ = provider.Send(context.Background(), "0912345678", "Test 1", MessageTypeNotification)
-	_ = provider.Send(context.Background(), "0912345678", "Test 2", MessageTypeNotification)
-
-	assert.Equal(t, 1, authCount)
-}
-
-func TestEthioTelecomProvider_TokenExpiry(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": -1,
-			})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message_id": "MSG123",
-			"status":     "success",
-		})
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	err := provider.Send(context.Background(), "0912345678", "Test message", MessageTypeNotification)
-	require.NoError(t, err)
-}
-
-func TestEthioTelecomProvider_InvalidateToken(t *testing.T) {
-	provider := NewEthioTelecomProvider("http://api.example.com", "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	provider.token = "existing-token"
-	provider.tokenExpiry = provider.tokenExpiry.Add(1 * time.Hour)
-
-	provider.invalidateToken()
-
-	assert.Empty(t, provider.token)
-	assert.True(t, provider.tokenExpiry.IsZero())
-}
-
-func TestEthioTelecomProvider_SendWithRetry_Success(t *testing.T) {
-	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
-
-		attempts++
-		if attempts < 2 {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message_id": "MSG123",
-			"status":     "success",
-		})
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	msgID, err := provider.sendWithRetry(context.Background(), "+251912345678", "Test", 3)
-	require.NoError(t, err)
-	assert.Equal(t, "MSG123", msgID)
-	assert.Equal(t, 2, attempts)
-}
-
-func TestEthioTelecomProvider_SendWithRetry_MaxRetries(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
-
-	_, err := provider.sendWithRetry(context.Background(), "+251912345678", "Test", 3)
+	_, err := provider.Send(context.Background(), "0912345678", "Test", MessageTypeNotification)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed after 3 retries")
+	assert.NotErrorIs(t, err, ErrRejected, "a deployment's wrong key mustn't fail the messages for good")
+	assert.Zero(t, g.sends)
 }
 
-func TestIsAuthError(t *testing.T) {
-	tests := []struct {
-		err      error
-		expected bool
+func TestEthioTelecomProvider_ErrorClasses(t *testing.T) {
+	for name, c := range map[string]struct {
+		status   int
+		body     any
+		rejected bool
 	}{
-		{nil, false},
-		{errors.New("authentication failed"), true},
-		{errors.New("token expired"), true},
-		{errors.New("other error"), false},
-	}
+		"bad request":     {http.StatusBadRequest, map[string]any{"status": "error", "error": "invalid destination"}, true},
+		"forbidden":       {http.StatusForbidden, map[string]any{"error": "number barred"}, true},
+		"rejected answer": {http.StatusOK, map[string]any{"status": "rejected", "error": "not a mobile number"}, true},
+		"timeout":         {http.StatusRequestTimeout, map[string]any{}, false},
+		"too many":        {http.StatusTooManyRequests, map[string]any{}, false},
+		"server error":    {http.StatusInternalServerError, map[string]any{}, false},
+		"unavailable":     {http.StatusServiceUnavailable, map[string]any{}, false},
+		"unknown status":  {http.StatusOK, map[string]any{"status": "failed", "error": "try later"}, false},
+		"unreadable":      {http.StatusOK, "<html>", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := &fakeGateway{expiresIn: 3600, send: func(int) (int, any) { return c.status, c.body }}
+			provider := NewEthioTelecomProvider(g.serve(t).URL, "api-key", "SENDER", &mockLogger{})
 
-	for _, tt := range tests {
-		result := isAuthError(tt.err)
-		assert.Equal(t, tt.expected, result)
+			_, err := provider.Send(context.Background(), "0912345678", "Test", MessageTypeNotification)
+			require.Error(t, err)
+			assert.Equal(t, c.rejected, errors.Is(err, ErrRejected), "%v", err)
+			assert.Equal(t, 1, g.sends, "one attempt per send; retries are the outbox's")
+		})
 	}
-}
-
-func TestNormalizeOptOutBody(t *testing.T) {
-	result := normalizeOptOutBody("STOP")
-	assert.Equal(t, "STOP", result)
 }
 
 func BenchmarkEthioTelecomProvider_Send(b *testing.B) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "auth/token") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":      "test-token",
-				"expires_in": 3600,
-			})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message_id": "MSG123",
-			"status":     "success",
-		})
-	}))
-	defer server.Close()
-
-	provider := NewEthioTelecomProvider(server.URL, "api-key", "SENDER", &mockLogger{}, nil, nil)
+	g := &fakeGateway{expiresIn: 3600}
+	provider := NewEthioTelecomProvider(g.serve(b).URL, "api-key", "SENDER", &mockLogger{})
 	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = provider.Send(ctx, "0912345678", "Test", MessageTypeNotification)
+		_, _ = provider.Send(ctx, "0912345678", "Test", MessageTypeNotification)
 	}
 }

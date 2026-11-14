@@ -1,191 +1,85 @@
-// Package service holds the service logic
 package service
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/model"
 )
 
-type AuditService struct {
-	queries *db.Queries
-}
+// AuditService records security-relevant actions: sign-ins, account and
+// credential changes, settings. What happens to shipments is recorded in
+// their own timeline (shipment_events) instead.
+type AuditService struct{ *core }
 
-func NewAuditService(queries *db.Queries) *AuditService {
-	return &AuditService{queries: queries}
-}
-
-type AuditLogInput struct {
-	TenantID   string
-	UserID     string
-	Action     string
-	EntityType string
-	EntityID   string
-	OldValue   interface{}
-	NewValue   interface{}
-	IPAddress  string
-	UserAgent  string
-}
-
-func (s *AuditService) Log(ctx context.Context, input AuditLogInput) error {
-	var oldValueBytes, newValueBytes []byte
-	var err error
-
-	if input.OldValue != nil {
-		oldValueBytes, err = json.Marshal(input.OldValue)
-		if err != nil {
-			return fmt.Errorf("failed to marshal old value: %w", err)
-		}
-	}
-
-	if input.NewValue != nil {
-		newValueBytes, err = json.Marshal(input.NewValue)
-		if err != nil {
-			return fmt.Errorf("failed to marshal new value: %w", err)
-		}
-	}
-
-	_, err = s.queries.CreateAuditLog(ctx, db.CreateAuditLogParams{
-		TenantID:   toUUID(input.TenantID),
-		UserID:     toUUID(input.UserID),
-		Action:     input.Action,
-		EntityType: input.EntityType,
-		EntityID:   toUUID(input.EntityID),
-		OldValue:   oldValueBytes,
-		NewValue:   newValueBytes,
-		IpAddress:  toText(input.IPAddress),
-		UserAgent:  toText(input.UserAgent),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create audit log: %w", err)
-	}
-
-	return nil
-}
-
-func (s *AuditService) ListByTenant(ctx context.Context, tenantID string, page, perPage int) ([]model.AuditLog, int, error) {
-	offset := (page - 1) * perPage
-
-	logs, err := s.queries.ListAuditLogsByTenant(ctx, db.ListAuditLogsByTenantParams{
-		TenantID: toUUID(tenantID),
-		Limit:    int32(perPage),
-		Offset:   int32(offset),
-	})
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list audit logs: %w", err)
-	}
-
-	result := make([]model.AuditLog, len(logs))
-	for i, l := range logs {
-		result[i] = *dbAuditLogToModel(&l)
-	}
-
-	return result, len(result), nil
-}
-
-func (s *AuditService) ListByUser(ctx context.Context, userID string, page, perPage int) ([]model.AuditLog, error) {
-	offset := (page - 1) * perPage
-
-	logs, err := s.queries.ListAuditLogsByUser(ctx, db.ListAuditLogsByUserParams{
-		UserID: toUUID(userID),
-		Limit:  int32(perPage),
-		Offset: int32(offset),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list audit logs: %w", err)
-	}
-
-	result := make([]model.AuditLog, len(logs))
-	for i, l := range logs {
-		result[i] = *dbAuditLogToModel(&l)
-	}
-
-	return result, nil
-}
-
-func (s *AuditService) ListByEntity(ctx context.Context, entityType, entityID string, page, perPage int) ([]model.AuditLog, error) {
-	offset := (page - 1) * perPage
-
-	logs, err := s.queries.ListAuditLogsByEntity(ctx, db.ListAuditLogsByEntityParams{
+// write records an action within the caller's transaction. A failure is
+// logged rather than returned: losing an audit row must not undo the action.
+func (c *core) audit(ctx context.Context, q *db.Queries, a Actor, action, entityType string, entityID pgtype.UUID, oldValue, newValue any) {
+	_, err := q.CreateAuditLog(ctx, db.CreateAuditLogParams{
+		TenantID:   a.TenantID,
+		UserID:     a.UserID,
+		Action:     action,
 		EntityType: entityType,
-		EntityID:   toUUID(entityID),
-		Limit:      int32(perPage),
-		Offset:     int32(offset),
+		EntityID:   entityID,
+		OldValue:   mustJSON(oldValue),
+		NewValue:   mustJSON(newValue),
+		IpAddress:  toText(a.IP),
+		UserAgent:  toText(a.UserAgent),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list audit logs: %w", err)
+		c.log.Error().Err(err).Str("action", action).Msg("write audit log")
 	}
-
-	result := make([]model.AuditLog, len(logs))
-	for i, l := range logs {
-		result[i] = *dbAuditLogToModel(&l)
-	}
-
-	return result, nil
 }
 
-func (s *AuditService) ListByDateRange(ctx context.Context, tenantID string, start, end time.Time, page, perPage int) ([]model.AuditLog, error) {
-	offset := (page - 1) * perPage
-
-	logs, err := s.queries.ListAuditLogsByDateRange(ctx, db.ListAuditLogsByDateRangeParams{
-		TenantID: toUUID(tenantID),
-		CreatedAt: pgtype.Timestamptz{
-			Time:  start,
-			Valid: true,
-		},
-		CreatedAt_2: pgtype.Timestamptz{
-			Time:  end,
-			Valid: true,
-		},
-		Limit:  int32(perPage),
-		Offset: int32(offset),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list audit logs: %w", err)
-	}
-
-	result := make([]model.AuditLog, len(logs))
-	for i, l := range logs {
-		result[i] = *dbAuditLogToModel(&l)
-	}
-
-	return result, nil
+// List returns a page of a tenant's audit log, newest first.
+func (s *AuditService) List(ctx context.Context, tenantID pgtype.UUID, page, perPage int) ([]db.AuditLog, error) {
+	limit, offset := pageBounds(page, perPage)
+	return s.q.ListAuditLogsByTenant(ctx, db.ListAuditLogsByTenantParams{TenantID: tenantID, Limit: limit, Offset: offset})
 }
 
-func dbAuditLogToModel(l *db.AuditLog) *model.AuditLog {
-	m := &model.AuditLog{
-		ID:         l.ID.String(),
-		Action:     l.Action,
-		EntityType: l.EntityType,
-		CreatedAt:  l.CreatedAt.Time,
-	}
+// AuditFilter narrows the platform's audit view. Zero fields match all.
+type AuditFilter struct {
+	// TenantID matches a company's own rows and the platform's actions on it.
+	TenantID     pgtype.UUID
+	Action, IP   string
+	Since, Until time.Time
+}
 
-	if l.TenantID.Valid {
-		m.TenantID = l.TenantID.String()
+// Platform returns a page of every company's audit log for the platform
+// admin's investigations, newest first (AC-042.7).
+func (s *AuditService) Platform(ctx context.Context, p *Principal, f AuditFilter, page, perPage int) ([]db.ListPlatformAuditRow, error) {
+	if !p.IsPlatformAdmin() {
+		return nil, ErrUnauthorized
 	}
-	if l.UserID.Valid {
-		m.UserID = l.UserID.String()
+	limit, offset := pageBounds(page, perPage)
+	arg := db.ListPlatformAuditParams{TenantID: f.TenantID, MaxRows: limit, Skip: offset}
+	if f.Action != "" {
+		arg.Action = &f.Action
 	}
-	if l.EntityID.Valid {
-		m.EntityID = l.EntityID.String()
+	if f.IP != "" {
+		arg.Ip = &f.IP
 	}
-	if len(l.OldValue) > 0 {
-		m.OldValue = string(l.OldValue)
+	if !f.Since.IsZero() {
+		arg.Since = toTimestamp(f.Since)
 	}
-	if len(l.NewValue) > 0 {
-		m.NewValue = string(l.NewValue)
+	if !f.Until.IsZero() {
+		arg.Until = toTimestamp(f.Until)
 	}
-	if l.IpAddress != nil {
-		m.IPAddress = *l.IpAddress
-	}
-	if l.UserAgent != nil {
-		m.UserAgent = *l.UserAgent
-	}
+	return s.q.ListPlatformAudit(ctx, arg)
+}
 
-	return m
+// pageBounds converts a 1-based page into LIMIT/OFFSET, bounding the page size.
+func pageBounds(page, perPage int) (limit, offset int32) {
+	if perPage <= 0 {
+		perPage = 25
+	}
+	if perPage > 200 {
+		perPage = 200
+	}
+	if page < 1 {
+		page = 1
+	}
+	return int32(perPage), int32((page - 1) * perPage)
 }

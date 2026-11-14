@@ -1,0 +1,109 @@
+{{define "app"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{if .Title}}{{.Title}} · {{end}}{{.App.Name}}</title>
+<link rel="icon" href="{{asset "icon.svg"}}" type="image/svg+xml">
+{{/* Page extras such as the map's stylesheet come first, so app.css can restyle them. */}}{{block "head" .}}{{end}}
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<script src="{{asset "app.js"}}" defer></script>
+</head>
+<body class="shell" data-live="{{if and .Me (not .Me.IsPlatformAdmin)}}/app/live{{end}}">
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <button type="button" class="icon-btn nav-open" data-toggle="nav" aria-label="Menu" aria-controls="sidenav" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <a class="brand" href="/app">{{template "logo"}}<span>{{.App.Name}}</span></a>
+  {{if .Me}}<span class="company">{{.Me.TenantName}}</span>{{end}}
+  <span class="spacer"></span>
+  {{if and .Me (not .Me.IsPlatformAdmin)}}
+  <form class="quick-search" action="/app/shipments" method="get" role="search">
+    <input type="search" name="q" placeholder="Search shipments" aria-label="Search shipments" value="{{if eq .Nav "shipments"}}{{.Query.Get "q"}}{{end}}">
+  </form>
+  <a class="icon-btn bell" href="/app/alerts" aria-label="Alerts{{if .Unread}}, {{.Unread}} unread{{end}}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    <span class="count" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span>
+  </a>
+  {{end}}
+  {{if .Me}}
+  <details class="menu user-menu">
+    <summary aria-label="Account menu"><span class="avatar">{{initials .Me.Name}}</span></summary>
+    <div class="menu-panel">
+      <p class="menu-head"><strong>{{.Me.Name}}</strong><br><span class="muted">{{roleLabel .Me.Role}}</span></p>
+      <a href="/app/account">Your account</a>
+      <a href="/app/account/password">Change password</a>
+      <a href="/track" target="_blank" rel="noopener">Public tracking page</a>
+      <form action="/logout" method="post"><button type="submit" class="link">Sign out</button></form>
+    </div>
+  </details>
+  {{end}}
+</header>
+
+<div class="frame">
+<nav class="sidenav" id="sidenav" aria-label="Main">
+  {{if .Me}}{{if .Me.IsPlatformAdmin}}
+  <a href="/app/platform" {{if eq .Nav "platform"}}aria-current="page"{{end}}>{{template "icon" "building"}}Companies</a>
+  <a href="/app/platform/billing" {{if eq .Nav "platform-billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
+  <a href="/app/platform/support" {{if eq .Nav "platform-support"}}aria-current="page"{{end}}>{{template "icon" "chat"}}Support{{if .Waiting}}<span class="pill" title="{{.Waiting}} waiting for an answer">{{.Waiting}}</span>{{end}}</a>
+  <a href="/app/platform/audit" {{if eq .Nav "platform-audit"}}aria-current="page"{{end}}>{{template "icon" "shield"}}Audit log</a>
+  <a href="/app/platform/health" {{if eq .Nav "platform-health"}}aria-current="page"{{end}}>{{template "icon" "pulse"}}System health</a>
+  {{else if not .Me.MustChangeCredential}}
+  <a href="/app" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>{{template "icon" "home"}}Overview</a>
+  <a href="/app/shipments" {{if eq .Nav "shipments"}}aria-current="page"{{end}}>{{template "icon" "box"}}Shipments</a>
+  <a href="/app/drivers" {{if eq .Nav "drivers"}}aria-current="page"{{end}}>{{template "icon" "user"}}Drivers</a>
+  <a href="/app/vehicles" {{if eq .Nav "vehicles"}}aria-current="page"{{end}}>{{template "icon" "truck"}}Vehicles</a>
+  <a href="/app/alerts" {{if eq .Nav "alerts"}}aria-current="page"{{end}}>{{template "icon" "bell"}}Alerts<span class="pill" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span></a>
+  <a href="/app/reports" {{if eq .Nav "reports"}}aria-current="page"{{end}}>{{template "icon" "chart"}}Reports</a>
+  {{if .Me.CanManageCompany}}
+  <p class="nav-section">Company</p>
+  <a href="/app/team" {{if eq .Nav "team"}}aria-current="page"{{end}}>{{template "icon" "users"}}Team</a>
+  <a href="/app/billing" {{if eq .Nav "billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
+  <a href="/app/settings" {{if eq .Nav "settings"}}aria-current="page"{{end}}>{{template "icon" "gear"}}Settings</a>
+  {{end}}
+  <a href="/app/help" {{if eq .Nav "help"}}aria-current="page"{{end}}>{{template "icon" "help"}}Help</a>
+  <div class="nav-foot">
+    <a class="btn btn-primary btn-block" href="/app/shipments/new">+ New shipment</a>
+    <p class="muted small">Drivers use <a href="/driver/" target="_blank" rel="noopener">{{bareURL .App.PublicURL}}/driver</a></p>
+  </div>
+  {{end}}{{end}}
+</nav>
+<div class="scrim" data-toggle="nav" hidden></div>
+
+<main id="main" class="main">
+  {{if and .Me (ne .Nav "billing") (not .Me.MustChangeCredential)}}{{template "standing-banner" .}}{{end}}
+  {{if and .Me .Me.Email (not .Me.EmailVerified) (not .Me.MustChangeCredential)}}
+  <form class="banner info" method="post" action="/app/account/verify-email">
+    Please confirm your email address: open the link we sent to {{.Me.Email}}. <button type="submit" class="link">Send it again</button>
+  </form>
+  {{end}}
+  {{if or .App.MockSMS .App.MockMail}}{{if and .Me .Me.CanManageCompany}}{{if eq .Nav "dashboard"}}
+  <div class="banner info">{{if and .App.MockSMS .App.MockMail}}Text messages and email are{{else if .App.MockSMS}}Text messages are{{else}}Email is{{end}} simulated on this server: nothing reaches real phones or inboxes. Codes and links are printed on the server terminal{{if .App.MockSMS}}, and texts are listed in <a href="/app/settings/sms">Settings → Text messages</a>{{end}}.</div>
+  {{end}}{{end}}{{end}}
+  {{template "flash" .}}
+  {{template "content" .}}
+</main>
+</div>
+<div class="toasts" aria-live="polite" data-toasts></div>
+{{block "scripts" .}}{{end}}
+</body>
+</html>{{end}}
+
+{{/* Where the company is with paying, on every page but billing's own. An
+   invoice not yet overdue is mentioned on the overview only. */}}
+{{define "standing-banner"}}{{$admin := .Me.CanManageCompany}}{{with .Standing}}
+{{if eq .State "trialing"}}{{if and .DaysLeft (le .DaysLeft 5)}}
+<div class="banner warn">Your free trial ends {{when .TrialEnds}}. {{if $admin}}<a href="/app/billing">Choose a plan</a> to keep booking shipments after that.{{else}}Ask an administrator to choose a plan to keep booking shipments after that.{{end}}</div>
+{{end}}{{else if eq .State "trial_ended"}}
+<div class="banner bad"><strong>Your free trial has ended, so the account is read-only.</strong> Shipments on the road carry on and nothing is deleted, but booking and adding drivers wait until {{if $admin}}you <a href="/app/billing">choose a plan</a>{{else}}an administrator chooses a plan{{end}}.</div>
+{{else if eq .State "due"}}{{if and $admin (eq $.Nav "dashboard")}}
+<div class="banner info">Invoice {{.DebtNumber}} is due on {{date .DebtDue}}. <a href="/app/billing">Pay it</a></div>
+{{end}}{{else if eq .State "past_due"}}
+<div class="banner warn">Invoice {{.DebtNumber}} is overdue. If it isn't paid by {{when .ReadOnlyAt}}, the account becomes read-only. {{if $admin}}<a href="/app/billing">Pay it now</a>{{else}}Ask an administrator to pay it.{{end}}</div>
+{{else if eq .State "read_only"}}
+<div class="banner bad"><strong>Invoice {{.DebtNumber}} is unpaid, so the account is read-only.</strong> Shipments on the road carry on, but booking and adding drivers wait until it is paid. {{if $admin}}<a href="/app/billing">Pay it</a>{{else}}Ask an administrator to pay it.{{end}}</div>
+{{else if eq .State "ended"}}
+<div class="banner bad"><strong>Your company's plan ended {{when .Ends}} and wasn't renewed, so the account is read-only.</strong> Shipments on the road carry on and nothing is deleted, but booking and adding drivers wait until {{if $admin}}you <a href="/app/billing">choose a plan</a>{{else}}an administrator chooses a plan{{end}}.</div>
+{{end}}{{end}}{{end}}

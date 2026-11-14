@@ -1,0 +1,631 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/internal/phone"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
+)
+
+// SMSSender is an SMS provider. It receives numbers in local form and is
+// responsible for any conversion its API needs. Send returns the provider's
+// ID for the message, which its delivery reports name, and an error wrapping
+// ErrSMSRejected for a message the provider will never take.
+type SMSSender interface {
+	Name() string
+	Send(ctx context.Context, to, body string) (string, error)
+}
+
+// ErrSMSRejected is a message the provider refused for good, such as one to
+// a number it doesn't serve. It fails at once instead of being retried.
+var ErrSMSRejected = errors.New("rejected by the SMS provider")
+
+// Message purposes. Sensitive ones carry credentials or codes: their body is
+// redacted once sent and they bypass opt-out, since the recipient asked for
+// them.
+const (
+	PurposeCustomerUpdate = "customer_update"
+	PurposeDriverAssigned = "driver_assigned"
+	PurposeDriverMessage  = "driver_message"
+	PurposeDriverReply    = "driver_reply"
+	PurposeCredential     = "credential"
+	PurposeOTP            = "otp"
+	PurposeInbound        = "inbound"
+)
+
+// Retry schedule for a failed send: after the first failure wait a minute,
+// then five, then fifteen, then give up.
+var smsBackoff = []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute}
+
+// SMSService is the outbox: messages are written in the same transaction as
+// the change that caused them, then delivered by a background loop with
+// retries. It also interprets the status codes drivers text in.
+type SMSService struct {
+	*core
+	sender    SMSSender
+	wake      chan struct{}
+	shipments *ShipmentService
+}
+
+func newSMSService(c *core, sender SMSSender) *SMSService {
+	return &SMSService{core: c, sender: sender, wake: make(chan struct{}, 1)}
+}
+
+// ProviderName is the configured provider, for the settings page.
+func (s *SMSService) ProviderName() string {
+	if s.sender == nil {
+		return "none"
+	}
+	return s.sender.Name()
+}
+
+type outboundSMS struct {
+	TenantID   pgtype.UUID
+	ShipmentID pgtype.UUID
+	Phone      string
+	Body       string
+	Purpose    string
+	Sensitive  bool
+}
+
+// enqueue adds a message to the outbox within the caller's transaction and
+// wakes the sender after commit. A company's text beyond its limits
+// (smsRefusal) is recorded as skipped instead.
+func (c *core) enqueueSMS(ctx context.Context, q *db.Queries, after *afterCommit, m outboundSMS) {
+	skip := func(why string) {
+		_, _ = q.RecordSMS(ctx, db.RecordSMSParams{
+			TenantID: m.TenantID, ShipmentID: m.ShipmentID, Direction: "outbound",
+			Phone: m.Phone, Body: redactIf(m.Sensitive, m.Body), Purpose: m.Purpose,
+			Status: "skipped", LastError: &why,
+		})
+	}
+	local, err := phone.Normalize(m.Phone)
+	if err != nil {
+		skip("invalid phone number")
+		return
+	}
+	m.Phone = local
+	segments := smsParts(m.Body)
+	if m.TenantID.Valid {
+		why, err := c.smsRefusal(ctx, q, after, m.TenantID, segments)
+		if err != nil {
+			c.log.Error().Err(err).Str("purpose", m.Purpose).Msg("check sms limits")
+			return
+		}
+		if why != "" {
+			skip(why)
+			return
+		}
+	}
+	if _, err := q.EnqueueSMS(ctx, db.EnqueueSMSParams{
+		TenantID: m.TenantID, ShipmentID: m.ShipmentID, Phone: local,
+		Body: m.Body, Purpose: m.Purpose, Sensitive: m.Sensitive, Segments: segments,
+	}); err != nil {
+		c.log.Error().Err(err).Str("purpose", m.Purpose).Msg("enqueue sms")
+		return
+	}
+	after.do(c.sms.kick)
+}
+
+// smsRefusal says why a company's text must not be sent, or "" if it may.
+// The limits stop an account being used to send spam at the platform's
+// expense: every company has an hourly ceiling far above what dispatching
+// needs, and a company on its free trial stops at the trial's allowance. A
+// paying company is never stopped by its monthly allowance: texts beyond it
+// are billed. Checked without a lock, a burst of texts may pass a limit by
+// a few, which is harmless. The company is told by an alert, once a day.
+func (c *core) smsRefusal(ctx context.Context, q *db.Queries, after *afterCommit, tenantID pgtype.UUID, segments int32) (string, error) {
+	t, err := q.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	now := c.now()
+	perHour := int64(model.SMSPerHour)
+	if t.Plan == model.PlanTrial {
+		perHour = model.TrialSMSPerHour
+	}
+	lastHour, err := q.CountTenantSMSSegmentsSince(ctx, db.CountTenantSMSSegmentsSinceParams{TenantID: t.ID, CreatedAt: toTimestamp(now.Add(-time.Hour))})
+	if err != nil {
+		return "", err
+	}
+	var why, alert string
+	switch {
+	case lastHour+int64(segments) > perHour:
+		why = fmt.Sprintf("the limit of %d text messages an hour was reached", perHour)
+		alert = fmt.Sprintf("Text messages are paused: your company has sent %d in the last hour, the most allowed. "+
+			"They start again as the hour goes by; texts not sent meanwhile are listed as skipped.", perHour)
+	case t.Plan == model.PlanTrial:
+		trial, _ := model.PlanByCode(model.PlanTrial)
+		used, err := q.CountTenantSMSSegmentsSince(ctx, db.CountTenantSMSSegmentsSinceParams{TenantID: t.ID, CreatedAt: t.CreatedAt})
+		if err != nil {
+			return "", err
+		}
+		if used+int64(segments) > int64(trial.SMSIncluded) {
+			why = fmt.Sprintf("the free trial's %d text messages are used up", trial.SMSIncluded)
+			alert = fmt.Sprintf("Your free trial's %d text messages are used up, so customers and drivers get no more texts "+
+				"until an administrator chooses a plan on the Billing page.", trial.SMSIncluded)
+		}
+	}
+	if why != "" {
+		c.raise(ctx, q, after, newAlert{
+			TenantID: t.ID, Type: AlertSMSPaused, Severity: SeverityWarning, Message: alert,
+			Episode: now.In(c.cfg.Location).Format("2006-01-02"),
+		})
+	}
+	return why, nil
+}
+
+// smsParts is how many SMS a text goes as, which is what the provider
+// charges: 160 characters in one, or 153 to a part when longer, in the GSM
+// alphabet; 70 and 67 in Unicode, which Amharic needs. (The sandbox has its
+// own copy: it may import only the standard library.)
+func smsParts(s string) int32 {
+	single, multi := 160, 153
+	for _, r := range s {
+		if r > '~' || (r < ' ' && r != '\n' && r != '\r') {
+			single, multi = 70, 67
+			break
+		}
+	}
+	if n := utf8.RuneCountInString(s); n > single {
+		return int32((n + multi - 1) / multi)
+	}
+	return 1
+}
+
+func redactIf(sensitive bool, body string) string {
+	if sensitive {
+		return "[redacted]"
+	}
+	return body
+}
+
+func (s *SMSService) kick() {
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+// Run delivers queued messages until ctx ends.
+func (s *SMSService) Run(ctx context.Context) {
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+	for {
+		s.drain(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		case <-s.wake:
+		}
+	}
+}
+
+// drain sends what is due. Told to stop, it finishes the message in hand and
+// hands back the rest of its batch.
+func (s *SMSService) drain(ctx context.Context) {
+	for ctx.Err() == nil {
+		// A claim isn't cut short: one cancelled after the database made
+		// it would leave its messages waiting out the lease.
+		batch, err := s.q.ClaimQueuedSMS(context.WithoutCancel(ctx), 20)
+		if err != nil {
+			s.log.Error().Err(err).Msg("claim queued sms")
+			return
+		}
+		if len(batch) == 0 {
+			return
+		}
+		for i, m := range batch {
+			if ctx.Err() != nil {
+				s.release(batch[i:])
+				return
+			}
+			s.deliver(ctx, m)
+		}
+	}
+}
+
+// release hands back messages claimed but not attempted.
+func (s *SMSService) release(batch []db.SmsMessage) {
+	ids := make([]pgtype.UUID, len(batch))
+	for i, m := range batch {
+		ids[i] = m.ID
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.q.ReleaseSMS(ctx, ids); err != nil {
+		s.log.Warn().Err(err).Int("messages", len(ids)).Msg("hand back claimed sms")
+	}
+}
+
+func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
+	// A message taken is seen through by a worker told to stop: a send cut
+	// short could reach the phone yet stay recorded as sending, and go
+	// again after the lease.
+	ctx = context.WithoutCancel(ctx)
+	if s.sender == nil {
+		metrics.Messages.WithLabelValues("sms", "none", "skipped").Inc()
+		_ = s.q.MarkSMSSkipped(ctx, db.MarkSMSSkippedParams{ID: m.ID, LastError: ptr("no SMS provider configured")})
+		return
+	}
+	provider := s.sender.Name()
+	// A code that has expired is no use to anyone: it isn't sent late.
+	if m.Purpose == PurposeOTP && !s.now().Before(m.CreatedAt.Time.Add(codeTTL)) {
+		metrics.Messages.WithLabelValues("sms", provider, "failed").Inc()
+		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: ptr("the code expired before it could be sent")})
+		return
+	}
+	if !m.Sensitive {
+		if out, err := s.q.IsPhoneOptedOut(ctx, m.Phone); err == nil && out {
+			metrics.Messages.WithLabelValues("sms", provider, "skipped").Inc()
+			_ = s.q.MarkSMSSkipped(ctx, db.MarkSMSSkippedParams{ID: m.ID, LastError: ptr("recipient opted out")})
+			return
+		}
+	}
+
+	sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	id, err := s.sender.Send(sendCtx, m.Phone, m.Body)
+	cancel()
+	if err == nil {
+		metrics.Messages.WithLabelValues("sms", provider, "sent").Inc()
+		sent := db.MarkSMSSentParams{ID: m.ID, Provider: &provider, ProviderMessageID: toText(id)}
+		err := s.q.MarkSMSSent(ctx, sent)
+		if _, dup := isUniqueViolation(err); dup {
+			// The provider reused an ID. The text went, which matters more
+			// than matching its delivery report.
+			s.log.Warn().Str("provider", provider).Str("message_id", id).Msg("sms provider reused a message id")
+			sent.ProviderMessageID = nil
+			err = s.q.MarkSMSSent(ctx, sent)
+		}
+		if err != nil {
+			s.log.Error().Err(err).Msg("mark sms sent")
+		}
+		return
+	}
+
+	msg := truncate(err.Error(), 300)
+	if errors.Is(err, ErrSMSRejected) || int(m.Attempts) > len(smsBackoff) {
+		metrics.Messages.WithLabelValues("sms", provider, "failed").Inc()
+		s.log.Warn().Err(err).Str("purpose", m.Purpose).Msg("sms failed permanently")
+		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: &msg})
+		return
+	}
+	next := s.now().Add(smsBackoff[m.Attempts-1])
+	if m.Purpose == PurposeOTP && !next.Before(m.CreatedAt.Time.Add(codeTTL)) {
+		metrics.Messages.WithLabelValues("sms", provider, "failed").Inc()
+		msg = truncate("the code would expire before another try: "+msg, 300)
+		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: &msg})
+		return
+	}
+	metrics.Messages.WithLabelValues("sms", provider, "retry").Inc()
+	_ = s.q.MarkSMSRetry(ctx, db.MarkSMSRetryParams{ID: m.ID, LastError: &msg, NextAttemptAt: toTimestamp(next)})
+}
+
+// DeliveryReport records what the provider says became of a text it
+// accepted. Status is the provider's word for it: delivered, or undelivered,
+// failed, rejected or expired with detail saying why. Anything else (queued,
+// sent to the network) is not final and is ignored, as are reports naming a
+// message this platform didn't send. It reports whether a message changed.
+func (s *SMSService) DeliveryReport(ctx context.Context, messageID, status, detail string, at time.Time) (bool, error) {
+	if s.sender == nil || messageID == "" {
+		return false, nil
+	}
+	var delivery string
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "delivered", "delivrd":
+		delivery = "delivered"
+		detail = ""
+	case "undelivered", "undeliv", "failed", "rejected", "rejectd", "expired":
+		delivery = "undelivered"
+		if detail == "" {
+			detail = "the network could not deliver it"
+		}
+	default:
+		return false, nil
+	}
+	if now := s.now(); at.IsZero() || at.After(now) {
+		at = now
+	}
+	provider := s.sender.Name()
+	n, err := s.q.RecordSMSDelivery(ctx, db.RecordSMSDeliveryParams{
+		Provider: &provider, ProviderMessageID: &messageID,
+		Delivery: &delivery, DeliveryAt: toTimestamp(at), LastError: toText(truncate(detail, 300)),
+	})
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		metrics.SMSDeliveries.WithLabelValues(provider, delivery).Inc()
+	}
+	return n > 0, nil
+}
+
+// Log returns a page of a tenant's SMS history.
+func (s *SMSService) Log(ctx context.Context, tenantID pgtype.UUID, page, perPage int) ([]db.ListSMSByTenantRow, int64, error) {
+	limit, offset := pageBounds(page, perPage)
+	rows, err := s.q.ListSMSByTenant(ctx, db.ListSMSByTenantParams{TenantID: tenantID, Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.q.CountSMSByTenant(ctx, tenantID)
+	return rows, total, err
+}
+
+// ---------------------------------------------------------------------------
+// Inbound: drivers on feature phones report status by SMS (FR-019).
+//
+//	ET <ref> <code> [note]     ref is the end of the tracking number
+//	<code> [note]              when the driver has exactly one active shipment
+//	STOP / START               opt out of, or back into, notifications
+//	HELP                       the code list
+//
+// Codes: 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem.
+// ---------------------------------------------------------------------------
+
+var smsCodes = map[string]string{
+	"1": model.StatusInTransit,
+	"2": model.StatusDelayed,
+	"3": model.StatusArrived,
+	"4": model.StatusDelivered,
+	"5": model.StatusIssue,
+}
+
+// SMSCommand is a parsed inbound message.
+type SMSCommand struct {
+	Keyword string // STOP, START, HELP, or "" for a status report
+	Ref     string // tracking-number suffix, upper case; may be empty
+	Status  string
+	Note    string
+}
+
+var errUnrecognisedSMS = errors.New("unrecognised message")
+
+// ParseSMSCommand interprets an inbound message body.
+func ParseSMSCommand(body string) (SMSCommand, error) {
+	fields := strings.Fields(strings.TrimSpace(body))
+	if len(fields) == 0 {
+		return SMSCommand{}, errUnrecognisedSMS
+	}
+	first := strings.ToUpper(fields[0])
+	switch first {
+	case "STOP", "UNSUBSCRIBE", "ቁም":
+		return SMSCommand{Keyword: "STOP"}, nil
+	case "START", "UNSTOP":
+		return SMSCommand{Keyword: "START"}, nil
+	case "HELP", "?", "እርዳታ":
+		return SMSCommand{Keyword: "HELP"}, nil
+	}
+
+	var cmd SMSCommand
+	if first == "ET" && len(fields) >= 3 {
+		cmd.Ref = normaliseRef(fields[1])
+		fields = fields[2:]
+	} else if strings.HasPrefix(first, "ET-") && len(fields) >= 2 {
+		// The full tracking number pasted in.
+		cmd.Ref = normaliseRef(first)
+		fields = fields[1:]
+	}
+	status, ok := smsCodes[fields[0]]
+	if !ok {
+		return SMSCommand{}, errUnrecognisedSMS
+	}
+	cmd.Status = status
+	cmd.Note = strings.TrimSpace(strings.Join(fields[1:], " "))
+	return cmd, nil
+}
+
+func normaliseRef(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToUpper(r)
+		}
+		return -1
+	}, s)
+}
+
+// smsHelp is the reply to HELP and to anything unrecognised.
+func smsHelp() string {
+	return "Reply: ET <last 4 of tracking no.> <code> [note]. Codes: 1 Departed, 2 Delayed, 3 Arrived, 4 Delivered, 5 Problem. Example: ET 7K3M 1"
+}
+
+// InboundResult says what an inbound message did. The dashboard's simulator
+// shows it and the webhook returns it, so a test can tell a recorded update
+// from a message that was ignored.
+type InboundResult struct {
+	// Outcome is recorded, unchanged, refused, replied, opted_out, opted_in,
+	// unknown_sender, bad_number or duplicate.
+	Outcome string `json:"outcome"`
+	// Detail says the same for people.
+	Detail string `json:"detail"`
+	// Reply is the text sent back, if any.
+	Reply string `json:"reply,omitempty"`
+}
+
+// InboundSMS is a text the provider received for the platform.
+type InboundSMS struct {
+	From string
+	Body string
+	// ProviderMessageID is the provider's ID for the message, when it sends
+	// one: the same message delivered to the webhook again is handled once.
+	ProviderMessageID string
+}
+
+// maxRepliesPerHour is how many replies one number gets in an hour. A
+// phone that answers every text by itself, with an auto-reply or a network
+// message, would otherwise trade texts with the platform without end.
+const maxRepliesPerHour = 10
+
+// Inbound handles a message received from the provider. Replies go only to
+// registered drivers, so a stranger cannot make the platform spend money,
+// and only so many an hour.
+func (s *SMSService) Inbound(ctx context.Context, in InboundSMS) (InboundResult, error) {
+	local, err := phone.Normalize(in.From)
+	if err != nil {
+		// Not a number we could ever reply to.
+		return InboundResult{Outcome: "bad_number", Detail: fmt.Sprintf("%q is not a phone number we can read.", in.From)}, nil
+	}
+	// Recorded first, so that a message the provider sends again is known
+	// by its ID and goes no further.
+	logged, err := s.logInbound(ctx, local, in)
+	if isNoRows(err) {
+		return InboundResult{Outcome: "duplicate", Detail: "This message was received before, so it was not handled again."}, nil
+	}
+	if err != nil {
+		return InboundResult{}, err
+	}
+	file := func(tenantID, shipmentID pgtype.UUID) {
+		if err := s.q.SetInboundSubject(ctx, db.SetInboundSubjectParams{ID: logged.ID, TenantID: tenantID, ShipmentID: shipmentID}); err != nil {
+			s.log.Error().Err(err).Msg("file inbound sms")
+		}
+	}
+	cmd, parseErr := ParseSMSCommand(in.Body)
+
+	if parseErr == nil && cmd.Keyword == "STOP" {
+		return InboundResult{Outcome: "opted_out", Detail: local + " gets no more text messages until it sends START."},
+			s.q.AddSMSOptOut(ctx, local)
+	}
+	if parseErr == nil && cmd.Keyword == "START" {
+		return InboundResult{Outcome: "opted_in", Detail: local + " gets text messages again."},
+			s.q.RemoveSMSOptOut(ctx, local)
+	}
+
+	user, err := s.q.GetUserByPhone(ctx, &local)
+	if err != nil || user.Role != model.RoleDriver || !user.IsActive {
+		return InboundResult{Outcome: "unknown_sender",
+			Detail: local + " is not an active driver's number, so the message was logged and not answered."}, nil
+	}
+	file(user.TenantID, pgtype.UUID{})
+
+	reply := func(shipmentID pgtype.UUID, outcome, detail, text string) (InboundResult, error) {
+		recent, err := s.q.CountSMSToPhoneSince(ctx, db.CountSMSToPhoneSinceParams{
+			Phone: local, Purpose: PurposeDriverReply, CreatedAt: toTimestamp(s.now().Add(-time.Hour)),
+		})
+		if err != nil {
+			return InboundResult{}, err
+		}
+		if recent >= maxRepliesPerHour {
+			return InboundResult{Outcome: outcome, Detail: fmt.Sprintf("%s Not answered: %s has had %d replies in the last hour.",
+				detail, local, recent)}, nil
+		}
+		res := InboundResult{Outcome: outcome, Detail: detail, Reply: text}
+		return res, s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+			s.enqueueSMS(ctx, q, after, outboundSMS{
+				TenantID: user.TenantID, ShipmentID: shipmentID, Phone: local,
+				Body: text, Purpose: PurposeDriverReply, Sensitive: false,
+			})
+			return nil
+		})
+	}
+
+	if parseErr != nil || cmd.Keyword == "HELP" {
+		return reply(pgtype.UUID{}, "replied", "Not a status report, so "+user.FullName+" was sent the list of codes.", smsHelp())
+	}
+
+	active, err := s.q.ListActiveShipmentsByDriver(ctx, db.ListActiveShipmentsByDriverParams{DriverID: user.ID, TenantID: user.TenantID})
+	if err != nil {
+		return InboundResult{}, err
+	}
+	target, msg := matchShipment(active, cmd.Ref)
+	if target == nil {
+		return reply(pgtype.UUID{}, "replied", "No shipment matched, so "+user.FullName+" was told why.", msg)
+	}
+	file(user.TenantID, target.ID)
+
+	actor := Actor{UserID: user.ID, TenantID: user.TenantID, Name: user.FullName, Role: user.Role, Source: SourceSMS}
+	reason := ""
+	if cmd.Status == model.StatusDelayed || cmd.Status == model.StatusIssue {
+		reason = "other"
+	}
+	_, err = s.shipments.ChangeStatus(ctx, actor, target.ID, StatusChange{
+		Status: cmd.Status, Reason: reason, Note: cmd.Note, By: model.ActorDriverSMS,
+	})
+	short := ShortRef(target.TrackingNumber)
+	label := model.StatusLabel(cmd.Status)
+	switch {
+	case err == nil:
+		return reply(target.ID, "recorded", fmt.Sprintf("%s recorded on %s.", label, target.TrackingNumber),
+			fmt.Sprintf("%s: %s recorded. Thank you.", short, label))
+	case errors.Is(err, model.ErrSameStatus):
+		return reply(target.ID, "unchanged", fmt.Sprintf("%s was already %s.", target.TrackingNumber, strings.ToLower(label)),
+			fmt.Sprintf("%s is already %s.", short, label))
+	default:
+		if de, ok := AsError(err); ok {
+			return reply(target.ID, "refused", fmt.Sprintf("Not applied to %s: %s", target.TrackingNumber, de.Message),
+				fmt.Sprintf("%s: %s", short, de.Message))
+		}
+		return InboundResult{}, err
+	}
+}
+
+// matchShipment picks the shipment an SMS refers to among a driver's active
+// work, or explains why it cannot.
+func matchShipment(active []db.Shipment, ref string) (*db.Shipment, string) {
+	if len(active) == 0 {
+		return nil, "You have no active shipments."
+	}
+	if ref == "" {
+		if len(active) == 1 {
+			return &active[0], ""
+		}
+		refs := make([]string, 0, len(active))
+		for _, s := range active {
+			refs = append(refs, ShortRef(s.TrackingNumber))
+		}
+		return nil, "You have several shipments. Start with ET and the code, e.g. ET " + refs[0] + " 1. Yours: " + strings.Join(refs, ", ")
+	}
+	var found *db.Shipment
+	for i := range active {
+		if strings.HasSuffix(normaliseRef(active[i].TrackingNumber), ref) {
+			if found != nil {
+				return nil, "More than one shipment ends in " + ref + ". Send more characters."
+			}
+			found = &active[i]
+		}
+	}
+	if found == nil {
+		return nil, "No active shipment of yours ends in " + ref + "."
+	}
+	return found, ""
+}
+
+// logInbound records a message received. One the provider sent before,
+// under the same ID, isn't recorded again: then no row.
+func (s *SMSService) logInbound(ctx context.Context, from string, in InboundSMS) (db.SmsMessage, error) {
+	provider := s.ProviderName()
+	return s.q.RecordSMS(ctx, db.RecordSMSParams{
+		Direction: "inbound", Phone: from, Body: truncate(in.Body, 480), Purpose: PurposeInbound, Status: "received",
+		Provider: &provider, ProviderMessageID: toText(strings.TrimSpace(in.ProviderMessageID)),
+	})
+}
+
+// ShortRef is the part of a tracking number a driver texts: its last four
+// characters, unique among one driver's active shipments in practice.
+func ShortRef(tracking string) string {
+	n := normaliseRef(tracking)
+	if len(n) <= 4 {
+		return n
+	}
+	return n[len(n)-4:]
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}

@@ -1,0 +1,168 @@
+{{define "content"}}{{$d := .Data}}{{$q := .Query}}
+<div class="page-head">
+  <div>
+    <h1>Shipments</h1>
+    <p class="muted">{{grouped $d.Total}} {{if eq $d.Total 1}}shipment{{else}}shipments{{end}}{{if $d.Filtered}} match{{end}}</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{withQuery $q "format" "csv"}}" download>{{template "icon" "download"}} Export CSV</a>
+    <a class="btn btn-primary" href="/app/shipments/new">+ New shipment</a>
+  </div>
+</div>
+
+<nav class="tabs" aria-label="Shipment groups">
+  {{range $d.Tabs}}<a href="/app/shipments{{if .Key}}?tab={{.Key}}{{end}}" {{if eq .Key $d.Tab}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+</nav>
+
+{{if $d.Views}}
+<div class="views" role="group" aria-label="Saved views">
+  {{range $d.Views}}
+  <span class="view-chip {{if .Current}}is-current{{end}}">
+    <a href="{{.Href}}" {{if .Current}}aria-current="true"{{end}}>{{.Name}}</a>
+    <form method="post" action="/app/shipments/views/{{.ID}}/delete">
+      <input type="hidden" name="back" value="{{$d.Back}}">
+      <button type="submit" class="view-remove" aria-label="Remove the view {{.Name}}" title="Remove this view">×</button>
+    </form>
+  </span>
+  {{end}}
+</div>
+{{end}}
+
+<details class="filters card" {{if $d.Filtered}}open{{end}}>
+  <summary>Search and filter{{if $d.Filtered}} <span class="pill">on</span>{{end}}</summary>
+  <form method="get" action="/app/shipments" class="filter-grid">
+    {{with $q.Get "tab"}}<input type="hidden" name="tab" value="{{.}}">{{end}}
+    <label class="span-2">Search
+      <input type="search" name="q" value="{{$q.Get "q"}}" placeholder="Tracking number, customer, phone or driver">
+    </label>
+    <label>Driver
+      <select name="driver">
+        <option value="">Any driver</option>
+        {{range $d.Drivers}}<option value="{{uuid .ID}}" {{if eq ($q.Get "driver") (uuid .ID)}}selected{{end}}>{{.FullName}}{{if not .IsActive}} (inactive){{end}}</option>{{end}}
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="">Any status</option>
+        {{range $d.Statuses}}<option value="{{.}}" {{if eq ($q.Get "status") .}}selected{{end}}>{{statusLabel .}}</option>{{end}}
+      </select>
+    </label>
+    <label>Priority
+      <select name="priority">
+        <option value="">Any priority</option>
+        {{range $d.Priorities}}<option value="{{.}}" {{if eq ($q.Get "priority") .}}selected{{end}}>{{title .}}</option>{{end}}
+      </select>
+    </label>
+    <label>From town
+      <input name="origin" value="{{$q.Get "origin"}}" list="towns" autocomplete="off">
+    </label>
+    <label>To town
+      <input name="destination" value="{{$q.Get "destination"}}" list="towns" autocomplete="off">
+    </label>
+    <label>Booked from
+      <input type="date" name="from" value="{{$q.Get "from"}}">
+    </label>
+    <label>Booked to
+      <input type="date" name="to" value="{{$q.Get "to"}}">
+    </label>
+    <label>Sort
+      <select name="sort">
+        {{$sort := $q.Get "sort"}}
+        <option value="created_desc">Newest first</option>
+        <option value="created_asc" {{if eq $sort "created_asc"}}selected{{end}}>Oldest first</option>
+        <option value="updated_desc" {{if eq $sort "updated_desc"}}selected{{end}}>Recently updated</option>
+        <option value="eta_asc" {{if eq $sort "eta_asc"}}selected{{end}}>Due soonest</option>
+        <option value="priority" {{if eq $sort "priority"}}selected{{end}}>Priority</option>
+        <option value="customer" {{if eq $sort "customer"}}selected{{end}}>Customer A–Z</option>
+        <option value="driver" {{if eq $sort "driver"}}selected{{end}}>Driver A–Z</option>
+        <option value="status" {{if eq $sort "status"}}selected{{end}}>Status</option>
+      </select>
+    </label>
+    <div class="filter-actions">
+      <button class="btn btn-primary" type="submit">Apply</button>
+      <a class="btn btn-ghost" href="/app/shipments{{with $q.Get "tab"}}?tab={{.}}{{end}}">Clear</a>
+    </div>
+  </form>
+  {{if $d.ViewQuery}}
+  <form method="post" action="/app/shipments/views" class="save-view">
+    <input type="hidden" name="query" value="{{$d.ViewQuery}}">
+    <label>Save this view as <input name="name" maxlength="40" required placeholder="e.g. Late to Djibouti"></label>
+    <button class="btn" type="submit">Save view</button>
+  </form>
+  {{end}}
+  <datalist id="towns">{{range $d.Towns}}<option value="{{.Name}}">{{end}}</datalist>
+</details>
+
+{{if $d.Pending}}
+<form id="bulk-assign" method="post" action="/app/shipments/assign" class="card bulk-bar" data-bulk>
+  <input type="hidden" name="back" value="{{$d.Back}}">
+  <p class="bulk-count" data-bulk-count>Tick unassigned shipments to give them to one driver.</p>
+  <label>Driver
+    <select name="driver_id" required data-driver-select>
+      <option value="">Choose…</option>
+      {{range $d.Drivers}}{{if .IsActive}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}{{end}}
+    </select>
+  </label>
+  <label>Vehicle
+    <select name="vehicle_id" data-vehicle-select>
+      <option value="">The driver's usual vehicle</option>
+      {{range $d.Vehicles}}<option value="{{uuid .ID}}">{{.PlateNumber}}</option>{{end}}
+    </select>
+  </label>
+  <button class="btn btn-primary" type="submit">Assign</button>
+</form>
+{{end}}
+
+{{if $d.Rows}}
+<div class="card card-flush" data-live-region id="shipment-rows">
+<div class="list-tools" data-columns hidden>
+  <details class="pop pop-right">
+    <summary class="btn btn-sm btn-ghost">Columns</summary>
+    <fieldset class="pop-panel stack">
+      <legend class="small muted">Show columns</legend>
+      {{range $d.Columns}}{{if ne .Key "shipment"}}<label class="check"><input type="checkbox" value="{{.Key}}" checked> {{.Label}}</label>{{end}}{{end}}
+    </fieldset>
+  </details>
+</div>
+<div class="table-wrap">
+<table class="table rows-link table-cards" data-hideable>
+  <thead><tr>
+    {{if $d.Pending}}<th class="pick"><input type="checkbox" data-pick-all aria-label="Tick every unassigned shipment on this page" hidden></th>{{end}}
+    {{range $d.Columns}}<th data-col="{{.Key}}" {{if .Num}}class="num"{{end}} {{with .Dir}}aria-sort="{{.}}"{{end}}><a class="sort" href="{{.Href}}">{{.Label}}{{if eq .Dir "ascending"}} <span aria-hidden="true">↑</span>{{else if eq .Dir "descending"}} <span aria-hidden="true">↓</span>{{end}}</a></th>{{end}}
+  </tr></thead>
+  <tbody>
+  {{range $d.Rows}}{{$s := .Shipment}}
+  <tr {{if eq (uuid $s.ID) $d.Highlight}}class="is-highlight"{{end}} data-href="/app/shipments/{{uuid $s.ID}}">
+    {{if $d.Pending}}<td class="pick">{{if eq $s.Status "pending"}}<input type="checkbox" name="id" value="{{uuid $s.ID}}" form="bulk-assign" data-pick aria-label="Tick {{$s.TrackingNumber}}">{{end}}</td>{{end}}
+    <td data-col="shipment"><a class="mono" href="/app/shipments/{{uuid $s.ID}}">{{mark $d.Search $s.TrackingNumber}}</a>{{template "priority" $s.Priority}}
+      <div class="muted small">{{with $s.CargoDescription}}{{truncate 40 .}}{{else}}—{{end}}{{if hasNum $s.CargoWeight}} · {{kg $s.CargoWeight}}{{end}}</div></td>
+    <td data-col="route"><span class="route">{{with $s.OriginCity}}{{.}}{{else}}{{truncate 24 $s.OriginAddress}}{{end}} <span aria-label="to">→</span> {{with $s.DestinationCity}}{{.}}{{else}}{{truncate 24 $s.DestinationAddress}}{{end}}</span></td>
+    <td data-col="customer">{{mark $d.Search $s.CustomerName}}<div class="muted small">{{mark $d.Search $s.CustomerPhone}}</div></td>
+    <td data-col="driver">{{with .DriverName}}{{mark $d.Search .}}{{else}}<span class="muted">Unassigned</span>{{end}}
+      {{if and $s.DriverID.Valid (isActive $s.Status)}}{{$c := connState .DriverLastSync}}{{if ne $c "live"}}<div class="small sync-stale">{{template "conn" $c}} {{if eq $c "never"}}never used the app{{else}}synced {{ago .DriverLastSync}}{{end}}</div>{{end}}{{end}}
+      {{with .VehiclePlate}}<div class="muted small">{{.}}</div>{{end}}</td>
+    <td data-col="status">{{template "status" $s.Status}}{{with $s.StatusReason}}<div class="muted small">{{reasonLabel .}}</div>{{end}}</td>
+    <td data-col="due" class="num">{{if $s.ActualDelivery.Valid}}<span class="muted small">Delivered</span><br>{{date $s.ActualDelivery}}{{else if $s.EstimatedDelivery.Valid}}<span class="{{if late $s.EstimatedDelivery $s.Status}}text-bad{{end}}">{{when $s.EstimatedDelivery}}</span><div class="muted small">{{until $s.EstimatedDelivery}}</div>{{else}}—{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{template "pager" (dict "Page" $d.Page "Pages" $d.Pages "Query" $q)}}
+</div>
+{{else}}
+<div class="card empty" data-live-region id="shipment-rows">
+  {{if $d.Filtered}}
+  <h2>No shipments match</h2>
+  <p class="muted">Try a different search, or <a href="/app/shipments">clear the filters</a>.</p>
+  {{else if $d.Tab}}
+  <h2>Nothing here</h2>
+  <p class="muted">No shipments are in this group right now.</p>
+  {{else}}
+  <h2>No shipments yet</h2>
+  <p class="muted">Book a shipment, assign a driver and it appears on their phone. The customer gets an SMS with a tracking link.</p>
+  <p><a class="btn btn-primary" href="/app/shipments/new">+ Book the first shipment</a></p>
+  {{end}}
+</div>
+{{end}}
+{{end}}

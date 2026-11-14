@@ -1,35 +1,50 @@
+# Development database. The app itself runs on the host with `make run`.
+# DB_PORT moves it off 5434 if that port is taken.
+#
+# The provider sandbox, for an app on the host run with `make run-sandbox`:
+#   make sandbox-keys && docker compose --profile sandbox up sandbox
+#
+# The project is named, or it would be named after the directory, and
+# compose would take another checkout's "backend" project for this one.
+name: menged-dev
+
 services:
   postgres:
     image: postgis/postgis:15-3.3-alpine
-    container_name: logistics-db
     environment:
       POSTGRES_USER: logistics
       POSTGRES_PASSWORD: logistics
       POSTGRES_DB: logistics
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U logistics"]
+      # Over TCP: on first start the image's set-up server answers on the
+      # socket only, and the app connects over the network.
+      test: ["CMD-SHELL", "pg_isready -U logistics -h 127.0.0.1"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  redis:
-    image: redis:7-alpine
-    container_name: logistics-redis
+  sandbox:
+    profiles: [sandbox]
+    build:
+      context: .
+      target: sandbox
+    env_file: sandbox.env
+    environment:
+      SANDBOX_ADDR: 0.0.0.0:8091
+      SANDBOX_KEYS_DIR: /keys
+      SANDBOX_APP_URL: http://localhost:${PORT:-8080}
+      # The app is on the host, which localhost isn't from in here.
+      SANDBOX_HOST_ALIAS: host.docker.internal
+    extra_hosts:
+      - host.docker.internal:host-gateway
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
+      - "127.0.0.1:8091:8091"
     volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - ./sandbox-keys:/keys:ro
 
 volumes:
   postgres_data:
-  redis_data:

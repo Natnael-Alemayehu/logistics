@@ -1,0 +1,64 @@
+{{define "bodyclass"}}landing{{end}}
+{{define "content"}}
+<section class="hero">
+  <div class="hero-text">
+    <h1>Follow every load. Prove every delivery.</h1>
+    <p class="lead">{{.App.Name}} gives Ethiopian trucking companies a dispatch board, a driver app that keeps working without signal and sends its position while it is open, and signed, photographed, GPS-checked proof of delivery — with SMS updates for your customers.</p>
+    <p class="hero-cta">
+      <a class="btn btn-primary btn-lg" href="/signup">Start a free 14-day trial</a>
+      <a class="btn btn-lg" href="/login">Sign in</a>
+    </p>
+    <p class="muted small">No card needed. Set up in ten minutes: add a truck, add a driver, book a load.</p>
+  </div>
+  <form class="card hero-track" method="post" action="/track">
+    <h2>Track a shipment</h2>
+    <label>Tracking number
+      <input name="number" placeholder="ET-20261028-…" autocapitalize="characters" required class="mono">
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Track</button>
+    <p class="small"><a href="/track/phone">Find my shipments by phone number</a></p>
+  </form>
+</section>
+
+<section class="features">
+  <article>
+    <h3>Works where the road goes</h3>
+    <p>Drivers update status, capture signatures and photos with no signal. Everything is kept on the phone and sent when a network returns — between Addis and Djibouti, that matters.</p>
+  </article>
+  <article>
+    <h3>Proof that settles disputes</h3>
+    <p>Each delivery records who received it, their signature, up to three photos and where the phone was. Deliveries far from the address are flagged for you.</p>
+  </article>
+  <article>
+    <h3>Customers stop calling</h3>
+    <p>Automatic SMS when the load leaves, is delayed, arrives and is delivered, each with a tracking link. Customers confirm receipt with one tap.</p>
+  </article>
+  <article>
+    <h3>Feature phones too</h3>
+    <p>Drivers without a smartphone text a short code — <code>ET 4821 3</code> means “arrived” — and the board updates.</p>
+  </article>
+  <article>
+    <h3>See problems early</h3>
+    <p>Alerts when a load passes its due time, a driver reports trouble or goes quiet for hours with cargo on board.</p>
+  </article>
+  <article>
+    <h3>Know your numbers</h3>
+    <p>On-time rate by driver and route, transit times, top customers — exportable to Excel.</p>
+  </article>
+</section>
+
+<section class="pricing">
+  <h2>Simple monthly plans</h2>
+  <div class="plans">
+    {{range .Data.Plans}}
+    <article class="card plan">
+      <h3>{{.Name}}</h3>
+      <p class="plan-price">{{if .MonthlyETB}}{{money .MonthlyETB}}<span class="muted"> / month</span>{{else}}Let's talk{{end}}</p>
+      <p>{{if .SelfServe}}Up to {{.MaxDrivers}} drivers and {{grouped .SMSIncluded}} customer texts a month.{{else}}Hundreds of drivers, with limits and a price agreed with you.{{end}} Unlimited office staff and shipments.</p>
+      {{if .SelfServe}}<a class="btn" href="/signup?plan={{.Code}}">Start with {{.Name}}</a>{{else}}<a class="btn" href="mailto:{{$.App.SupportEmail}}?subject=Enterprise%20plan">Ask for an offer</a>{{end}}
+    </article>
+    {{end}}
+  </div>
+  <p class="muted small">Every plan starts with a {{.Data.TrialDays}}-day free trial and includes the driver app, customer tracking and reports. Prices are before 15% VAT; paid annually, a year costs ten months. On a paid plan, texts beyond the allowance are never blocked and cost ETB 0.50 each; a long or Amharic text counts as two or more.</p>
+</section>
+{{end}}

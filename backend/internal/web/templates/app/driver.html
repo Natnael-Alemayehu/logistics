@@ -1,0 +1,122 @@
+{{define "head"}}<link rel="stylesheet" href="{{asset "vendor/leaflet/leaflet.css"}}">{{end}}
+{{define "scripts"}}<script src="{{asset "vendor/leaflet/leaflet.js"}}" defer></script><script src="{{asset "map.js"}}" defer></script>{{end}}
+{{define "content"}}{{$d := .Data.D}}{{$u := $d.Driver}}{{$id := uuid $u.ID}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/drivers">Drivers</a></p>
+    <h1>{{$u.FullName}} {{if $u.AnonymisedAt.Valid}}<span class="badge">Details removed</span>{{else if not $u.IsActive}}<span class="badge">Deactivated</span>{{else if $d.Status.OnDuty}}<span class="badge s-in_transit">On duty</span>{{else}}<span class="badge">Off duty</span>{{end}}</h1>
+    <p>{{with $u.Phone}}<a href="{{telURL .}}">{{template "icon" "phone"}} {{.}}</a>{{end}}{{with $d.Vehicle}} · <a href="/app/vehicles/{{uuid .ID}}">{{.PlateNumber}}</a>{{end}}</p>
+  </div>
+  {{if and .Me.CanManageFleet (not $u.AnonymisedAt.Valid)}}
+  <div class="actions">
+    <a class="btn" href="/app/drivers/{{$id}}/edit">Edit</a>
+    <details class="pop pop-right">
+      <summary class="btn">Reset PIN</summary>
+      <form method="post" action="/app/drivers/{{$id}}/reset" class="pop-panel stack">
+        <p>Issue a temporary PIN{{if $u.Phone}} and text it to {{maskPhone (str $u.Phone)}}{{end}}? The driver is signed out and chooses a new PIN at next sign-in.</p>
+        <button class="btn btn-primary" type="submit">Issue temporary PIN</button>
+      </form>
+    </details>
+    <details class="pop pop-right">
+      <summary class="btn {{if $u.IsActive}}btn-danger-ghost{{end}}">{{if $u.IsActive}}Deactivate{{else}}Reactivate{{end}}</summary>
+      <form method="post" action="/app/drivers/{{$id}}/active" class="pop-panel stack">
+        <input type="hidden" name="active" value="{{if $u.IsActive}}false{{else}}true{{end}}">
+        {{if $u.IsActive}}<p>{{$u.FullName}} will be signed out and unable to sign in. Their history is kept. Shipments still assigned to them must be reassigned first.</p>
+        <button class="btn btn-danger" type="submit">Deactivate</button>
+        {{else}}<p>Let {{$u.FullName}} sign in again? This uses one of your driver places.</p>
+        <button class="btn btn-primary" type="submit">Reactivate</button>{{end}}
+      </form>
+    </details>
+    {{if and (not $u.IsActive) .Me.CanManageCompany}}
+    <details class="pop pop-right">
+      <summary class="btn btn-danger-ghost">Remove details</summary>
+      <form method="post" action="/app/drivers/{{$id}}/anonymise" class="pop-panel stack">
+        <p>Remove {{$u.FullName}}'s name, phone and sign-in for good? Their shipments, deliveries and history stay, under "Former driver". Texts sent to their phone are deleted.</p>
+        <label class="check"><input type="checkbox" required> I understand this can't be undone</label>
+        <button class="btn btn-danger" type="submit">Remove details</button>
+      </form>
+    </details>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+
+<section class="kpis">
+  <div class="kpi"><span class="kpi-n">{{$d.Counts.Active}}</span><span class="kpi-l">Active now</span></div>
+  <div class="kpi"><span class="kpi-n">{{$d.Counts.Today}}</span><span class="kpi-l">Delivered today</span></div>
+  <div class="kpi"><span class="kpi-n">{{$d.Counts.Month}}</span><span class="kpi-l">Delivered this month</span></div>
+  <div class="kpi"><span class="kpi-n">{{pct .Data.OnTime}}</span><span class="kpi-l">On time, last 30 days</span></div>
+</section>
+
+<div class="grid-detail">
+<div class="col-main">
+  <section class="card card-flush">
+    <div class="card-head"><h2>Last known position</h2>
+      {{with $d.Location}}<span class="muted small">{{ago .RecordedAt}}{{if hasNum .SpeedKph}} · {{printf "%.0f" (num .SpeedKph)}} km/h{{end}}</span>{{end}}
+    </div>
+    {{if .Data.Last}}
+    <div class="map map-mid" data-map="point" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}} data-source="driver-point" data-driver-id="{{$id}}"></div>
+    <script type="application/json" id="driver-point">{{.Data.Last}}</script>
+    {{else}}<p class="card-pad muted">No GPS position yet. It appears once the driver's app has a fix and syncs.</p>{{end}}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Recent shipments</h2><a class="small" href="/app/shipments?driver={{$id}}">{{if $u.AnonymisedAt.Valid}}All their shipments{{else}}All of {{firstName $u.FullName}}'s shipments{{end}}</a></div>
+    {{if $d.Recent}}
+    <div class="table-wrap">
+    <table class="table rows-link">
+      <thead><tr><th>Shipment</th><th>Route</th><th>Status</th><th class="num">Date</th></tr></thead>
+      <tbody>{{range $d.Recent}}
+      <tr data-href="/app/shipments/{{uuid .ID}}">
+        <td><a class="mono" href="/app/shipments/{{uuid .ID}}">{{.TrackingNumber}}</a><div class="muted small">{{.CustomerName}}</div></td>
+        <td>{{str .OriginCity}} → {{str .DestinationCity}}</td>
+        <td>{{template "status" .Status}}</td>
+        <td class="num">{{if .ActualDelivery.Valid}}{{date .ActualDelivery}}{{else}}{{date .CreatedAt}}{{end}}</td>
+      </tr>{{end}}</tbody>
+    </table>
+    </div>
+    {{else}}<p class="muted">No shipments yet.</p>{{end}}
+  </section>
+</div>
+
+<div class="col-side">
+  <section class="card">
+    <div class="card-head"><h2>Driver app</h2></div>
+    {{if $u.AnonymisedAt.Valid}}
+    <p class="muted">Their details were removed {{date $u.AnonymisedAt}}. The account can't sign in again; its deliveries and history stay.</p>
+    {{else}}
+    {{with $d.Device}}
+    <dl class="facts">
+      <div><dt>Last sync</dt><dd>{{template "conn" (connState .LastSyncAt)}} {{ago .LastSyncAt}}</dd></div>
+      {{with .BatteryLevel}}<div><dt>Battery</dt><dd>{{.}}%</dd></div>{{end}}
+      <div><dt>Location sharing</dt><dd>{{if .TrackingPaused}}<span class="text-warn">Turned off on the phone</span>{{else if .PowerSaving}}Saving battery: a position every 15 minutes{{else}}On{{end}}</dd></div>
+      {{if gt (i32 .PendingSyncCount) 0}}<div><dt>Waiting to upload</dt><dd>{{i32 .PendingSyncCount}} updates</dd></div>{{end}}
+      {{with .AppVersion}}<div><dt>App version</dt><dd class="mono small">{{.}}</dd></div>{{end}}
+      {{with $u.Language}}<div><dt>App language</dt><dd>{{if eq (str .) "am"}}Amharic{{else}}English{{end}}</dd></div>{{end}}
+      {{with .StorageUsedKb}}<div><dt>Storage on the phone</dt><dd>{{storage .}}</dd></div>{{end}}
+      {{$off := i32 .ClockOffsetSeconds}}{{if or (gt $off 120) (lt $off -120)}}<div><dt>Phone clock</dt><dd class="text-warn">Off by {{$off}} s (corrected automatically)</dd></div>{{end}}
+    </dl>
+    {{else}}{{if $u.IsActive}}
+    <p class="muted">{{firstName $u.FullName}} hasn't signed in to the driver app yet.</p>
+    <p class="small">Ask them to open <strong>{{.App.PublicURL}}/driver</strong> and sign in with their phone number and PIN.</p>
+    {{else}}
+    <p class="muted">{{firstName $u.FullName}} never used the driver app, and can't sign in while deactivated.</p>
+    {{end}}{{end}}
+    <p class="small muted">{{if $u.LastLoginAt.Valid}}Last signed in {{when $u.LastLoginAt}}{{else}}Never signed in{{end}}</p>
+    {{if and .App.SMSNumber $u.IsActive}}<p class="small muted">Without data, drivers can text updates to {{.App.SMSNumber}}.</p>{{end}}
+    {{end}}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Last 30 days</h2></div>
+    <dl class="facts">
+      <div><dt>Delivered</dt><dd>{{$d.Performance.Delivered}}</dd></div>
+      <div><dt>On time</dt><dd>{{pct .Data.OnTime}}{{if $d.Performance.WithEta}} <span class="muted small">({{$d.Performance.OnTime}} of {{$d.Performance.WithEta}})</span>{{end}}</dd></div>
+      <div><dt>Average transit</dt><dd>{{hours $d.Performance.AvgHours}}</dd></div>
+      <div><dt>Problems reported</dt><dd>{{$d.Performance.WithIssues}}</dd></div>
+      <div><dt>All-time deliveries</dt><dd>{{$d.Counts.Total}}</dd></div>
+    </dl>
+  </section>
+</div>
+</div>
+{{end}}

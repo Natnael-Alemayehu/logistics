@@ -1,0 +1,93 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}{{$u := $d.Usage}}{{$t := $d.Tenant}}
+<div class="page-head">
+  <div><h1>Settings</h1><p class="muted">{{$t.Name}}</p></div>
+  <div class="actions">
+    <a class="btn" href="/app/settings/sms">Text messages</a>
+    <a class="btn" href="/app/audit">Audit log</a>
+  </div>
+</div>
+{{template "form-error" .}}
+<div class="grid-detail">
+<form method="post" action="/app/settings" class="col-main stack" novalidate>
+  <fieldset class="card">
+    <legend>Company</legend>
+    <div class="row-2">
+      <label>Company name
+        <input name="name" value="{{field $f "name" ""}}" required {{if index $e "name"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "name")}}
+      </label>
+      <label>TIN <span class="muted">(optional)</span>
+        <input name="tin" inputmode="numeric" maxlength="12" value="{{field $f "tin" ""}}" {{if index $e "tin"}}aria-invalid="true"{{end}}>
+        <span class="hint">Your taxpayer number, printed on invoices.</span>
+        {{template "field-error" (index $e "tin")}}
+      </label>
+    </div>
+    <div class="row-2">
+      <label>Phone customers can call
+        <input name="contact_phone" type="tel" value="{{field $f "contact_phone" ""}}" {{if index $e "contact_phone"}}aria-invalid="true"{{end}}>
+        <span class="hint">Shown on the tracking page and in customer texts.</span>
+        {{template "field-error" (index $e "contact_phone")}}
+      </label>
+      <label>Email
+        <input name="contact_email" type="email" value="{{field $f "contact_email" ""}}" {{if index $e "contact_email"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "contact_email")}}
+      </label>
+    </div>
+    <div class="row-2">
+      <label>Home town
+        <input name="region_city" value="{{field $f "region_city" ""}}" list="towns" {{if index $e "region_city"}}aria-invalid="true"{{end}}>
+        <span class="hint">New shipments start here unless you change it.</span>
+        {{template "field-error" (index $e "region_city")}}
+      </label>
+      <label>Most active shipments per driver
+        <input name="max_active_per_driver" type="number" min="1" max="50" value="{{field $f "max_active_per_driver" "5"}}" {{if index $e "max_active_per_driver"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "max_active_per_driver")}}
+      </label>
+    </div>
+    <datalist id="towns">{{range $d.Towns}}<option value="{{.Name}}">{{end}}</datalist>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Text messages to customers</legend>
+    <p class="small muted">Each message includes the tracking link. Customers can reply STOP to opt out.</p>
+    <label class="check"><input type="checkbox" name="sms_on_created" {{if field $f "sms_on_created" ""}}checked{{end}}> When the shipment is booked</label>
+    <label class="check"><input type="checkbox" name="sms_on_dispatched" {{if field $f "sms_on_dispatched" ""}}checked{{end}}> When the truck departs</label>
+    <label class="check"><input type="checkbox" name="sms_on_delayed" {{if field $f "sms_on_delayed" ""}}checked{{end}}> When it is delayed</label>
+    <label class="check"><input type="checkbox" name="sms_on_arrived" {{if field $f "sms_on_arrived" ""}}checked{{end}}> When the truck arrives</label>
+    <label class="check"><input type="checkbox" name="sms_on_delivered" {{if field $f "sms_on_delivered" ""}}checked{{end}}> When it is delivered, with a link to confirm receipt</label>
+    <label class="check"><input type="checkbox" name="sms_on_cancelled" {{if field $f "sms_on_cancelled" ""}}checked{{end}}> If it is cancelled</label>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Text messages to drivers</legend>
+    <label class="check"><input type="checkbox" name="sms_driver_on_assign" {{if field $f "sms_driver_on_assign" ""}}checked{{end}}> Text the driver when a shipment is assigned to them</label>
+    <p class="small muted">Useful for drivers who rarely open the app. Drivers always see new work in the app on their next sync.</p>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Alerts</legend>
+    <label class="check"><input type="checkbox" name="alert_on_delivery" {{if field $f "alert_on_delivery" ""}}checked{{end}}> Alert the office when a shipment is delivered</label>
+    <p class="small muted">Problems, delays and late loads always raise an alert. Each person chooses which alerts are also emailed to them under <a href="/app/account">Account</a>.</p>
+  </fieldset>
+
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+</form>
+
+<aside class="col-side">
+  <section class="card" id="plan">
+    <div class="card-head"><h2>Plan</h2><span class="badge">{{$u.Plan.Name}}</span></div>
+    <dl class="facts">
+      <div><dt>Drivers</dt><dd>{{$u.ActiveDrivers}} of {{$u.MaxDrivers}}</dd></div>
+      <div><dt>Texts this month</dt><dd>{{grouped $u.SMSThisMonth}} of {{grouped $u.SMSIncluded}}</dd></div>
+    </dl>
+    <p><a class="btn" href="/app/billing">Plans, invoices and payments</a></p>
+  </section>
+  <section class="card" id="data">
+    <h2>Your data</h2>
+    <p class="small">Download everything {{.App.Name}} holds for {{.Me.TenantName}}: shipments and their history, deliveries with signatures and photos, people and vehicles, as spreadsheets in one ZIP file.</p>
+    <form method="post" action="/app/settings/export"><button class="btn" type="submit">{{template "icon" "download"}} Download all data</button></form>
+    <p class="small muted">Customer and delivery details are kept for {{.Data.RetainDays}} days after a shipment finishes, then removed. Counts in reports stay. Each download is recorded in the <a href="/app/audit">audit log</a>.</p>
+  </section>
+</aside>
+</div>
+{{end}}

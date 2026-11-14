@@ -1,0 +1,57 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/settings">Settings</a></p>
+    <h1>Text messages</h1>
+    <p class="muted">{{grouped $d.Total}} messages · provider: {{$d.Provider}}</p>
+  </div>
+</div>
+
+{{if .App.MockSMS}}
+<section class="card callout-info">
+  <h2>Try a driver's SMS report</h2>
+  <p class="small">Messages are simulated in this installation: each one is printed in the server's terminal, codes and passwords included. Send one as if from a driver's phone — it goes through the same handling as a real text. Try <code>ET 1234 3</code> (shipment ending 1234 arrived), <code>2 road closed</code>, or <code>HELP</code>.</p>
+  <form method="post" action="/app/settings/sms/simulate" class="row-wrap">
+    <label class="inline">From
+      <select name="from" required>
+        {{range $d.Drivers}}{{$n := .FullName}}{{with .Phone}}<option value="{{.}}">{{$n}} · {{.}}</option>{{end}}{{end}}
+        <option value="0911000000">Unknown number</option>
+      </select>
+    </label>
+    <label class="inline grow">Message <input name="body" required maxlength="160" placeholder="ET 1234 3"></label>
+    <button class="btn btn-primary" type="submit">Receive</button>
+  </form>
+</section>
+{{end}}
+
+<section class="card">
+  <h2>Driver SMS codes</h2>
+  <p class="small">Drivers without data can text {{with .App.SMSNumber}}<strong>{{.}}</strong>{{else}}your SMS number{{end}}: <code>ET &lt;last 4 of tracking number&gt; &lt;code&gt; [note]</code>. With only one active shipment, the code alone is enough.</p>
+  <dl class="facts facts-3 small">
+    <div><dt>1</dt><dd>Departed</dd></div><div><dt>2</dt><dd>Delayed</dd></div><div><dt>3</dt><dd>Arrived</dd></div>
+    <div><dt>4</dt><dd>Delivered</dd></div><div><dt>5</dt><dd>Problem</dd></div><div><dt>HELP</dt><dd>List of codes</dd></div>
+  </dl>
+</section>
+
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>When</th><th></th><th>Phone</th><th>Message</th><th>Status</th></tr></thead>
+  <tbody>
+  {{range $d.Messages}}
+  <tr>
+    <td class="nowrap">{{when .CreatedAt}}</td>
+    <td>{{if eq .Direction "inbound"}}<span class="badge s-assigned">In</span>{{else}}<span class="badge">Out</span>{{end}}</td>
+    <td class="nowrap">{{maskPhone .Phone}}</td>
+    <td>{{if .Sensitive}}<span class="muted">Code or password (hidden){{if $.App.MockSMS}} · printed in the server terminal{{end}}</span>{{else}}{{.Body}}{{end}}{{with .TrackingNumber}}<div class="small"><span class="mono">{{.}}</span></div>{{end}}</td>
+    <td>{{if eq .Status "sent"}}{{if eq (str .Delivery) "delivered"}}<span class="text-good" title="{{when .DeliveryAt}}">Delivered</span>{{else if eq (str .Delivery) "undelivered"}}<span class="text-bad" title="{{str .LastError}}">Not delivered</span>{{else}}<span class="text-good">Sent</span>{{end}}{{else if eq .Status "failed"}}<span class="text-bad" title="{{str .LastError}}">Failed</span>{{else if eq .Status "received"}}Received{{else}}<span class="text-warn">{{title .Status}}{{if gt .Attempts 0}} (try {{.Attempts}}){{end}}</span>{{end}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="muted">No messages yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{template "pager" (dict "Page" $d.Page "Pages" $d.Pages "Query" .Query)}}
+{{end}}

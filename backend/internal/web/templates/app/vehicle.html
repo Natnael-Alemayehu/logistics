@@ -1,0 +1,39 @@
+{{define "content"}}{{$d := .Data}}{{$v := $d.V}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/vehicles">Vehicles</a></p>
+    <h1 class="mono">{{$v.PlateNumber}} {{if not $v.IsActive}}<span class="badge">Out of service</span>{{end}}</h1>
+    <p class="muted">{{with $v.VehicleType}}{{vehicleType .}}{{end}}{{if hasNum $v.CapacityKg}} · capacity {{kg $v.CapacityKg}}{{end}}</p>
+  </div>
+  {{if .Me.CanManageFleet}}<div class="actions"><a class="btn" href="/app/vehicles/{{uuid $v.ID}}/edit">Edit</a></div>{{end}}
+</div>
+<div class="grid-detail">
+<div class="col-main">
+  <section class="card">
+    <div class="card-head"><h2>Recent shipments</h2><a class="small" href="/app/shipments?vehicle={{uuid $v.ID}}">All</a></div>
+    {{if $d.Recent}}
+    <div class="table-wrap">
+    <table class="table rows-link">
+      <thead><tr><th>Shipment</th><th>Route</th><th>Driver</th><th>Status</th><th class="num">Date</th></tr></thead>
+      <tbody>{{range $d.Recent}}
+      <tr data-href="/app/shipments/{{uuid .ID}}">
+        <td><a class="mono" href="/app/shipments/{{uuid .ID}}">{{.TrackingNumber}}</a></td>
+        <td>{{str .OriginCity}} → {{str .DestinationCity}}</td>
+        <td>{{with .DriverName}}{{.}}{{else}}—{{end}}</td>
+        <td>{{template "status" .Status}}</td>
+        <td class="num">{{date .CreatedAt}}</td>
+      </tr>{{end}}</tbody>
+    </table>
+    </div>
+    {{else}}<p class="muted">This vehicle hasn't carried a shipment yet.</p>{{end}}
+  </section>
+</div>
+<div class="col-side">
+  <section class="card">
+    <div class="card-head"><h2>Usual drivers</h2></div>
+    {{range $d.Drivers}}<p><a href="/app/drivers/{{uuid .ID}}">{{.FullName}}</a>{{if not .IsActive}} <span class="muted small">(deactivated)</span>{{end}}</p>
+    {{else}}<p class="muted">No driver has this as their usual vehicle. Set it on the driver's page.</p>{{end}}
+  </section>
+</div>
+</div>
+{{end}}

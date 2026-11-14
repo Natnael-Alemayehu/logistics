@@ -1,0 +1,87 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div><h1>Billing</h1><p class="muted">Every company's subscription, invoices and payments</p></div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><span class="kpi-l">Monthly recurring revenue</span><span class="kpi-n">{{etb $d.MRR}}</span><span class="kpi-sub">{{$d.Paying}} paying {{if eq $d.Paying 1}}company{{else}}companies{{end}} · before VAT</span></div>
+  <div class="kpi"><span class="kpi-l">Collected this month</span><span class="kpi-n">{{etb $d.Collected}}</span><span class="kpi-sub">Including VAT</span></div>
+  <div class="kpi"><span class="kpi-l">Unpaid invoices</span><span class="kpi-n">{{len $d.Open}}</span><span class="kpi-sub">{{birr $d.OpenTotal}}</span></div>
+  <div class="kpi {{if $d.Overdue}}kpi-warn{{end}}"><span class="kpi-l">Overdue</span><span class="kpi-n">{{$d.Overdue}}</span><span class="kpi-sub">Past their due date</span></div>
+</div>
+
+{{if $d.Refunds}}
+<section class="card card-flush">
+  <div class="card-head"><h2>Refunds to send</h2><p class="small muted">Money that arrived for an invoice already paid or cancelled. Send it back, then record the refund: the company is emailed.</p></div>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Paid</th><th>Company</th><th>Invoice</th><th>Method</th><th class="num">Amount</th><th></th></tr></thead>
+    <tbody>
+      {{range $d.Refunds}}
+      <tr>
+        <td>{{when .CompletedAt}}{{with .PayerPhone}}<div class="small muted">from {{.}}</div>{{end}}</td>
+        <td>{{.TenantName}}</td>
+        <td><a class="mono" href="/app/platform/invoices/{{uuid .InvoiceID}}">{{.InvoiceNumber}}</a></td>
+        <td>{{if eq .Provider "bank"}}Bank transfer{{else}}{{.Provider}}{{end}}<div class="small muted mono">{{.Reference}}</div></td>
+        <td class="num">{{birr .AmountSantim}}</td>
+        <td class="num">
+          <form method="post" action="/app/platform/payments/{{uuid .ID}}/refunded" class="inline-form">
+            <label class="sr-only" for="refund-{{uuid .ID}}">Reference of the refund</label>
+            <input id="refund-{{uuid .ID}}" name="reference" required maxlength="60" placeholder="Refund reference">
+            <button class="btn btn-sm" type="submit">Mark refunded</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{end}}
+
+<section class="card card-flush">
+  <div class="card-head"><h2>Unpaid invoices</h2></div>
+  {{if $d.Open}}
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Invoice</th><th>Company</th><th>For</th><th class="num">Total</th><th>Due</th><th></th></tr></thead>
+    <tbody>
+      {{range $d.Open}}
+      <tr>
+        <td><a class="mono" href="/app/platform/invoices/{{uuid .ID}}">{{.Number}}</a><div class="small muted">Issued {{date .IssuedAt}}</div></td>
+        <td>{{.TenantName}}</td>
+        <td>{{invoiceKind .Kind}}<div class="small muted">{{planName .Plan}}</div></td>
+        <td class="num">{{birr .TotalSantim}}</td>
+        <td>{{if past .DueAt}}<span class="text-bad">{{date .DueAt}}</span>{{else}}{{date .DueAt}}{{end}}</td>
+        <td class="num"><a class="btn btn-sm" href="/app/platform/invoices/{{uuid .ID}}">Record payment</a></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p class="muted card-pad">Nothing is waiting for payment.</p>{{end}}
+</section>
+
+<section class="card card-flush">
+  <div class="card-head"><h2>Recent payments</h2></div>
+  {{if $d.Payments}}
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>When</th><th>Company</th><th>Invoice</th><th>Method</th><th class="num">Amount</th><th>Status</th></tr></thead>
+    <tbody>
+      {{range $d.Payments}}
+      <tr>
+        <td>{{when .CreatedAt}}</td>
+        <td>{{.TenantName}}</td>
+        <td><a class="mono" href="/app/platform/invoices/{{uuid .InvoiceID}}">{{.InvoiceNumber}}</a></td>
+        <td>{{if eq .Provider "bank"}}Bank transfer{{else}}{{.Provider}}{{end}}<div class="small muted mono">{{.Reference}}</div></td>
+        <td class="num">{{birr .AmountSantim}}</td>
+        <td><span class="pay-{{.Status}}">{{title .Status}}</span>{{$due := .RefundDue}}{{with .Note}}<div class="small {{if $due}}text-warn{{else}}muted{{end}}">{{.}}</div>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p class="muted card-pad">No payments yet.</p>{{end}}
+</section>
+{{end}}

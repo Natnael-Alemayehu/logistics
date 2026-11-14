@@ -1,460 +1,496 @@
 //go:build integration
 
+// Package integration drives the whole application — HTTP handlers, services
+// and a real PostGIS database — the way browsers, the driver app and the SMS
+// provider do.
+//
+// Set TEST_DATABASE_URL to use a running server (a scratch database is
+// created on it and dropped afterwards); otherwise a PostGIS container is
+// started with testcontainers.
 package integration
 
 import (
+	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
+	"encoding/json"
 	"fmt"
+	"io"
+	"math/rand/v2"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
 	"os"
-	"path/filepath"
-	"sort"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/handler"
-	"github.com/natnael-alemayehu/logistics/internal/middleware"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/hash"
-	"github.com/natnael-alemayehu/logistics/pkg/jwt"
-	"github.com/natnael-alemayehu/logistics/pkg/storage"
-	"github.com/natnael-alemayehu/logistics/pkg/validation"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"github.com/rs/zerolog"
 	"github.com/testcontainers/testcontainers-go"
-	postgresdriver "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/natnael-alemayehu/logistics/internal/app"
+	"github.com/natnael-alemayehu/logistics/internal/config"
+	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/logistics/migrations"
+	"github.com/natnael-alemayehu/logistics/pkg/console"
 )
 
-func toUUID(s string) pgtype.UUID {
-	if s == "" {
-		return pgtype.UUID{}
-	}
-	id, err := uuid.Parse(s)
-	if err != nil {
-		return pgtype.UUID{}
-	}
-	return pgtype.UUID{Bytes: id, Valid: true}
-}
+var pool *pgxpool.Pool
 
-func toInt32(i int) *int32 {
-	v := int32(i)
-	return &v
-}
-
-// apiPrefix is the version prefix every application route is mounted under.
-// Tests drive the real router, so request paths must include it.
-const apiPrefix = "/api/v1"
-
-// migrationsDir is the production migration directory, resolved relative to
-// this package. Tests run against the same files the API migrates with so the
-// two schemas cannot drift.
-const migrationsDir = "../../migrations"
-
-type TestEnv struct {
-	pool       *pgxpool.Pool
-	queries    *db.Queries
-	container  testcontainers.Container
-	jwtManager *jwt.JWTManager
-	router     *chi.Mux
-	handler    *handler.Handler
-	podStorage *service.PODStorageService
-	t          *testing.T
-	cleanupFns []func()
-}
-
-type TestUser struct {
-	ID       string
-	TenantID string
-	Role     string
-	Phone    string
-	Email    string
-	IsActive bool
-}
-
-type TestShipment struct {
-	ID             string
-	TenantID       string
-	TrackingNumber string
-	Status         string
-	DriverID       string
-}
-
-type TestClaims struct {
-	UserID    string
-	TenantID  string
-	SessionID string
-	Role      string
-}
-
-func SetupTestEnv(t *testing.T) *TestEnv {
+func TestMain(m *testing.M) {
 	ctx := context.Background()
+	dsn, cleanup, err := database(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "integration database:", err)
+		os.Exit(1)
+	}
+	code := func() int {
+		defer cleanup()
+		if pool, err = pgxpool.New(ctx, dsn); err != nil {
+			fmt.Fprintln(os.Stderr, "connect:", err)
+			return 1
+		}
+		defer pool.Close()
+		defer func() { stopObjectStore() }()
+		if err := migrate(ctx); err != nil {
+			fmt.Fprintln(os.Stderr, "migrate:", err)
+			return 1
+		}
+		return m.Run()
+	}()
+	os.Exit(code)
+}
 
-	container, err := postgresdriver.Run(ctx,
-		"postgis/postgis:15-3.3-alpine",
-		postgresdriver.WithDatabase("logistics_test"),
-		postgresdriver.WithUsername("test"),
-		postgresdriver.WithPassword("test"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
-		),
+// database returns a DSN for an empty database and a function that removes it.
+func database(ctx context.Context) (string, func(), error) {
+	if base := os.Getenv("TEST_DATABASE_URL"); base != "" {
+		admin, err := pgx.Connect(ctx, base)
+		if err != nil {
+			return "", nil, err
+		}
+		name := fmt.Sprintf("menged_it_%d", time.Now().UnixNano())
+		if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+			admin.Close(ctx)
+			return "", nil, err
+		}
+		u, err := url.Parse(base)
+		if err != nil {
+			return "", nil, err
+		}
+		u.Path = "/" + name
+		return u.String(), func() {
+			if pool != nil {
+				pool.Close()
+			}
+			_, _ = admin.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+			admin.Close(ctx)
+		}, nil
+	}
+
+	c, err := postgres.Run(ctx, "postgis/postgis:15-3.3-alpine",
+		postgres.WithDatabase("menged"), postgres.WithUsername("menged"), postgres.WithPassword("menged"),
+		testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(2*time.Minute)),
 	)
 	if err != nil {
-		t.Fatalf("failed to start container: %v", err)
+		return "", nil, err
 	}
-
-	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
+	dsn, err := c.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		t.Fatalf("failed to get connection string: %v", err)
+		return "", nil, err
 	}
-
-	pool, err := pgxpool.New(ctx, connStr)
-	if err != nil {
-		t.Fatalf("failed to connect to database: %v", err)
-	}
-
-	env := &TestEnv{
-		pool:      pool,
-		queries:   db.New(pool),
-		container: container,
-		t:         t,
-	}
-
-	env.runMigrations(ctx)
-	env.setupServices()
-
-	return env
+	return dsn, func() { _ = c.Terminate(ctx) }, nil
 }
 
-func (e *TestEnv) runMigrations(ctx context.Context) {
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil {
-		e.t.Fatalf("failed to read migrations directory: %v", err)
+func migrate(ctx context.Context) error {
+	db := stdlib.OpenDBFromPool(pool)
+	defer db.Close()
+	goose.SetBaseFS(migrations.FS)
+	goose.SetLogger(goose.NopLogger())
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
 	}
+	return goose.UpContext(ctx, db, ".")
+}
 
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
-			names = append(names, entry.Name())
+// The stand-in CBE Birr's merchant ID, and the login its servers use.
+const (
+	cbeMerchant = "100100"
+	cbeUser     = "cbebirr"
+	cbePassword = "integration-cbebirr-password"
+)
+
+// env is one running copy of the app.
+type env struct {
+	t     *testing.T
+	srv   *httptest.Server
+	app   *app.App
+	svc   *service.Services
+	stop  func() // stops the background workers, once they finish what they hold
+	inbox *console.Console
+	// texts, when set, are the texts a phone has received, for an app whose
+	// texts go to phones other than the inbox's.
+	texts func(phone string) []console.Item
+	seen  map[string]time.Time // newest message received, by kind and recipient
+	files string               // where uploaded images are stored
+}
+
+// setup is what a test can change before the app starts: its settings, and
+// where its texts can be read. base is the app's address.
+type setup struct {
+	base  string
+	cfg   *config.Config
+	texts func(phone string) []console.Item
+}
+
+// newEnv starts the app as the server command does, with the stand-in
+// providers. They print what they would send to the inbox, which the tests
+// read as a developer reads the terminal; with SMS a stand-in, the SMS
+// webhooks take no secret, as in development. The periodic jobs run only
+// when a test calls them, as every app shares the database.
+func newEnv(t *testing.T, options ...func(*setup)) *env {
+	t.Helper()
+	ts := httptest.NewUnstartedServer(nil)
+	base := "http://" + ts.Listener.Addr().String()
+	tz, _ := time.LoadLocation("Africa/Addis_Ababa")
+	cfg := &config.Config{
+		Port: "0", PublicURL: base, AppName: "Menged", Timezone: tz, Environment: "test",
+		Secret: []byte("integration-test-secret-0123456789abcdef"), SMSProvider: "mock", SMSNumber: "6060", MailProvider: "mock",
+		StorageType: "local", StoragePath: t.TempDir(), MetricsToken: metricsToken, PaymentProvider: "mock",
+		CBEBirr:      config.CBEBirrSettings{MerchantID: cbeMerchant, CallbackUsername: cbeUser, CallbackPassword: cbePassword},
+		SupportEmail: "support@menged.test", BankDetails: "Test Bank, account 123",
+	}
+	s := &setup{base: base, cfg: cfg}
+	for _, o := range options {
+		o(s)
+	}
+	log := zerolog.Nop()
+	if os.Getenv("TEST_LOG") != "" { // the server's log, to see why a request failed
+		log = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
+	}
+	inbox := console.New(nil)
+	a, err := app.New(cfg, pool, log, app.Options{Console: inbox, NoJobs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &env{t: t, srv: ts, app: a, svc: a.Services, inbox: inbox, texts: s.texts, seen: map[string]time.Time{}, files: cfg.StoragePath}
+	// Cleanups run last first: the server stops, then the workers finish
+	// what they hold, before the next test starts.
+	e.work()
+	t.Cleanup(func() { e.stop() })
+	ts.Config.Handler = a.Handler()
+	ts.Start()
+	t.Cleanup(ts.Close)
+	return e
+}
+
+// work starts the app's background workers, as the server does on start.
+func (e *env) work() {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		e.app.Run(ctx)
+		close(done)
+	}()
+	e.stop = func() {
+		cancel()
+		<-done
+	}
+}
+
+// received waits for an SMS or email to a recipient that mentions text and
+// is newer than the last one this test received, and returns it.
+func (e *env) received(kind, to, text string) console.Item {
+	e.t.Helper()
+	key := kind + " " + to
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		items := e.inbox.Items()
+		if kind == "sms" && e.texts != nil {
+			items = e.texts(to)
+		}
+		for _, it := range items {
+			if it.Kind == kind && it.To == to && it.At.After(e.seen[key]) && strings.Contains(it.Title+"\n"+it.Body, text) {
+				e.seen[key] = it.At
+				return it
+			}
+		}
+		if time.Now().After(deadline) {
+			e.t.Fatalf("no %s to %s mentioning %q", kind, to, text)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+var codeRe = regexp.MustCompile(`\b\d{6}\b`)
+
+// code waits for an SMS with a one-time code and returns the code.
+func (e *env) code(phone string) string {
+	e.t.Helper()
+	m := codeRe.FindString(e.received("sms", phone, "code").Body)
+	if m == "" {
+		e.t.Fatalf("no code in the SMS to %s", phone)
+	}
+	return m
+}
+
+// ---------------------------------------------------------------------------
+// Browser sessions
+// ---------------------------------------------------------------------------
+
+type browser struct {
+	e *env
+	c *http.Client
+	// email and phone are the signed-up admin's, for a company's browser.
+	email, phone string
+}
+
+func (e *env) browser() *browser {
+	jar, _ := cookiejar.New(nil)
+	return &browser{e: e, c: &http.Client{
+		Jar:           jar,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
+}
+
+type page struct {
+	Status   int
+	Location string
+	Body     string
+}
+
+func (b *browser) do(req *http.Request) page {
+	b.e.t.Helper()
+	res, err := b.c.Do(req)
+	if err != nil {
+		b.e.t.Fatalf("%s %s: %v", req.Method, req.URL.Path, err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	return page{Status: res.StatusCode, Location: res.Header.Get("Location"), Body: string(body)}
+}
+
+func (b *browser) get(path string) page {
+	req, _ := http.NewRequest(http.MethodGet, b.e.srv.URL+path, nil)
+	return b.do(req)
+}
+
+func (b *browser) post(path string, form url.Values) page {
+	req, _ := http.NewRequest(http.MethodPost, b.e.srv.URL+path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return b.do(req)
+}
+
+// mustPost posts a form and fails unless the app redirects (its success
+// response for every action).
+func (b *browser) mustPost(path string, form url.Values) page {
+	b.e.t.Helper()
+	p := b.post(path, form)
+	if p.Status != http.StatusSeeOther {
+		b.e.t.Fatalf("POST %s: status %d, want 303\n%s", path, p.Status, errorText(p.Body))
+	}
+	return p
+}
+
+var flashRe = regexp.MustCompile(`(?s)class="(?:flash flash-error|field-error)"[^>]*>(.*?)<`)
+
+// errorText pulls the error messages out of a page, for failure output.
+func errorText(body string) string {
+	var out []string
+	for _, m := range flashRe.FindAllStringSubmatch(body, -1) {
+		out = append(out, strings.TrimSpace(m[1]))
+	}
+	if len(out) == 0 && len(body) > 400 {
+		return body[:400]
+	}
+	return strings.Join(out, "; ")
+}
+
+// company signs up a new company, confirming the phone with the code texted
+// to it, and returns its administrator's session.
+func (e *env) company(name string) *browser {
+	e.t.Helper()
+	b := e.browser()
+	b.email = strings.ToLower(strings.ReplaceAll(name, " ", "")) + fmt.Sprintf("%d@example.et", rand.IntN(1e9))
+	b.phone = phoneNumber()
+	p := b.mustPost("/signup", url.Values{
+		"company": {name}, "city": {"Addis Ababa"}, "name": {"Owner of " + name},
+		"email": {b.email}, "phone": {b.phone}, "password": {"correct-horse-1"},
+	})
+	if p.Location != "/signup/verify" {
+		e.t.Fatalf("signup redirected to %q", p.Location)
+	}
+	if p = b.mustPost("/signup/verify", url.Values{"code": {e.code(b.phone)}}); p.Location != "/app" {
+		e.t.Fatalf("signup code redirected to %q", p.Location)
+	}
+	return b
+}
+
+var secretRe = regexp.MustCompile(`data-secret>([^<]+)<`)
+
+// addDriver creates a driver and returns their id, phone and first PIN.
+func (b *browser) addDriver(name string) (id, phone, pin string) {
+	b.e.t.Helper()
+	phone = phoneNumber()
+	p := b.post("/app/drivers", url.Values{"full_name": {name}, "phone": {phone}})
+	m := secretRe.FindStringSubmatch(p.Body)
+	if p.Status != http.StatusOK || m == nil {
+		b.e.t.Fatalf("add driver: status %d %s", p.Status, errorText(p.Body))
+	}
+	if err := pool.QueryRow(context.Background(), `SELECT id::text FROM users WHERE phone = $1`, phone).Scan(&id); err != nil {
+		b.e.t.Fatal(err)
+	}
+	return id, phone, strings.TrimSpace(m[1])
+}
+
+// book creates a shipment and returns its id and tracking number.
+func (b *browser) book(from, to, driverID string) (id, tracking string) {
+	b.e.t.Helper()
+	return b.bookFor(from, to, driverID, phoneNumber())
+}
+
+// bookFor books a shipment for the customer with this phone number.
+func (b *browser) bookFor(from, to, driverID, customerPhone string) (id, tracking string) {
+	b.e.t.Helper()
+	p := b.mustPost("/app/shipments", url.Values{
+		"priority": {"normal"}, "origin_city": {from}, "origin_address": {"Main depot"},
+		"destination_city": {to}, "destination_address": {"Customer warehouse"},
+		"customer_name": {"Abyssinia Traders"}, "customer_phone": {customerPhone},
+		"cargo_description": {"Cement, 200 bags"}, "cargo_weight": {"10000"}, "driver_id": {driverID},
+	})
+	id = strings.TrimPrefix(p.Location, "/app/shipments/")
+	if err := pool.QueryRow(context.Background(), `SELECT tracking_number FROM shipments WHERE id = $1`, id).Scan(&tracking); err != nil {
+		b.e.t.Fatalf("booked shipment %q: %v", p.Location, err)
+	}
+	return id, tracking
+}
+
+// ---------------------------------------------------------------------------
+// The driver app
+// ---------------------------------------------------------------------------
+
+type driverApp struct {
+	e      *env
+	token  string
+	device string
+}
+
+func (e *env) api(method, path, token string, body, out any) int {
+	e.t.Helper()
+	var r io.Reader
+	if body != nil {
+		buf, _ := json.Marshal(body)
+		r = bytes.NewReader(buf)
+	}
+	req, _ := http.NewRequest(method, e.srv.URL+path, r)
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	if out != nil && len(raw) > 0 {
+		if err := json.Unmarshal(raw, out); err != nil {
+			e.t.Fatalf("%s %s: decode %q: %v", method, path, raw, err)
 		}
 	}
-	sort.Strings(names)
+	return res.StatusCode
+}
 
-	for _, name := range names {
-		content, err := os.ReadFile(filepath.Join(migrationsDir, name))
-		if err != nil {
-			e.t.Fatalf("failed to read migration %s: %v", name, err)
-		}
-		if _, err := e.pool.Exec(ctx, gooseUp(string(content))); err != nil {
-			e.t.Fatalf("failed to execute migration %s: %v", name, err)
-		}
+// signIn signs a driver in on a new phone and sets their own PIN.
+func (e *env) signIn(phone, tempPIN string) *driverApp {
+	e.t.Helper()
+	d := &driverApp{e: e, device: fmt.Sprintf("device-%d", rand.IntN(1e9))}
+	var login struct {
+		Token         string `json:"token"`
+		MustChangePIN bool   `json:"must_change_pin"`
 	}
-}
-
-// gooseUp returns the Up half of a goose migration. The directives themselves
-// are ordinary SQL comments and pass through harmlessly, but the Down half must
-// be discarded: executing it would tear down the schema Up just created.
-func gooseUp(migration string) string {
-	if i := strings.Index(migration, "-- +goose Down"); i >= 0 {
-		return migration[:i]
+	if code := e.api("POST", "/api/v1/driver/login", "", map[string]string{"phone": phone, "pin": tempPIN, "device_id": d.device}, &login); code != http.StatusOK {
+		e.t.Fatalf("driver login: status %d", code)
 	}
-	return migration
-}
-
-func (e *TestEnv) setupServices() {
-	validation.Init()
-	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	e.jwtManager = jwt.NewManager(privateKey, &privateKey.PublicKey, "test.logistics.et", time.Hour, 24*time.Hour)
-
-	auditService := service.NewAuditService(e.queries)
-	authService := service.NewAuthService(e.queries, e.jwtManager, auditService)
-	shipmentService := service.NewShipmentService(e.queries, auditService, nil, nil)
-
-	// Real local-filesystem storage rooted in the test's temp dir, so the POD
-	// upload path is exercised rather than stubbed out.
-	podStore, err := storage.NewLocalStorage(e.t.TempDir())
-	if err != nil {
-		e.t.Fatalf("failed to create POD storage: %v", err)
+	if !login.MustChangePIN {
+		e.t.Error("a new driver should have to choose their own PIN")
 	}
-	e.podStorage = service.NewPODStorageServiceWithStorage(e.queries, podStore)
-
-	syncService := service.NewSyncService(e.queries, shipmentService, nil, e.podStorage, zerolog.Nop())
-	userService := service.NewUserService(e.queries, auditService)
-	vehicleService := service.NewVehicleService(e.queries)
-	trackingService := service.NewTrackingService(e.queries, auditService)
-	driverService := service.NewDriverService(e.queries, e.pool)
-	deviceTokenService := service.NewDeviceTokenService(e.queries)
-
-	e.handler = handler.New(authService, shipmentService, syncService, userService, vehicleService, trackingService, nil, nil, driverService, deviceTokenService)
-	e.router = e.handler.Routes(zerolog.Nop(), e.jwtManager, nil, e.queries)
-}
-
-func (e *TestEnv) Cleanup() {
-	for _, fn := range e.cleanupFns {
-		fn()
+	d.token = login.Token
+	if code := e.api("POST", "/api/v1/driver/pin", d.token, map[string]string{"current_pin": tempPIN, "new_pin": "4826"}, nil); code != http.StatusOK {
+		e.t.Fatalf("change PIN: status %d", code)
 	}
-	if e.pool != nil {
-		e.pool.Close()
+	return d
+}
+
+func (d *driverApp) sync(req service.SyncRequest) (service.SyncResponse, int) {
+	d.e.t.Helper()
+	req.DeviceID = d.device
+	var resp service.SyncResponse
+	code := d.e.api("POST", "/api/v1/driver/sync", d.token, req, &resp)
+	return resp, code
+}
+
+// status reports one status change made now and returns the server's
+// verdict on it.
+func (d *driverApp) status(clientID, shipmentID, status string) service.SyncResult {
+	d.e.t.Helper()
+	return d.statusAt(clientID, shipmentID, status, time.Now())
+}
+
+// statusAt reports a status change the driver made at a given time, as a
+// phone sending its outbox after being offline does.
+func (d *driverApp) statusAt(clientID, shipmentID, status string, at time.Time) service.SyncResult {
+	d.e.t.Helper()
+	resp, code := d.sync(service.SyncRequest{Statuses: []service.SyncStatus{{
+		ClientID: clientID, ShipmentID: shipmentID, Status: status, RecordedAt: at,
+	}}})
+	if code != http.StatusOK || len(resp.Results) != 1 {
+		d.e.t.Fatalf("sync %s: status %d, results %+v", status, code, resp.Results)
 	}
-	if e.container != nil {
-		e.container.Terminate(context.Background())
+	return resp.Results[0]
+}
+
+// pod sends a proof of delivery and returns the server's verdict on it.
+func (d *driverApp) pod(p service.SyncPOD) service.SyncResult {
+	d.e.t.Helper()
+	if p.ClientID == "" {
+		p.ClientID = clientID()
 	}
-}
-
-func (e *TestEnv) RegisterCleanup(fn func()) {
-	e.cleanupFns = append(e.cleanupFns, fn)
-}
-
-func (e *TestEnv) CreateTestTenant(ctx context.Context, slug string) db.Tenant {
-	tenant, err := e.queries.CreateTenant(ctx, db.CreateTenantParams{
-		Name:       fmt.Sprintf("Test Tenant %s", slug),
-		Slug:       slug,
-		Plan:       "starter",
-		MaxDrivers: toInt32(5),
-	})
-	if err != nil {
-		e.t.Fatalf("failed to create tenant: %v", err)
+	if p.Signature == "" {
+		p.Signature = signaturePNG
 	}
-	return tenant
-}
-
-func (e *TestEnv) CreateTestDriver(ctx context.Context, tenantID, phone string) TestUser {
-	pinHash, _ := hash.PIN("1234")
-	isActive := true
-	user, err := e.queries.CreateUser(ctx, db.CreateUserParams{
-		TenantID: toUUID(tenantID),
-		Role:     "driver",
-		FullName: fmt.Sprintf("Test Driver %s", phone),
-		Phone:    &phone,
-		PinHash:  &pinHash,
-		IsActive: &isActive,
-	})
-	if err != nil {
-		e.t.Fatalf("failed to create driver: %v", err)
+	if p.RecordedAt.IsZero() {
+		p.RecordedAt = time.Now()
 	}
-	return TestUser{
-		ID:       user.ID.String(),
-		TenantID: user.TenantID.String(),
-		Role:     "driver",
-		Phone:    phone,
-		IsActive: true,
+	resp, code := d.sync(service.SyncRequest{PODs: []service.SyncPOD{p}})
+	if code != http.StatusOK || len(resp.Results) != 1 {
+		d.e.t.Fatalf("sync POD: status %d, results %+v", code, resp.Results)
 	}
+	return resp.Results[0]
 }
 
-func (e *TestEnv) CreateTestDispatcher(ctx context.Context, tenantID, email string) TestUser {
-	passwordHash, _ := hash.Password("password123")
-	isActive := true
-	user, err := e.queries.CreateUser(ctx, db.CreateUserParams{
-		TenantID:     toUUID(tenantID),
-		Role:         "dispatcher",
-		FullName:     fmt.Sprintf("Test Dispatcher %s", email),
-		Email:        &email,
-		PasswordHash: &passwordHash,
-		IsActive:     &isActive,
-	})
-	if err != nil {
-		e.t.Fatalf("failed to create dispatcher: %v", err)
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+func phoneNumber() string { return fmt.Sprintf("091%07d", rand.IntN(1e7)) }
+
+func clientID() string { return fmt.Sprintf("c-%d", rand.Int64()) }
+
+func scalar[T any](t *testing.T, sql string, args ...any) T {
+	t.Helper()
+	var v T
+	if err := pool.QueryRow(context.Background(), sql, args...).Scan(&v); err != nil {
+		t.Fatalf("%s: %v", sql, err)
 	}
-	return TestUser{
-		ID:       user.ID.String(),
-		TenantID: user.TenantID.String(),
-		Role:     "dispatcher",
-		Email:    email,
-		IsActive: true,
-	}
+	return v
 }
 
-func (e *TestEnv) CreateTestAdmin(ctx context.Context, tenantID, email string) TestUser {
-	passwordHash, _ := hash.Password("admin123")
-	isActive := true
-	user, err := e.queries.CreateUser(ctx, db.CreateUserParams{
-		TenantID:     toUUID(tenantID),
-		Role:         "admin",
-		FullName:     fmt.Sprintf("Test Admin %s", email),
-		Email:        &email,
-		PasswordHash: &passwordHash,
-		IsActive:     &isActive,
-	})
-	if err != nil {
-		e.t.Fatalf("failed to create admin: %v", err)
-	}
-	return TestUser{
-		ID:       user.ID.String(),
-		TenantID: user.TenantID.String(),
-		Role:     "admin",
-		Email:    email,
-		IsActive: true,
-	}
-}
-
-func (e *TestEnv) CreateTestShipment(ctx context.Context, tenantID, createdBy string, driverID ...string) TestShipment {
-	trackingNumber := fmt.Sprintf("ET-%s-%04d", time.Now().Format("20060102"), time.Now().Nanosecond()/100000)
-
-	var driverUUID pgtype.UUID
-	if len(driverID) > 0 && driverID[0] != "" {
-		driverUUID = toUUID(driverID[0])
-	}
-
-	shipment, err := e.queries.CreateShipment(ctx, db.CreateShipmentParams{
-		TenantID:           toUUID(tenantID),
-		TrackingNumber:     trackingNumber,
-		OriginAddress:      "Addis Ababa",
-		DestinationAddress: "Dire Dawa",
-		CustomerName:       "Test Customer",
-		CustomerPhone:      "0911111111",
-		Status:             "pending",
-		DriverID:           driverUUID,
-		CreatedBy:          toUUID(createdBy),
-	})
-	if err != nil {
-		e.t.Fatalf("failed to create shipment: %v", err)
-	}
-	return TestShipment{
-		ID:             shipment.ID.String(),
-		TenantID:       shipment.TenantID.String(),
-		TrackingNumber: shipment.TrackingNumber,
-		Status:         shipment.Status,
-	}
-}
-
-func (e *TestEnv) CreateTestVehicle(ctx context.Context, tenantID, plateNumber string) db.Vehicle {
-	vehicle, err := e.queries.CreateVehicle(ctx, db.CreateVehicleParams{
-		TenantID:    toUUID(tenantID),
-		PlateNumber: plateNumber,
-	})
-	if err != nil {
-		e.t.Fatalf("failed to create vehicle: %v", err)
-	}
-	return vehicle
-}
-
-func (e *TestEnv) CreateTestSession(ctx context.Context, userID, tenantID string) string {
-	refreshToken, _ := e.jwtManager.GenerateRefreshToken(userID, tenantID)
-	session, err := e.queries.CreateSession(ctx, db.CreateSessionParams{
-		UserID:           toUUID(userID),
-		TenantID:         toUUID(tenantID),
-		RefreshTokenHash: refreshToken,
-		ExpiresAt:        pgtype.Timestamptz{Time: time.Now().Add(24 * time.Hour), Valid: true},
-	})
-	if err != nil {
-		e.t.Fatalf("failed to create session: %v", err)
-	}
-	return session.ID.String()
-}
-
-func (e *TestEnv) GenerateTestToken(user TestUser, sessionID string) string {
-	token, err := e.jwtManager.GenerateAccessToken(
-		user.ID,
-		user.TenantID,
-		sessionID,
-		user.Role,
-		user.Phone,
-		user.Email,
-	)
-	if err != nil {
-		e.t.Fatalf("failed to generate test token: %v", err)
-	}
-	return token
-}
-
-func (e *TestEnv) GetAuthService() *service.AuthService {
-	auditService := service.NewAuditService(e.queries)
-	return service.NewAuthService(e.queries, e.jwtManager, auditService)
-}
-
-func (e *TestEnv) GetShipmentService() *service.ShipmentService {
-	auditService := service.NewAuditService(e.queries)
-	return service.NewShipmentService(e.queries, auditService, nil, nil)
-}
-
-func (e *TestEnv) GetSyncService() *service.SyncService {
-	shipmentService := e.GetShipmentService()
-	return service.NewSyncService(e.queries, shipmentService, nil, e.podStorage, zerolog.Nop())
-}
-
-func (e *TestEnv) GetPODStorageService() *service.PODStorageService {
-	return e.podStorage
-}
-
-func (e *TestEnv) GetQueries() *db.Queries {
-	return e.queries
-}
-
-func (e *TestEnv) GetRouter() *chi.Mux {
-	return e.router
-}
-
-func (e *TestEnv) GetHandler() *handler.Handler {
-	return e.handler
-}
-
-func (e *TestEnv) GetJWTManager() *jwt.JWTManager {
-	return e.jwtManager
-}
-
-func (e *TestEnv) CreateContextWithClaims(claims TestClaims) context.Context {
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, middleware.UserIDKey, claims.UserID)
-	ctx = context.WithValue(ctx, middleware.TenantIDKey, claims.TenantID)
-	ctx = context.WithValue(ctx, middleware.SessionIDKey, claims.SessionID)
-	ctx = context.WithValue(ctx, middleware.RoleKey, claims.Role)
-	return ctx
-}
-
-func (e *TestEnv) LockUserAccount(ctx context.Context, userID string) {
-	lockUntil := time.Now().Add(15 * time.Minute)
-	err := e.queries.LockUserAccount(ctx, db.LockUserAccountParams{
-		ID:          toUUID(userID),
-		LockedUntil: pgtype.Timestamptz{Time: lockUntil, Valid: true},
-	})
-	if err != nil {
-		e.t.Fatalf("failed to lock user account: %v", err)
-	}
-}
-
-func (e *TestEnv) IncrementFailedAttempts(ctx context.Context, userID string, attempts int) {
-	for i := 0; i < attempts; i++ {
-		_, err := e.queries.IncrementFailedLoginAttempts(ctx, toUUID(userID))
-		if err != nil {
-			e.t.Fatalf("failed to increment failed attempts: %v", err)
-		}
-	}
-}
-
-func (e *TestEnv) GetUserByID(ctx context.Context, userID string) db.User {
-	user, err := e.queries.GetUserByID(ctx, db.GetUserByIDParams{
-		ID: toUUID(userID),
-	})
-	if err != nil {
-		e.t.Fatalf("failed to get user: %v", err)
-	}
-	return user
-}
-
-func (e *TestEnv) AssignDriverToShipment(ctx context.Context, tenantID, shipmentID, driverID string) {
-	_, err := e.queries.AssignDriverToShipment(ctx, db.AssignDriverToShipmentParams{
-		ID:       toUUID(shipmentID),
-		TenantID: toUUID(tenantID),
-		DriverID: toUUID(driverID),
-	})
-	if err != nil {
-		e.t.Fatalf("failed to assign driver: %v", err)
-	}
-}
-
-func (e *TestEnv) UpdateShipmentStatus(ctx context.Context, tenantID, shipmentID, status string) {
-	_, err := e.queries.UpdateShipmentStatus(ctx, db.UpdateShipmentStatusParams{
-		ID:       toUUID(shipmentID),
-		TenantID: toUUID(tenantID),
-		Status:   status,
-	})
-	if err != nil {
-		e.t.Fatalf("failed to update shipment status: %v", err)
-	}
-}
+// signaturePNG is a valid 1×1 PNG as a data URL.
+const signaturePNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="

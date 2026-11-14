@@ -1,0 +1,103 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <h1>Phones</h1>
+    <p class="lead">Texts {{.AppName}} sends arrive here, and replies go back to {{.AppName}} from here. Every phone has a telebirr and a CBE Birr wallet, and the PIN is <strong class="mono">{{.PIN}}</strong>.</p>
+  </div>
+  <form class="open-phone" method="get" action="/phones">
+    <label for="number">Open a phone</label>
+    <div class="row">
+      <input id="number" name="number" inputmode="tel" autocomplete="off" placeholder="0911234567" required>
+      <button class="btn" type="submit">Open</button>
+    </div>
+  </form>
+</div>
+{{with $d.Error}}<p class="banner bad" role="alert">{{.}}</p>{{end}}
+
+<section id="phones" data-poll>
+  {{if $d.Phones}}
+  <ul class="phones">
+    {{range $d.Phones}}
+    <li><a class="phone-card" href="/phones/{{.Number}}">
+      <strong>{{phone .Number}}</strong>
+      {{with .Last}}<span class="last">{{if .Mine}}You: {{else}}{{.From}}: {{end}}{{clip .Body 90}}</span><span class="small muted">{{clock .At}}</span>{{else}}<span class="last muted">No texts yet</span>{{end}}
+      <span class="small wallets">telebirr ETB {{birr .Telebirr}} · CBE Birr ETB {{birr .CBEBirr}}</span>
+    </a></li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="empty">No phones yet. One appears when {{$.AppName}} texts it, or when you open it above.</p>
+  {{end}}
+</section>
+
+<section id="held" data-poll>
+  {{if $d.Held}}
+  <h2>Held back <span class="pill warn">{{len $d.Held}}</span></h2>
+  <p class="small muted">Calls not made to {{$.AppName}}, because a fault dropped them or {{$.AppName}} didn't take them. Send one to see how {{$.AppName}} takes it late.</p>
+  <ul class="list">
+    {{range $d.Held}}
+    <li class="held">
+      <div><strong>{{.Service}}</strong> {{.What}}<div class="small muted">{{.Why}}, since {{clock .Held}}</div></div>
+      <form method="post" action="/held/{{.ID}}" class="row">
+        <input type="hidden" name="back" value="/">
+        <button class="btn small" name="action" value="send">Send now</button>
+        <button class="btn small ghost" name="action" value="discard">Discard</button>
+      </form>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+</section>
+
+<div class="grid2">
+  <section id="orders" data-poll>
+    <h2>telebirr orders</h2>
+    {{if $d.Orders}}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Order</th><th class="num">ETB</th><th>State</th><th>Notification</th></tr></thead>
+      <tbody>
+      {{range $d.Orders}}
+      <tr>
+        <td><span class="mono small">{{.MerchOrderID}}</span><div class="small muted">{{clip .Title 40}}</div></td>
+        <td class="num">{{birr .Amount}}</td>
+        <td><span class="state state-{{.Status}}">{{orderState .Status}}</span>{{with .Payer}}<div class="small muted">{{phone .}}</div>{{end}}</td>
+        <td class="small">{{or .Notified "—"}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table></div>
+    {{else}}<p class="empty">None yet. Pay an invoice with telebirr in {{$.AppName}}.</p>{{end}}
+  </section>
+
+  <section id="payments" data-poll>
+    <h2>CBE Birr payments</h2>
+    {{if $d.Payments}}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Reference</th><th class="num">ETB</th><th>From</th><th>Confirmation</th></tr></thead>
+      <tbody>
+      {{range $d.Payments}}
+      <tr>
+        <td><span class="mono small">{{.Reference}}</span><div class="small muted mono">{{.TransID}}</div></td>
+        <td class="num">{{birr .Amount}}</td>
+        <td class="small"><a href="/phones/{{.Phone}}">{{phone .Phone}}</a></td>
+        <td class="small">{{.Confirmation}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table></div>
+    {{else}}<p class="empty">None yet. Pay an invoice from a phone with CBE Birr.</p>{{end}}
+  </section>
+</div>
+
+<section id="recent" data-poll>
+  <h2>Latest calls <a class="small" href="/log">The whole log</a></h2>
+  {{template "events" $d.Events}}
+</section>
+
+<section class="card">
+  <h2>Settings for {{.AppName}}</h2>
+  <p class="small">With <code>make run-sandbox</code>, {{.AppName}} reads these from <code>sandbox.env</code>. Run another way, it needs them in its environment:</p>
+  <pre class="env" id="env">{{$d.Env}}</pre>
+  <button class="btn small" type="button" data-copy="env">Copy</button>
+</section>
+{{end}}

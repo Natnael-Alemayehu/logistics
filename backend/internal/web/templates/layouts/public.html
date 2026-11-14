@@ -1,0 +1,33 @@
+{{define "public"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{if .Title}}{{.Title}} · {{end}}{{.App.Name}}</title>
+<meta name="description" content="{{.App.Name}} — shipment tracking and proof of delivery for Ethiopian trucking companies.">
+<link rel="icon" href="{{asset "icon.svg"}}" type="image/svg+xml">
+{{/* Page extras such as the map's stylesheet come first, so app.css can restyle them. */}}{{block "head" .}}{{end}}
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<script src="{{asset "app.js"}}" defer></script>
+</head>
+<body class="public {{block "bodyclass" .}}{{end}}">
+<header class="public-top">
+  <a class="brand" href="/">{{template "logo"}}<span>{{.App.Name}}</span></a>
+  <span class="spacer"></span>
+  <nav class="public-nav" aria-label="Site">
+    <a href="/track">Track a shipment</a>
+    {{if .Me}}<a class="btn btn-sm" href="/app">Open dashboard</a>
+    {{else}}<a href="/login">Sign in</a>{{end}}
+  </nav>
+</header>
+<main id="main" class="public-main">
+  {{template "flash" .}}
+  {{template "content" .}}
+</main>
+<footer class="public-foot">
+  <p>{{.App.Name}} · Built for Ethiopian freight · <a href="/track">Track</a> · <a href="/driver/">Driver app</a></p>
+</footer>
+{{block "scripts" .}}{{end}}
+</body>
+</html>{{end}}

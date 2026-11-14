@@ -1,0 +1,25 @@
+{{/* Stands in for a provider's checkout page while payments are simulated.
+   Paying or cancelling sends Menged the provider's signed notification,
+   then returns the payer to the payment page, as the provider does. */}}
+{{define "bodyclass"}}narrow{{end}}
+{{define "content"}}{{$p := .Data.Pay}}
+<section class="card auth pay-prompt">
+  <p><span class="badge">{{.Data.Label}} · simulated</span></p>
+  {{if or (eq $p.Status "pending") (eq $p.Status "expired")}}
+    <h1>Pay {{birr $p.AmountSantim}}</h1>
+    <dl class="facts">
+      <div><dt>Merchant</dt><dd>{{.App.Name}}</dd></div>
+      <div><dt>For</dt><dd>Invoice {{$p.InvoiceNumber}}, {{$p.TenantName}}</dd></div>
+      <div><dt>Order</dt><dd class="mono">{{$p.Reference}}</dd></div>
+    </dl>
+    <form method="post" class="stack">
+      <button class="btn btn-primary btn-block btn-lg" type="submit" name="answer" value="approve">Pay</button>
+      <button class="btn btn-block" type="submit" name="answer" value="decline">Cancel</button>
+    </form>
+    <p class="hint">Payments are simulated on this server, so this page plays {{.Data.Label}}'s checkout. Paying sends the same signed notification {{.Data.Label}} would, then takes you back.</p>
+  {{else}}
+    <h1>This payment is {{if eq $p.Status "paid"}}already paid{{else}}{{$p.Status}}{{end}}</h1>
+    <p>There's nothing to pay. <a href="/app/billing/payments/{{uuid $p.ID}}">See the payment</a></p>
+  {{end}}
+</section>
+{{end}}

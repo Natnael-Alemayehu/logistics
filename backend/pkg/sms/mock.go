@@ -5,13 +5,21 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/natnael-alemayehu/logistics/pkg/console"
 )
 
+// MockProvider stands in for a gateway: messages are kept, and printed to
+// Console when one is set, instead of being sent. It keeps the most recent
+// mockKeep, as a demo site may run for months.
 type MockProvider struct {
+	Console  *console.Console
 	logger   Logger
 	messages []MockMessage
 	mutex    sync.RWMutex
 }
+
+const mockKeep = 1000
 
 type MockMessage struct {
 	ID        string
@@ -33,11 +41,11 @@ func (m *MockProvider) Name() string {
 	return "mock"
 }
 
-func (m *MockProvider) Send(ctx context.Context, to, message string, msgType MessageType) error {
+func (m *MockProvider) Send(ctx context.Context, to, message string, msgType MessageType) (string, error) {
 	normalizedPhone, err := NormalizeEthiopianPhone(to)
 	if err != nil {
 		m.logger.Error("invalid phone number", "phone", to, "error", err)
-		return err
+		return "", fmt.Errorf("%w: %w", ErrRejected, err)
 	}
 
 	msg := MockMessage{
@@ -51,25 +59,17 @@ func (m *MockProvider) Send(ctx context.Context, to, message string, msgType Mes
 
 	m.mutex.Lock()
 	m.messages = append(m.messages, msg)
+	if len(m.messages) > mockKeep {
+		m.messages = append(m.messages[:0:0], m.messages[len(m.messages)-mockKeep:]...)
+	}
 	m.mutex.Unlock()
 
-	m.logger.Info("[MOCK SMS] Message sent",
-		"id", msg.ID,
-		"to", normalizedPhone,
-		"type", msgType,
-		"message", message,
-	)
-
-	return nil
-}
-
-func (m *MockProvider) SendBatch(ctx context.Context, recipients []string, message string, msgType MessageType) error {
-	for _, recipient := range recipients {
-		if err := m.Send(ctx, recipient, message, msgType); err != nil {
-			m.logger.Error("[MOCK SMS] Failed to send to recipient", "recipient", recipient, "error", err)
-		}
+	if m.Console != nil {
+		m.Console.Print(console.Item{Kind: "sms", To: to, Body: message, At: msg.CreatedAt})
+	} else {
+		m.logger.Info("[MOCK SMS] Message sent", "id", msg.ID, "to", normalizedPhone, "type", msgType, "body", message)
 	}
-	return nil
+	return msg.ID, nil
 }
 
 func (m *MockProvider) GetMessages() []MockMessage {

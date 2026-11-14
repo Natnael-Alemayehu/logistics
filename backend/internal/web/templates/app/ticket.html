@@ -1,0 +1,31 @@
+{{define "content"}}{{$t := .Data.Ticket}}{{$base := .Data.Base}}{{$platform := .Me.IsPlatformAdmin}}
+<div class="page-head">
+  <div>
+    <p class="crumbs">{{if $platform}}<a href="/app/platform/support">Support</a> · <a href="/app/platform/tenants/{{uuid $t.TenantID}}">{{$t.Company}}</a>{{else}}<a href="/app/help">Help</a>{{end}}</p>
+    <h1>{{$t.Subject}} {{template "ticket-status" $t.Status}}</h1>
+    <p class="muted">#{{$t.Number}} · asked {{when $t.CreatedAt}}{{with $t.OpenedBy}} by {{.}}{{end}}{{if and $platform $t.OpenedByEmail}} · <a href="mailto:{{$t.OpenedByEmail}}">{{$t.OpenedByEmail}}</a>{{end}}</p>
+  </div>
+  {{if ne $t.Status "closed"}}
+  <div class="actions">
+    <form method="post" action="{{$base}}/close"><button class="btn" type="submit">Close ticket</button></form>
+  </div>
+  {{end}}
+</div>
+<ol class="thread">
+  {{range $t.Messages}}
+  <li class="msg {{if .FromPlatform}}msg-platform{{end}}">
+    <p class="msg-meta"><strong>{{.AuthorName}}</strong>{{if .FromPlatform}} · {{$.App.Name}} team{{end}} <span class="muted">· {{when .CreatedAt}}</span></p>
+    <div class="msg-body">{{.Body}}</div>
+  </li>
+  {{end}}
+</ol>
+<form method="post" action="{{$base}}/reply" class="card stack">
+  <label>{{if $platform}}Answer {{$t.Company}}{{else}}Reply{{end}}
+    <textarea name="body" rows="5" maxlength="5000" required></textarea>
+  </label>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Send</button>
+    <span class="hint">{{if $platform}}The company is emailed your answer.{{else if eq $t.Status "closed"}}Writing again reopens the ticket.{{else}}The {{.App.Name}} team is emailed your reply.{{end}}</span>
+  </div>
+</form>
+{{end}}

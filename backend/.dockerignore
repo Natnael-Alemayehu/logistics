@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+bin/
+tmp/
+uploads/
+keys/
+sandbox-keys/
+deployments/
+*.log

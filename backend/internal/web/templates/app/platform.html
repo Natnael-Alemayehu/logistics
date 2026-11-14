@@ -1,0 +1,32 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div><h1>Companies</h1><p class="muted">{{len $d.Tenants}} companies · {{$d.Drivers}} active drivers · {{grouped $d.Shipments}} shipments in the last 30 days</p></div>
+  <div class="actions"><a class="btn" href="/app/platform/billing">Billing</a></div>
+</div>
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table rows-link">
+  <thead><tr><th>Company</th><th>Plan</th><th class="num">Drivers</th><th class="num">Staff</th><th class="num">Shipments (30 days)</th><th>Last shipment</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Tenants}}{{$own := eq .ID $.Me.TenantID}}{{$href := printf "/app/platform/tenants/%s" (uuid .ID)}}
+  <tr {{if not $own}}data-href="{{$href}}"{{end}} {{if not .IsActive}}class="is-muted"{{end}}>
+    <td>{{if $own}}<strong>{{.Name}}</strong>{{else}}<a href="{{$href}}"><strong>{{.Name}}</strong></a>{{end}}{{if not .IsActive}} <span class="badge s-issue">Suspended</span>{{end}}
+      <div class="muted small">{{.RegionCity}} · since {{date .CreatedAt}}{{with .ContactPhone}} · {{.}}{{end}}</div></td>
+    <td>{{planName .Plan}}{{if eq .Plan "trial"}}{{if .TrialEndsAt.Valid}}<div class="small {{if past .TrialEndsAt}}text-bad{{else}}muted{{end}}">{{if past .TrialEndsAt}}ended{{else}}ends{{end}} {{date .TrialEndsAt}}</div>{{end}}
+      {{else if .PeriodEnd.Valid}}, {{lower (cycleName .BillingCycle)}}<div class="small muted">renews {{date .PeriodEnd}}{{with .PendingPlan}} as {{planName .}}{{end}}</div>{{end}}
+      {{if .DebtDueAt.Valid}}<div class="small {{if past .DebtDueAt}}text-bad{{else}}muted{{end}}">invoice {{if past .DebtDueAt}}overdue since{{else}}due{{end}} {{date .DebtDueAt}}</div>{{end}}
+      {{if .EnterprisePriceSantim}}<div class="small muted">Enterprise terms: {{etb (i64 .EnterprisePriceSantim)}} a month</div>{{end}}</td>
+    <td class="num">{{.Drivers}} / {{.MaxDrivers}}</td>
+    <td class="num">{{.Staff}}</td>
+    <td class="num">{{.Shipments30d}}</td>
+    <td>{{if .LastShipmentAt.Valid}}{{ago .LastShipmentAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
+    <td class="num">
+      {{if $own}}<span class="muted small">Platform</span>{{else}}<a class="btn btn-sm" href="{{$href}}">Manage</a>{{end}}
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{end}}
