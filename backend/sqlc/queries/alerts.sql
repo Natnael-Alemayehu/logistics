@@ -47,7 +47,7 @@ WHERE id = $1 AND tenant_id = $2;
 -- A shipment that reaches a final state resolves whatever was open on it.
 UPDATE alerts
 SET acknowledged_at = NOW(), read_at = COALESCE(read_at, NOW())
-WHERE shipment_id = $1 AND acknowledged_at IS NULL
+WHERE tenant_id = sqlc.arg(tenant_id) AND shipment_id = sqlc.arg(shipment_id) AND acknowledged_at IS NULL
   AND alert_type = ANY(sqlc.arg(alert_types)::text[]);
 
 -- name: DeleteOldAlerts :exec

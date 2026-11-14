@@ -133,7 +133,8 @@ func (s *UserService) CreateDriver(ctx context.Context, p *Principal, in PersonI
 	}
 	out := &NewAccount{}
 	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
-		tenant, err := q.GetTenantByID(ctx, p.TenantID)
+		// Locked, so two drivers added at once can't both take the last place.
+		tenant, err := q.GetTenantForUpdate(ctx, p.TenantID)
 		if err != nil {
 			return err
 		}
@@ -419,7 +420,7 @@ func (s *UserService) SetActive(ctx context.Context, p *Principal, id pgtype.UUI
 				}
 			}
 		} else {
-			tenant, err := q.GetTenantByID(ctx, p.TenantID)
+			tenant, err := q.GetTenantForUpdate(ctx, p.TenantID)
 			if err != nil {
 				return err
 			}

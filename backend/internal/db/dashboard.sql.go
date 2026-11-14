@@ -328,6 +328,7 @@ JOIN LATERAL (
     LIMIT 1
 ) e ON true
 WHERE ST_Distance(l.here, l.dest) - ST_Distance(e.there, l.dest) > $1::float8
+ORDER BY l.recorded_at DESC, l.id
 LIMIT 500
 `
 

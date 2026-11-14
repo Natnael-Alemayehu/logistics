@@ -99,7 +99,9 @@ RETURNING *;
 -- thereafter; picked_up_at likewise records the first departure. Both use the
 -- time the change happened, which for an offline driver is earlier than now.
 -- A delivery accepted on review is stamped with when the proof was recorded
--- (delivered_at), not when the office accepted it.
+-- (delivered_at), not when the office accepted it. A shipment delivered
+-- without being marked departed (a proof of delivery straight from
+-- assigned) left then too, as far as anyone knows.
 UPDATE shipments
 SET status = sqlc.arg(status),
     status_note = sqlc.narg(status_note),
@@ -110,7 +112,8 @@ SET status = sqlc.arg(status),
         ELSE actual_delivery
     END,
     picked_up_at = CASE
-        WHEN sqlc.arg(status) = 'in_transit' THEN COALESCE(picked_up_at, sqlc.arg(changed_at))
+        WHEN sqlc.arg(status) IN ('in_transit', 'arrived') THEN COALESCE(picked_up_at, sqlc.arg(changed_at))
+        WHEN sqlc.arg(status) = 'delivered' THEN COALESCE(picked_up_at, sqlc.narg(delivered_at), sqlc.arg(changed_at))
         ELSE picked_up_at
     END,
     updated_at = NOW()
@@ -118,14 +121,15 @@ WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id)
 RETURNING *;
 
 -- name: SetShipmentConfirmToken :exec
-UPDATE shipments SET confirm_token = $2 WHERE id = $1 AND confirm_token IS NULL;
+UPDATE shipments SET confirm_token = sqlc.arg(confirm_token)
+WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id) AND confirm_token IS NULL;
 
 -- name: SetCustomerConfirmation :one
 UPDATE shipments
 SET customer_confirmed_at = COALESCE(customer_confirmed_at, NOW()),
     customer_feedback = COALESCE(sqlc.narg(feedback), customer_feedback),
     updated_at = NOW()
-WHERE id = sqlc.arg(id)
+WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id)
 RETURNING *;
 
 -- name: ListShipments :many
@@ -214,6 +218,17 @@ ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END,
          estimated_delivery ASC NULLS LAST,
          created_at ASC;
 
+-- name: GetVehicleLoad :one
+-- What a vehicle carries already: the weight of its active shipments other
+-- than this one, and another driver on any of them.
+SELECT COALESCE(SUM(s.cargo_weight), 0)::float8 AS weight_kg,
+       COALESCE(MIN(u.full_name) FILTER (WHERE s.driver_id IS DISTINCT FROM sqlc.arg(driver_id)::uuid), '')::text AS other_driver
+FROM shipments s
+LEFT JOIN users u ON u.id = s.driver_id
+WHERE s.tenant_id = sqlc.arg(tenant_id) AND s.vehicle_id = sqlc.arg(vehicle_id)
+  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+  AND s.id IS DISTINCT FROM sqlc.narg(exclude)::uuid;
+
 -- name: CountActiveShipmentsByDriver :one
 SELECT COUNT(*) FROM shipments
 WHERE driver_id = $1
@@ -266,22 +281,35 @@ LIMIT 500;
 -- Across tenants: the job that raises ETA alerts runs once for the platform.
 -- Only loads on the road can be late; one not yet collected is caught by
 -- ListPickupOverdue. The episode identifies the ETA the alert is about.
+-- Loads already alerted for that ETA are left out, so a backlog of more
+-- than a run's worth is worked through, oldest first, over the next runs.
 SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.estimated_delivery,
        floor(extract(epoch FROM s.estimated_delivery))::bigint::text AS episode
 FROM shipments s
 WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
   AND s.estimated_delivery IS NOT NULL
   AND s.estimated_delivery < NOW()
+  AND NOT EXISTS (
+      SELECT 1 FROM alerts a
+      WHERE a.tenant_id = s.tenant_id AND a.alert_type = 'eta_exceeded' AND a.shipment_id = s.id
+        AND a.episode = floor(extract(epoch FROM s.estimated_delivery))::bigint::text)
+ORDER BY s.estimated_delivery
 LIMIT 1000;
 
 -- name: ListPickupOverdue :many
--- Loads still waiting to be collected well after their planned pickup.
+-- Loads still waiting to be collected well after their planned pickup, not
+-- yet alerted for that pickup time, oldest first.
 SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.status, s.planned_pickup_at,
        floor(extract(epoch FROM s.planned_pickup_at))::bigint::text AS episode
 FROM shipments s
 WHERE s.status IN ('pending', 'assigned')
   AND s.planned_pickup_at IS NOT NULL
   AND s.planned_pickup_at < sqlc.arg(due_before)
+  AND NOT EXISTS (
+      SELECT 1 FROM alerts a
+      WHERE a.tenant_id = s.tenant_id AND a.alert_type = 'pickup_overdue' AND a.shipment_id = s.id
+        AND a.episode = floor(extract(epoch FROM s.planned_pickup_at))::bigint::text)
+ORDER BY s.planned_pickup_at
 LIMIT 1000;
 
 -- name: ListShipmentsByCustomerPhone :many
@@ -327,5 +355,5 @@ LIMIT 50;
 -- A problem report: the customer has answered but not confirmed receipt.
 UPDATE shipments
 SET customer_feedback = sqlc.arg(feedback), updated_at = NOW()
-WHERE id = sqlc.arg(id)
+WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id)
 RETURNING *;

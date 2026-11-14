@@ -9,6 +9,7 @@ package integration
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/internal/service"
 )
 
@@ -627,5 +629,110 @@ func TestAmharicNamesFit(t *testing.T) {
 	}
 	if p := office.post("/app/drivers", url.Values{"full_name": {strings.Repeat("ሀ", 121)}, "phone": {phoneNumber()}}); !strings.Contains(errorText(p.Body), "too long") {
 		t.Errorf("121 letters: %d %s, want too long", p.Status, errorText(p.Body))
+	}
+}
+
+// TestDeliveredStraightFromAssigned (L1): a proof of delivery sent before
+// the trip was started still records when the load left.
+func TestDeliveredStraightFromAssigned(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Direct Delivery")
+	driverID, phone, pin := office.addDriver("Bereket Tadesse")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Almaz Desta"}); !r.OK {
+		t.Fatalf("deliver: %+v", r)
+	}
+	if !scalar[bool](t, `SELECT status = 'delivered' AND picked_up_at IS NOT NULL AND picked_up_at <= actual_delivery FROM shipments WHERE id = $1`, shipmentID) {
+		t.Error("a delivery straight from assigned should record a departure no later than the delivery")
+	}
+}
+
+// TestReopenFollowsTheRules (L2): reopening is new work. A driver at their
+// limit doesn't get the load back, and a read-only company can't reopen.
+func TestReopenFollowsTheRules(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Reopen Rules")
+	driverID, _, _ := office.addDriver("Mulu Alemu")
+	exec(t, `UPDATE tenants SET max_active_per_driver = 1 WHERE id = $1`, office.tenant())
+	first, _ := office.book("Addis Ababa", "Adama", driverID)
+	office.mustPost("/app/shipments/"+first+"/cancel", url.Values{"reason": {"customer_request"}})
+	office.book("Addis Ababa", "Hawassa", driverID) // the driver's one place
+
+	if msg, failed := office.result("/app/shipments/"+first+"/reopen", nil); failed {
+		t.Fatalf("reopen: %s", msg)
+	}
+	if !scalar[bool](t, `SELECT status = 'pending' AND driver_id IS NULL FROM shipments WHERE id = $1`, first) {
+		t.Error("a driver at their limit should not get the reopened load back")
+	}
+	if note := scalar[string](t, `SELECT note FROM shipment_events WHERE shipment_id = $1 AND event_type = 'unassigned'`, first); !strings.Contains(note, "Mulu Alemu already has 1 active") {
+		t.Errorf("unassigned note %q should say why", note)
+	}
+
+	office.mustPost("/app/shipments/"+first+"/cancel", url.Values{"reason": {"customer_request"}})
+	exec(t, `UPDATE tenants SET trial_ends_at = NOW() - INTERVAL '1 minute' WHERE id = $1`, office.tenant())
+	if msg, failed := office.result("/app/shipments/"+first+"/reopen", nil); !failed || !strings.Contains(msg, "read-only") {
+		t.Errorf("reopen in read-only mode: %q", msg)
+	}
+}
+
+// TestVehicleOnOneTripWithinCapacity (L3): a truck on one driver's trip
+// can't be given to another, nor loaded past its capacity. A driver's usual
+// truck in that state is left off rather than blocking the assignment.
+func TestVehicleOnOneTripWithinCapacity(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("One Truck Freight")
+	office.mustPost("/app/vehicles", url.Values{"plate_number": {"3-B22222"}, "vehicle_type": {"heavy_truck"}, "capacity_kg": {"15000"}, "active": {"on"}})
+	truck := scalar[string](t, `SELECT id::text FROM vehicles WHERE tenant_id = $1`, office.tenant())
+	first, _, _ := office.addDriver("Girma Wolde")
+	second, _, _ := office.addDriver("Hirut Bekele")
+
+	a, _ := office.book("Addis Ababa", "Adama", "") // 10,000 kg
+	if msg, failed := office.result("/app/shipments/"+a+"/assign", url.Values{"driver_id": {first}, "vehicle_id": {truck}}); failed {
+		t.Fatalf("assign: %s", msg)
+	}
+	b, _ := office.book("Addis Ababa", "Hawassa", "")
+	if msg, failed := office.result("/app/shipments/"+b+"/assign", url.Values{"driver_id": {second}, "vehicle_id": {truck}}); !failed || !strings.Contains(msg, "on Girma Wolde's trip") {
+		t.Errorf("a truck on another driver's trip: %q", msg)
+	}
+	if msg, failed := office.result("/app/shipments/"+b+"/assign", url.Values{"driver_id": {first}, "vehicle_id": {truck}}); !failed || !strings.Contains(msg, "carries up to 15,000 kg") {
+		t.Errorf("a second 10,000 kg load on a 15,000 kg truck: %q", msg)
+	}
+
+	// The truck is the second driver's usual one: assigning them still works,
+	// without it.
+	exec(t, `UPDATE users SET vehicle_id = $1 WHERE id = $2`, truck, second)
+	if msg, failed := office.result("/app/shipments/"+b+"/assign", url.Values{"driver_id": {second}}); failed {
+		t.Fatalf("assign with a busy usual truck: %s", msg)
+	}
+	if !scalar[bool](t, `SELECT driver_id = $2 AND vehicle_id IS NULL FROM shipments WHERE id = $1`, b, second) {
+		t.Error("the busy usual truck should have been left off")
+	}
+}
+
+// TestRenewalKeepsTheBillingDay (L6): a company's billing day is kept and
+// each renewal ends on it, not on whatever day the last period ended.
+func TestRenewalKeepsTheBillingDay(t *testing.T) {
+	e := newEnv(t)
+	office := e.subscribed("Billing Day Haulage", "starter", e.operator())
+	tenant := office.tenant()
+	addis, _ := time.LoadLocation("Africa/Addis_Ababa")
+	if day := scalar[int32](t, `SELECT billing_anchor_day FROM tenants WHERE id = $1`, tenant); day != int32(time.Now().In(addis).Day()) {
+		t.Errorf("billing day %d, want today's", day)
+	}
+
+	// As if the company started on the 31st and this period ended early in
+	// a short month.
+	exec(t, `UPDATE tenants SET billing_anchor_day = 31, period_start = NOW() - INTERVAL '1 month', period_end = NOW() - INTERVAL '1 minute' WHERE id = $1`, tenant)
+	start := scalar[time.Time](t, `SELECT period_end FROM tenants WHERE id = $1`, tenant)
+	if err := e.svc.Billing.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	end := scalar[time.Time](t, `SELECT period_end FROM tenants WHERE id = $1`, tenant)
+	if want := model.PeriodEnd(start.In(addis), model.CycleMonthly, 31); !end.Equal(want) {
+		t.Errorf("renewed to %s, want %s", end.In(addis).Format("2 Jan 2006 15:04"), want.Format("2 Jan 2006 15:04"))
+	}
+	if day := scalar[int32](t, `SELECT billing_anchor_day FROM tenants WHERE id = $1`, tenant); day != 31 {
+		t.Errorf("billing day %d after renewal, want 31", day)
 	}
 }

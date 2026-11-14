@@ -246,7 +246,7 @@ func subscriptionOf(t db.Tenant) db.SaveSubscriptionParams {
 	return db.SaveSubscriptionParams{
 		ID: t.ID, Plan: t.Plan, BillingCycle: t.BillingCycle, MaxDrivers: t.MaxDrivers, SmsQuota: t.SmsQuota,
 		PeriodStart: t.PeriodStart, PeriodEnd: t.PeriodEnd, SubscribedAt: t.SubscribedAt,
-		PendingPlan: t.PendingPlan, PendingCycle: t.PendingCycle,
+		PendingPlan: t.PendingPlan, PendingCycle: t.PendingCycle, BillingAnchorDay: t.BillingAnchorDay,
 	}
 }
 
@@ -1203,7 +1203,8 @@ func (s *BillingService) settle(ctx context.Context, q *db.Queries, after *after
 		if t.Plan == model.PlanTrial && t.TrialEndsAt.Valid && t.TrialEndsAt.Time.After(start) {
 			start = t.TrialEndsAt.Time
 		}
-		end = s.periodEnd(start, inv.BillingCycle)
+		sub.BillingAnchorDay = s.freshAnchor(start)
+		end = s.periodEnd(start, inv.BillingCycle, *sub.BillingAnchorDay)
 		sub = withTerms(sub, s.termsOrDefault(t, inv.Plan))
 		sub.BillingCycle = inv.BillingCycle
 		sub.PeriodStart, sub.PeriodEnd, sub.SubscribedAt = toTimestamp(start), toTimestamp(end), toTimestamp(start)
@@ -1213,7 +1214,8 @@ func (s *BillingService) settle(ctx context.Context, q *db.Queries, after *after
 		sub.PendingPlan = nil
 	case invoiceRenewal:
 		if !paidAt.Before(inv.DueAt.Time.AddDate(0, 0, model.GraceDays)) {
-			start, end = paidAt, s.periodEnd(paidAt, t.BillingCycle)
+			sub.BillingAnchorDay = s.freshAnchor(paidAt)
+			start, end = paidAt, s.periodEnd(paidAt, t.BillingCycle, *sub.BillingAnchorDay)
 			sub.PeriodStart, sub.PeriodEnd = toTimestamp(start), toTimestamp(end)
 		}
 	}
@@ -1655,11 +1657,14 @@ func (s *BillingService) renew(ctx context.Context, id pgtype.UUID) error {
 		// than a day ago: the company was suspended (or the job wasn't
 		// running), and time already gone by isn't billed.
 		start := t.PeriodEnd.Time
+		anchor := s.anchorOf(t)
 		if now.Sub(start) > lateRenewal {
 			start = now
+			anchor = *s.freshAnchor(now)
 		}
-		end := s.periodEnd(start, cycle)
+		end := s.periodEnd(start, cycle, anchor)
 		sub := withTerms(subscriptionOf(t), tm)
+		sub.BillingAnchorDay = &anchor
 		sub.BillingCycle = cycle
 		sub.PeriodStart, sub.PeriodEnd = toTimestamp(start), toTimestamp(end)
 		sub.PendingPlan, sub.PendingCycle = nil, nil
@@ -1893,10 +1898,26 @@ func (c *core) emailBilling(ctx context.Context, q *db.Queries, after *afterComm
 	return nil
 }
 
-// periodEnd is when a period starting at start ends, counting days where
-// the companies are rather than where the server is.
-func (c *core) periodEnd(start time.Time, cycle string) time.Time {
-	return model.PeriodEnd(start.In(c.cfg.Location), cycle)
+// periodEnd is when a period starting at start ends, on the billing day
+// (0 for start's own), counting days where the companies are rather than
+// where the server is.
+func (c *core) periodEnd(start time.Time, cycle string, anchorDay int32) time.Time {
+	return model.PeriodEnd(start.In(c.cfg.Location), cycle, int(anchorDay))
+}
+
+// freshAnchor is the billing day of a period starting afresh at start.
+func (c *core) freshAnchor(start time.Time) *int32 {
+	d := int32(start.In(c.cfg.Location).Day())
+	return &d
+}
+
+// anchorOf is a company's billing day, worked out for one whose day wasn't
+// recorded.
+func (c *core) anchorOf(t db.Tenant) int32 {
+	if t.BillingAnchorDay != nil {
+		return *t.BillingAnchorDay
+	}
+	return int32(model.AnchorDay(t.PeriodStart.Time.In(c.cfg.Location), t.SubscribedAt.Time.In(c.cfg.Location)))
 }
 
 func (c *core) date(t time.Time) string { return t.In(c.cfg.Location).Format("2 Jan 2006") }

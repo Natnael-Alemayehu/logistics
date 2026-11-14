@@ -17,6 +17,7 @@ SET plan = sqlc.arg(plan),
     subscribed_at = sqlc.narg(subscribed_at),
     pending_plan = sqlc.narg(pending_plan),
     pending_cycle = sqlc.narg(pending_cycle),
+    billing_anchor_day = sqlc.narg(billing_anchor_day),
     updated_at = NOW()
 WHERE id = sqlc.arg(id);
 
