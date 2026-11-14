@@ -1,7 +1,9 @@
 # Alerts on Menged's own health, from the metrics in pkg/metrics, emailed by
 # contact-points.yml. Each rule queries Prometheus (A) and compares the
 # result with its threshold (C). Annotations use .Labels and .Values, not $:
-# provisioning files expand $ as environment variables.
+# provisioning files expand $ as environment variables. A summary formats
+# .Values.A.Value only when there is one: with no data it is nil, and the
+# humanize functions fail on it.
 apiVersion: 1
 groups:
   - orgId: 1
@@ -38,17 +40,18 @@ groups:
                 - evaluator: { type: gt, params: [0] }
 
       # The jobs that run every minute. Retention and plan limits run less
-      # often. No data means no server is running the jobs at all.
+      # often. No data means no server is running the jobs at all; the
+      # pending time keeps a restart, before the first scrape, from firing.
       - uid: menged-job-stale
         title: A background job hasn't succeeded for 10 minutes
         condition: C
-        for: 0m
+        for: 5m
         noDataState: Alerting
         execErrState: Error
         labels:
           severity: critical
         annotations:
-          summary: 'The {{ .Labels.name }} job last succeeded {{ humanizeDuration .Values.A.Value }} ago.'
+          summary: '{{ if .Values.A.Value }}The {{ .Labels.name }} job last succeeded {{ humanizeDuration .Values.A.Value }} ago.{{ else }}No background job has reported a success.{{ end }}'
           description: 'No data means no app server is running the jobs, or Prometheus can''t reach it.'
         data:
           - refId: A
@@ -76,7 +79,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'The oldest {{ .Labels.channel }} has waited {{ humanizeDuration .Values.A.Value }} to be sent.'
+          summary: '{{ if .Values.A.Value }}The oldest {{ .Labels.channel }} has waited {{ humanizeDuration .Values.A.Value }} to be sent.{{ else }}Texts or emails are waiting to be sent.{{ end }}'
           description: 'The provider may be down or refusing. Check the platform health page and the provider sandbox or dashboard.'
         data:
           - refId: A
@@ -104,7 +107,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: '{{ humanizePercentage .Values.A.Value }} of requests answered with a server error over 10 minutes.'
+          summary: '{{ if .Values.A.Value }}{{ humanizePercentage .Values.A.Value }} of requests{{ else }}Requests{{ end }} answered with a server error over 10 minutes.'
           description: 'See the error rate and slowest routes on the Menged dashboard, and the app log.'
         data:
           - refId: A
@@ -132,7 +135,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: 'Only {{ humanizePercentage .Values.A.Value }} of the disk holding uploads is free.'
+          summary: '{{ if .Values.A.Value }}Only {{ humanizePercentage .Values.A.Value }} of the disk holding uploads is free.{{ else }}The disk holding uploads is nearly full.{{ end }}'
           description: 'Photos, backups and the database share it. Free space or grow the disk before uploads and writes fail.'
         data:
           - refId: A
@@ -160,7 +163,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: '{{ humanizePercentage .Values.A.Value }} of the daily budget of verification codes was texted in the last 24 hours.'
+          summary: '{{ if .Values.A.Value }}{{ humanizePercentage .Values.A.Value }} of{{ else }}Most of{{ end }} the daily budget of verification codes was texted in the last 24 hours.'
           description: 'A script may be requesting codes. At 100% sign-up, tracking by phone and resets by phone stop until the day rolls on. OTP_DAILY_BUDGET sets the budget.'
         data:
           - refId: A
