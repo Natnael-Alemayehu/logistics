@@ -68,6 +68,14 @@ var (
 	}, []string{"channel"})
 )
 
+// VerificationBudgetUsed is how much of the day's budget of verification
+// codes has been texted. Sign-up and lookup codes go to any number, so the
+// budget is what stops a script running up the SMS bill.
+var VerificationBudgetUsed = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "menged_verification_budget_used_ratio",
+	Help: "Share of the daily budget of verification codes texted in the last 24 hours.",
+})
+
 var WebSocketConnections = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "menged_websocket_connections",
 	Help: "Dashboard live-update connections open on this server.",

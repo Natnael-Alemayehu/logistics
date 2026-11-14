@@ -200,7 +200,8 @@ WHERE tenant_id = $1 AND role = 'admin' AND is_active AND email IS NOT NULL
 ORDER BY created_at;
 
 -- name: CountSMSSentBetween :one
-SELECT COUNT(*) FROM sms_messages
+-- In SMS parts: a long text counts as several.
+SELECT COALESCE(SUM(segments), 0)::bigint FROM sms_messages
 WHERE tenant_id = $1 AND direction = 'outbound' AND status = 'sent'
   AND sent_at >= sqlc.arg(since) AND sent_at < sqlc.arg(until);
 
@@ -246,7 +247,7 @@ WHERE t.is_active AND i.status = 'open' AND i.kind IN ('renewal', 'usage') AND i
 WITH usage AS (
     SELECT t.id, t.plan, t.max_drivers, t.sms_month_quota, t.period_start, t.trial_ends_at,
            (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role = 'driver' AND u.is_active)::bigint AS active_drivers,
-           (SELECT COUNT(*) FROM sms_messages m
+           (SELECT COALESCE(SUM(m.segments), 0) FROM sms_messages m
             WHERE m.tenant_id = t.id AND m.direction = 'outbound' AND m.status = 'sent'
               -- Texts from before a subscription started were the trial's.
               AND m.sent_at >= GREATEST(sqlc.arg(month_start)::timestamptz, t.subscribed_at))::bigint AS sms_sent

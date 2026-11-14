@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -78,25 +79,108 @@ type outboundSMS struct {
 }
 
 // enqueue adds a message to the outbox within the caller's transaction and
-// wakes the sender after commit.
+// wakes the sender after commit. A company's text beyond its limits
+// (smsRefusal) is recorded as skipped instead.
 func (c *core) enqueueSMS(ctx context.Context, q *db.Queries, after *afterCommit, m outboundSMS) {
-	local, err := phone.Normalize(m.Phone)
-	if err != nil {
+	skip := func(why string) {
 		_, _ = q.RecordSMS(ctx, db.RecordSMSParams{
 			TenantID: m.TenantID, ShipmentID: m.ShipmentID, Direction: "outbound",
 			Phone: m.Phone, Body: redactIf(m.Sensitive, m.Body), Purpose: m.Purpose,
-			Status: "skipped", LastError: ptr("invalid phone number"),
+			Status: "skipped", LastError: &why,
 		})
+	}
+	local, err := phone.Normalize(m.Phone)
+	if err != nil {
+		skip("invalid phone number")
 		return
+	}
+	m.Phone = local
+	segments := smsParts(m.Body)
+	if m.TenantID.Valid {
+		why, err := c.smsRefusal(ctx, q, after, m.TenantID, segments)
+		if err != nil {
+			c.log.Error().Err(err).Str("purpose", m.Purpose).Msg("check sms limits")
+			return
+		}
+		if why != "" {
+			skip(why)
+			return
+		}
 	}
 	if _, err := q.EnqueueSMS(ctx, db.EnqueueSMSParams{
 		TenantID: m.TenantID, ShipmentID: m.ShipmentID, Phone: local,
-		Body: m.Body, Purpose: m.Purpose, Sensitive: m.Sensitive,
+		Body: m.Body, Purpose: m.Purpose, Sensitive: m.Sensitive, Segments: segments,
 	}); err != nil {
 		c.log.Error().Err(err).Str("purpose", m.Purpose).Msg("enqueue sms")
 		return
 	}
 	after.do(c.sms.kick)
+}
+
+// smsRefusal says why a company's text must not be sent, or "" if it may.
+// The limits stop an account being used to send spam at the platform's
+// expense: every company has an hourly ceiling far above what dispatching
+// needs, and a company on its free trial stops at the trial's allowance. A
+// paying company is never stopped by its monthly allowance: texts beyond it
+// are billed. Checked without a lock, a burst of texts may pass a limit by
+// a few, which is harmless. The company is told by an alert, once a day.
+func (c *core) smsRefusal(ctx context.Context, q *db.Queries, after *afterCommit, tenantID pgtype.UUID, segments int32) (string, error) {
+	t, err := q.GetTenantByID(ctx, tenantID)
+	if err != nil {
+		return "", err
+	}
+	now := c.now()
+	perHour := int64(model.SMSPerHour)
+	if t.Plan == model.PlanTrial {
+		perHour = model.TrialSMSPerHour
+	}
+	lastHour, err := q.CountTenantSMSSegmentsSince(ctx, db.CountTenantSMSSegmentsSinceParams{TenantID: t.ID, CreatedAt: toTimestamp(now.Add(-time.Hour))})
+	if err != nil {
+		return "", err
+	}
+	var why, alert string
+	switch {
+	case lastHour+int64(segments) > perHour:
+		why = fmt.Sprintf("the limit of %d text messages an hour was reached", perHour)
+		alert = fmt.Sprintf("Text messages are paused: your company has sent %d in the last hour, the most allowed. "+
+			"They start again as the hour goes by; texts not sent meanwhile are listed as skipped.", perHour)
+	case t.Plan == model.PlanTrial:
+		trial, _ := model.PlanByCode(model.PlanTrial)
+		used, err := q.CountTenantSMSSegmentsSince(ctx, db.CountTenantSMSSegmentsSinceParams{TenantID: t.ID, CreatedAt: t.CreatedAt})
+		if err != nil {
+			return "", err
+		}
+		if used+int64(segments) > int64(trial.SMSIncluded) {
+			why = fmt.Sprintf("the free trial's %d text messages are used up", trial.SMSIncluded)
+			alert = fmt.Sprintf("Your free trial's %d text messages are used up, so customers and drivers get no more texts "+
+				"until an administrator chooses a plan on the Billing page.", trial.SMSIncluded)
+		}
+	}
+	if why != "" {
+		c.raise(ctx, q, after, newAlert{
+			TenantID: t.ID, Type: AlertSMSPaused, Severity: SeverityWarning, Message: alert,
+			Episode: now.In(c.cfg.Location).Format("2006-01-02"),
+		})
+	}
+	return why, nil
+}
+
+// smsParts is how many SMS a text goes as, which is what the provider
+// charges: 160 characters in one, or 153 to a part when longer, in the GSM
+// alphabet; 70 and 67 in Unicode, which Amharic needs. (The sandbox has its
+// own copy: it may import only the standard library.)
+func smsParts(s string) int32 {
+	single, multi := 160, 153
+	for _, r := range s {
+		if r > '~' || (r < ' ' && r != '\n' && r != '\r') {
+			single, multi = 70, 67
+			break
+		}
+	}
+	if n := utf8.RuneCountInString(s); n > single {
+		return int32((n + multi - 1) / multi)
+	}
+	return 1
 }
 
 func redactIf(sensitive bool, body string) string {
@@ -176,6 +260,12 @@ func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
 		return
 	}
 	provider := s.sender.Name()
+	// A code that has expired is no use to anyone: it isn't sent late.
+	if m.Purpose == PurposeOTP && !s.now().Before(m.CreatedAt.Time.Add(codeTTL)) {
+		metrics.Messages.WithLabelValues("sms", provider, "failed").Inc()
+		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: ptr("the code expired before it could be sent")})
+		return
+	}
 	if !m.Sensitive {
 		if out, err := s.q.IsPhoneOptedOut(ctx, m.Phone); err == nil && out {
 			metrics.Messages.WithLabelValues("sms", provider, "skipped").Inc()
@@ -211,8 +301,14 @@ func (s *SMSService) deliver(ctx context.Context, m db.SmsMessage) {
 		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: &msg})
 		return
 	}
-	metrics.Messages.WithLabelValues("sms", provider, "retry").Inc()
 	next := s.now().Add(smsBackoff[m.Attempts-1])
+	if m.Purpose == PurposeOTP && !next.Before(m.CreatedAt.Time.Add(codeTTL)) {
+		metrics.Messages.WithLabelValues("sms", provider, "failed").Inc()
+		msg = truncate("the code would expire before another try: "+msg, 300)
+		_ = s.q.MarkSMSFailed(ctx, db.MarkSMSFailedParams{ID: m.ID, LastError: &msg})
+		return
+	}
+	metrics.Messages.WithLabelValues("sms", provider, "retry").Inc()
 	_ = s.q.MarkSMSRetry(ctx, db.MarkSMSRetryParams{ID: m.ID, LastError: &msg, NextAttemptAt: toTimestamp(next)})
 }
 
@@ -348,7 +444,7 @@ func smsHelp() string {
 // from a message that was ignored.
 type InboundResult struct {
 	// Outcome is recorded, unchanged, refused, replied, opted_out, opted_in,
-	// unknown_sender or bad_number.
+	// unknown_sender, bad_number or duplicate.
 	Outcome string `json:"outcome"`
 	// Detail says the same for people.
 	Detail string `json:"detail"`
@@ -356,35 +452,72 @@ type InboundResult struct {
 	Reply string `json:"reply,omitempty"`
 }
 
+// InboundSMS is a text the provider received for the platform.
+type InboundSMS struct {
+	From string
+	Body string
+	// ProviderMessageID is the provider's ID for the message, when it sends
+	// one: the same message delivered to the webhook again is handled once.
+	ProviderMessageID string
+}
+
+// maxRepliesPerHour is how many replies one number gets in an hour. A
+// phone that answers every text by itself, with an auto-reply or a network
+// message, would otherwise trade texts with the platform without end.
+const maxRepliesPerHour = 10
+
 // Inbound handles a message received from the provider. Replies go only to
-// registered drivers, so a stranger cannot make the platform spend money.
-func (s *SMSService) Inbound(ctx context.Context, from, body string) (InboundResult, error) {
-	local, err := phone.Normalize(from)
+// registered drivers, so a stranger cannot make the platform spend money,
+// and only so many an hour.
+func (s *SMSService) Inbound(ctx context.Context, in InboundSMS) (InboundResult, error) {
+	local, err := phone.Normalize(in.From)
 	if err != nil {
 		// Not a number we could ever reply to.
-		return InboundResult{Outcome: "bad_number", Detail: fmt.Sprintf("%q is not a phone number we can read.", from)}, nil
+		return InboundResult{Outcome: "bad_number", Detail: fmt.Sprintf("%q is not a phone number we can read.", in.From)}, nil
 	}
-	cmd, parseErr := ParseSMSCommand(body)
+	// Recorded first, so that a message the provider sends again is known
+	// by its ID and goes no further.
+	logged, err := s.logInbound(ctx, local, in)
+	if isNoRows(err) {
+		return InboundResult{Outcome: "duplicate", Detail: "This message was received before, so it was not handled again."}, nil
+	}
+	if err != nil {
+		return InboundResult{}, err
+	}
+	file := func(tenantID, shipmentID pgtype.UUID) {
+		if err := s.q.SetInboundSubject(ctx, db.SetInboundSubjectParams{ID: logged.ID, TenantID: tenantID, ShipmentID: shipmentID}); err != nil {
+			s.log.Error().Err(err).Msg("file inbound sms")
+		}
+	}
+	cmd, parseErr := ParseSMSCommand(in.Body)
 
 	if parseErr == nil && cmd.Keyword == "STOP" {
-		s.logInbound(ctx, pgtype.UUID{}, pgtype.UUID{}, local, body)
 		return InboundResult{Outcome: "opted_out", Detail: local + " gets no more text messages until it sends START."},
 			s.q.AddSMSOptOut(ctx, local)
 	}
 	if parseErr == nil && cmd.Keyword == "START" {
-		s.logInbound(ctx, pgtype.UUID{}, pgtype.UUID{}, local, body)
 		return InboundResult{Outcome: "opted_in", Detail: local + " gets text messages again."},
 			s.q.RemoveSMSOptOut(ctx, local)
 	}
 
 	user, err := s.q.GetUserByPhone(ctx, &local)
 	if err != nil || user.Role != model.RoleDriver || !user.IsActive {
-		s.logInbound(ctx, pgtype.UUID{}, pgtype.UUID{}, local, body)
 		return InboundResult{Outcome: "unknown_sender",
 			Detail: local + " is not an active driver's number, so the message was logged and not answered."}, nil
 	}
+	file(user.TenantID, pgtype.UUID{})
 
 	reply := func(shipmentID pgtype.UUID, outcome, detail, text string) (InboundResult, error) {
+		recent, err := s.q.CountSMSToPhoneSince(ctx, db.CountSMSToPhoneSinceParams{
+			Phone: local, Purpose: PurposeDriverReply, CreatedAt: toTimestamp(s.now().Add(-time.Hour)),
+		})
+		if err != nil {
+			return InboundResult{}, err
+		}
+		if recent >= maxRepliesPerHour {
+			return InboundResult{Outcome: outcome, Detail: fmt.Sprintf("%s Not answered: %s has had %d replies in the last hour.",
+				detail, local, recent)}, nil
+		}
 		res := InboundResult{Outcome: outcome, Detail: detail, Reply: text}
 		return res, s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 			s.enqueueSMS(ctx, q, after, outboundSMS{
@@ -396,7 +529,6 @@ func (s *SMSService) Inbound(ctx context.Context, from, body string) (InboundRes
 	}
 
 	if parseErr != nil || cmd.Keyword == "HELP" {
-		s.logInbound(ctx, user.TenantID, pgtype.UUID{}, local, body)
 		return reply(pgtype.UUID{}, "replied", "Not a status report, so "+user.FullName+" was sent the list of codes.", smsHelp())
 	}
 
@@ -406,10 +538,9 @@ func (s *SMSService) Inbound(ctx context.Context, from, body string) (InboundRes
 	}
 	target, msg := matchShipment(active, cmd.Ref)
 	if target == nil {
-		s.logInbound(ctx, user.TenantID, pgtype.UUID{}, local, body)
 		return reply(pgtype.UUID{}, "replied", "No shipment matched, so "+user.FullName+" was told why.", msg)
 	}
-	s.logInbound(ctx, user.TenantID, target.ID, local, body)
+	file(user.TenantID, target.ID)
 
 	actor := Actor{UserID: user.ID, TenantID: user.TenantID, Name: user.FullName, Role: user.Role, Source: SourceSMS}
 	reason := ""
@@ -468,14 +599,14 @@ func matchShipment(active []db.Shipment, ref string) (*db.Shipment, string) {
 	return found, ""
 }
 
-func (s *SMSService) logInbound(ctx context.Context, tenantID, shipmentID pgtype.UUID, from, body string) {
-	_, err := s.q.RecordSMS(ctx, db.RecordSMSParams{
-		TenantID: tenantID, ShipmentID: shipmentID, Direction: "inbound",
-		Phone: from, Body: truncate(body, 480), Purpose: PurposeInbound, Status: "received",
+// logInbound records a message received. One the provider sent before,
+// under the same ID, isn't recorded again: then no row.
+func (s *SMSService) logInbound(ctx context.Context, from string, in InboundSMS) (db.SmsMessage, error) {
+	provider := s.ProviderName()
+	return s.q.RecordSMS(ctx, db.RecordSMSParams{
+		Direction: "inbound", Phone: from, Body: truncate(in.Body, 480), Purpose: PurposeInbound, Status: "received",
+		Provider: &provider, ProviderMessageID: toText(strings.TrimSpace(in.ProviderMessageID)),
 	})
-	if err != nil {
-		s.log.Error().Err(err).Msg("record inbound sms")
-	}
 }
 
 // ShortRef is the part of a tracking number a driver texts: its last four

@@ -56,18 +56,27 @@ type Querier interface {
 	CountActiveDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountActiveShipmentsByDriver(ctx context.Context, arg CountActiveShipmentsByDriverParams) (int64, error)
 	CountAlerts(ctx context.Context, arg CountAlertsParams) (int64, error)
+	// Verification codes queued or sent across the platform, for the daily
+	// budget.
+	CountCodesTextedSince(ctx context.Context, createdAt pgtype.Timestamptz) (int64, error)
 	CountDeliveredSince(ctx context.Context, arg CountDeliveredSinceParams) (int64, error)
 	CountEmailTokensSince(ctx context.Context, arg CountEmailTokensSinceParams) (int64, error)
 	CountHeldPODs(ctx context.Context, arg CountHeldPODsParams) (int64, error)
 	CountOpenRenewals(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountSMSByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	// In SMS parts: a long text counts as several.
 	CountSMSSentBetween(ctx context.Context, arg CountSMSSentBetweenParams) (int64, error)
+	// In SMS parts: a long text counts as several.
 	CountSMSSentSince(ctx context.Context, arg CountSMSSentSinceParams) (int64, error)
+	CountSMSToPhoneSince(ctx context.Context, arg CountSMSToPhoneSinceParams) (int64, error)
 	CountSavedFilters(ctx context.Context, arg CountSavedFiltersParams) (int64, error)
 	CountShipments(ctx context.Context, arg CountShipmentsParams) (int64, error)
 	CountShipmentsByStatus(ctx context.Context, tenantID pgtype.UUID) ([]CountShipmentsByStatusRow, error)
 	CountShipmentsCreatedSince(ctx context.Context, arg CountShipmentsCreatedSinceParams) (int64, error)
 	CountStaffByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	// A company's texts queued or sent since a time, in SMS parts, for its
+	// limits.
+	CountTenantSMSSegmentsSince(ctx context.Context, arg CountTenantSMSSegmentsSinceParams) (int64, error)
 	CountTrackingEventsByShipment(ctx context.Context, arg CountTrackingEventsByShipmentParams) (int64, error)
 	CountUnreadAlerts(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
@@ -346,7 +355,8 @@ type Querier interface {
 	OutboxWaiting(ctx context.Context) ([]OutboxWaitingRow, error)
 	RecordJobRun(ctx context.Context, arg RecordJobRunParams) error
 	// For messages that are logged rather than sent through the queue: inbound
-	// messages and outbound ones skipped for opt-out.
+	// messages, and outbound ones refused before queueing. An inbound message
+	// the provider sent before (the same ID) is not recorded again: no row.
 	RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessage, error)
 	// A provider's delivery report. Its message IDs are unique per provider, so
 	// this finds one company's text. Delivered is final; a text reported
@@ -405,6 +415,9 @@ type Querier interface {
 	SetDriverVehicle(ctx context.Context, arg SetDriverVehicleParams) error
 	SetEmailVerified(ctx context.Context, arg SetEmailVerifiedParams) (int64, error)
 	SetEnterpriseOffer(ctx context.Context, arg SetEnterpriseOfferParams) error
+	// Files an inbound message under the company and shipment it turned out to
+	// be about, once the sender is known.
+	SetInboundSubject(ctx context.Context, arg SetInboundSubjectParams) error
 	SetPaymentProviderRef(ctx context.Context, arg SetPaymentProviderRefParams) error
 	// The month is settled: the next one starts with the current allowance.
 	SetSMSBilledMonth(ctx context.Context, arg SetSMSBilledMonthParams) error

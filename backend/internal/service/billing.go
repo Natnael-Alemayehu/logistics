@@ -1730,7 +1730,7 @@ func (s *BillingService) billUsage(ctx context.Context, id pgtype.UUID, current 
 							Kind: invoiceUsage, Plan: t.Plan, Cycle: t.BillingCycle, PeriodStart: since, PeriodEnd: until,
 							Due:   s.now().AddDate(0, 0, model.InvoiceDueDays),
 							Usage: &SMSUsage{Month: m.Format("2006-01"), Sent: sent, Included: quota, Extra: extra},
-							Lines: []InvoiceLine{line(fmt.Sprintf("Text messages beyond the %s included in %s", grouped(int64(quota)), month), extra, model.SMSOverageSantim)},
+							Lines: []InvoiceLine{line(fmt.Sprintf("Text messages beyond the %s included in %s, counted in SMS parts (a long text is several)", grouped(int64(quota)), month), extra, model.SMSOverageSantim)},
 							Intro: fmt.Sprintf("In %s, %s sent %s text messages, %s more than the %s your plan includes.",
 								month, t.Name, grouped(sent), grouped(extra), grouped(int64(quota))),
 						}); err != nil {

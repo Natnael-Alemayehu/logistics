@@ -101,6 +101,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log zerolog.Logger, opts Option
 			Secret: cfg.Secret, SMSNumber: cfg.SMSNumber,
 			SupportEmail: cfg.SupportEmail, BankDetails: cfg.BankDetails,
 			RetainShipments: time.Duration(cfg.RetainShipmentDays) * 24 * time.Hour,
+			CodesPerDay:     cfg.CodesPerDay,
 		},
 	})
 	srv, err := web.New(cfg, svc, pool, hub, log)

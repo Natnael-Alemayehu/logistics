@@ -45,6 +45,9 @@ type Settings struct {
 	// RetainShipments is how long a finished shipment keeps its customer
 	// and delivery details (FR-041). Zero means a year.
 	RetainShipments time.Duration
+	// CodesPerDay is how many verification codes the platform texts in 24
+	// hours at most; zero means no limit.
+	CodesPerDay int
 }
 
 // Publisher delivers live updates to dashboards. The WebSocket hub

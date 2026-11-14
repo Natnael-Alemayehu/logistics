@@ -30,7 +30,7 @@ WHERE id IN (
     LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at
+RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at, segments
 `
 
 // SKIP LOCKED lets several API replicas drain the queue without sending the
@@ -65,6 +65,7 @@ func (q *Queries) ClaimQueuedSMS(ctx context.Context, limit int32) ([]SmsMessage
 			&i.ProviderMessageID,
 			&i.Delivery,
 			&i.DeliveryAt,
+			&i.Segments,
 		); err != nil {
 			return nil, err
 		}
@@ -74,6 +75,20 @@ func (q *Queries) ClaimQueuedSMS(ctx context.Context, limit int32) ([]SmsMessage
 		return nil, err
 	}
 	return items, nil
+}
+
+const countCodesTextedSince = `-- name: CountCodesTextedSince :one
+SELECT COUNT(*) FROM sms_messages
+WHERE purpose = 'otp' AND direction = 'outbound' AND status IN ('queued', 'sending', 'sent') AND created_at >= $1
+`
+
+// Verification codes queued or sent across the platform, for the daily
+// budget.
+func (q *Queries) CountCodesTextedSince(ctx context.Context, createdAt pgtype.Timestamptz) (int64, error) {
+	row := q.db.QueryRow(ctx, countCodesTextedSince, createdAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const countSMSByTenant = `-- name: CountSMSByTenant :one
@@ -88,7 +103,7 @@ func (q *Queries) CountSMSByTenant(ctx context.Context, tenantID pgtype.UUID) (i
 }
 
 const countSMSSentSince = `-- name: CountSMSSentSince :one
-SELECT COUNT(*) FROM sms_messages
+SELECT COALESCE(SUM(segments), 0)::bigint FROM sms_messages
 WHERE tenant_id = $1 AND direction = 'outbound' AND status = 'sent' AND sent_at >= $2
 `
 
@@ -97,11 +112,49 @@ type CountSMSSentSinceParams struct {
 	SentAt   pgtype.Timestamptz `db:"sent_at" json:"sent_at"`
 }
 
+// In SMS parts: a long text counts as several.
 func (q *Queries) CountSMSSentSince(ctx context.Context, arg CountSMSSentSinceParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countSMSSentSince, arg.TenantID, arg.SentAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countSMSToPhoneSince = `-- name: CountSMSToPhoneSince :one
+SELECT COUNT(*) FROM sms_messages
+WHERE phone = $1 AND purpose = $2 AND direction = 'outbound' AND created_at >= $3
+`
+
+type CountSMSToPhoneSinceParams struct {
+	Phone     string             `db:"phone" json:"phone"`
+	Purpose   string             `db:"purpose" json:"purpose"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) CountSMSToPhoneSince(ctx context.Context, arg CountSMSToPhoneSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSMSToPhoneSince, arg.Phone, arg.Purpose, arg.CreatedAt)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const countTenantSMSSegmentsSince = `-- name: CountTenantSMSSegmentsSince :one
+SELECT COALESCE(SUM(segments), 0)::bigint FROM sms_messages
+WHERE tenant_id = $1 AND direction = 'outbound' AND status IN ('queued', 'sending', 'sent') AND created_at >= $2
+`
+
+type CountTenantSMSSegmentsSinceParams struct {
+	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+// A company's texts queued or sent since a time, in SMS parts, for its
+// limits.
+func (q *Queries) CountTenantSMSSegmentsSince(ctx context.Context, arg CountTenantSMSSegmentsSinceParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countTenantSMSSegmentsSince, arg.TenantID, arg.CreatedAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const deleteOldSMS = `-- name: DeleteOldSMS :exec
@@ -114,9 +167,9 @@ func (q *Queries) DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz
 }
 
 const enqueueSMS = `-- name: EnqueueSMS :one
-INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status)
-VALUES ($1, $2, 'outbound', $3, $4, $5, $6, 'queued')
-RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at
+INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, segments)
+VALUES ($1, $2, 'outbound', $3, $4, $5, $6, 'queued', $7)
+RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at, segments
 `
 
 type EnqueueSMSParams struct {
@@ -126,6 +179,7 @@ type EnqueueSMSParams struct {
 	Body       string      `db:"body" json:"body"`
 	Purpose    string      `db:"purpose" json:"purpose"`
 	Sensitive  bool        `db:"sensitive" json:"sensitive"`
+	Segments   int32       `db:"segments" json:"segments"`
 }
 
 func (q *Queries) EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMessage, error) {
@@ -136,6 +190,7 @@ func (q *Queries) EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMess
 		arg.Body,
 		arg.Purpose,
 		arg.Sensitive,
+		arg.Segments,
 	)
 	var i SmsMessage
 	err := row.Scan(
@@ -157,6 +212,7 @@ func (q *Queries) EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMess
 		&i.ProviderMessageID,
 		&i.Delivery,
 		&i.DeliveryAt,
+		&i.Segments,
 	)
 	return i, err
 }
@@ -173,7 +229,7 @@ func (q *Queries) IsPhoneOptedOut(ctx context.Context, phone string) (bool, erro
 }
 
 const listSMSByTenant = `-- name: ListSMSByTenant :many
-SELECT m.id, m.tenant_id, m.shipment_id, m.direction, m.phone, m.body, m.purpose, m.sensitive, m.status, m.attempts, m.last_error, m.provider, m.next_attempt_at, m.sent_at, m.created_at, m.provider_message_id, m.delivery, m.delivery_at, s.tracking_number
+SELECT m.id, m.tenant_id, m.shipment_id, m.direction, m.phone, m.body, m.purpose, m.sensitive, m.status, m.attempts, m.last_error, m.provider, m.next_attempt_at, m.sent_at, m.created_at, m.provider_message_id, m.delivery, m.delivery_at, m.segments, s.tracking_number
 FROM sms_messages m
 LEFT JOIN shipments s ON s.id = m.shipment_id
 WHERE m.tenant_id = $1
@@ -206,6 +262,7 @@ type ListSMSByTenantRow struct {
 	ProviderMessageID *string            `db:"provider_message_id" json:"provider_message_id"`
 	Delivery          *string            `db:"delivery" json:"delivery"`
 	DeliveryAt        pgtype.Timestamptz `db:"delivery_at" json:"delivery_at"`
+	Segments          int32              `db:"segments" json:"segments"`
 	TrackingNumber    *string            `db:"tracking_number" json:"tracking_number"`
 }
 
@@ -237,6 +294,7 @@ func (q *Queries) ListSMSByTenant(ctx context.Context, arg ListSMSByTenantParams
 			&i.ProviderMessageID,
 			&i.Delivery,
 			&i.DeliveryAt,
+			&i.Segments,
 			&i.TrackingNumber,
 		); err != nil {
 			return nil, err
@@ -325,24 +383,29 @@ func (q *Queries) MarkSMSSkipped(ctx context.Context, arg MarkSMSSkippedParams) 
 }
 
 const recordSMS = `-- name: RecordSMS :one
-INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, status, last_error)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at
+INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, status, last_error, provider, provider_message_id)
+VALUES ($1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10)
+ON CONFLICT (provider, direction, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING
+RETURNING id, tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, attempts, last_error, provider, next_attempt_at, sent_at, created_at, provider_message_id, delivery, delivery_at, segments
 `
 
 type RecordSMSParams struct {
-	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
-	Direction  string      `db:"direction" json:"direction"`
-	Phone      string      `db:"phone" json:"phone"`
-	Body       string      `db:"body" json:"body"`
-	Purpose    string      `db:"purpose" json:"purpose"`
-	Status     string      `db:"status" json:"status"`
-	LastError  *string     `db:"last_error" json:"last_error"`
+	TenantID          pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	ShipmentID        pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	Direction         string      `db:"direction" json:"direction"`
+	Phone             string      `db:"phone" json:"phone"`
+	Body              string      `db:"body" json:"body"`
+	Purpose           string      `db:"purpose" json:"purpose"`
+	Status            string      `db:"status" json:"status"`
+	LastError         *string     `db:"last_error" json:"last_error"`
+	Provider          *string     `db:"provider" json:"provider"`
+	ProviderMessageID *string     `db:"provider_message_id" json:"provider_message_id"`
 }
 
 // For messages that are logged rather than sent through the queue: inbound
-// messages and outbound ones skipped for opt-out.
+// messages, and outbound ones refused before queueing. An inbound message
+// the provider sent before (the same ID) is not recorded again: no row.
 func (q *Queries) RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessage, error) {
 	row := q.db.QueryRow(ctx, recordSMS,
 		arg.TenantID,
@@ -353,6 +416,8 @@ func (q *Queries) RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessag
 		arg.Purpose,
 		arg.Status,
 		arg.LastError,
+		arg.Provider,
+		arg.ProviderMessageID,
 	)
 	var i SmsMessage
 	err := row.Scan(
@@ -374,6 +439,7 @@ func (q *Queries) RecordSMS(ctx context.Context, arg RecordSMSParams) (SmsMessag
 		&i.ProviderMessageID,
 		&i.Delivery,
 		&i.DeliveryAt,
+		&i.Segments,
 	)
 	return i, err
 }
@@ -444,5 +510,23 @@ WHERE status = 'sending' AND next_attempt_at < NOW()
 // A process that died mid-send leaves rows in 'sending' past their lease.
 func (q *Queries) RequeueStuckSMS(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, requeueStuckSMS)
+	return err
+}
+
+const setInboundSubject = `-- name: SetInboundSubject :exec
+UPDATE sms_messages SET tenant_id = $1, shipment_id = $2
+WHERE id = $3 AND direction = 'inbound'
+`
+
+type SetInboundSubjectParams struct {
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	ID         pgtype.UUID `db:"id" json:"id"`
+}
+
+// Files an inbound message under the company and shipment it turned out to
+// be about, once the sender is known.
+func (q *Queries) SetInboundSubject(ctx context.Context, arg SetInboundSubjectParams) error {
+	_, err := q.db.Exec(ctx, setInboundSubject, arg.TenantID, arg.ShipmentID, arg.ID)
 	return err
 }

@@ -1,14 +1,39 @@
 -- name: EnqueueSMS :one
-INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status)
-VALUES ($1, $2, 'outbound', $3, $4, $5, $6, 'queued')
+INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, sensitive, status, segments)
+VALUES ($1, $2, 'outbound', $3, $4, $5, $6, 'queued', sqlc.arg(segments))
 RETURNING *;
 
 -- name: RecordSMS :one
 -- For messages that are logged rather than sent through the queue: inbound
--- messages and outbound ones skipped for opt-out.
-INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, status, last_error)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+-- messages, and outbound ones refused before queueing. An inbound message
+-- the provider sent before (the same ID) is not recorded again: no row.
+INSERT INTO sms_messages (tenant_id, shipment_id, direction, phone, body, purpose, status, last_error, provider, provider_message_id)
+VALUES (sqlc.narg(tenant_id), sqlc.narg(shipment_id), sqlc.arg(direction), sqlc.arg(phone), sqlc.arg(body), sqlc.arg(purpose),
+        sqlc.arg(status), sqlc.narg(last_error), sqlc.narg(provider), sqlc.narg(provider_message_id))
+ON CONFLICT (provider, direction, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING
 RETURNING *;
+
+-- name: SetInboundSubject :exec
+-- Files an inbound message under the company and shipment it turned out to
+-- be about, once the sender is known.
+UPDATE sms_messages SET tenant_id = sqlc.narg(tenant_id), shipment_id = sqlc.narg(shipment_id)
+WHERE id = sqlc.arg(id) AND direction = 'inbound';
+
+-- name: CountTenantSMSSegmentsSince :one
+-- A company's texts queued or sent since a time, in SMS parts, for its
+-- limits.
+SELECT COALESCE(SUM(segments), 0)::bigint FROM sms_messages
+WHERE tenant_id = $1 AND direction = 'outbound' AND status IN ('queued', 'sending', 'sent') AND created_at >= $2;
+
+-- name: CountCodesTextedSince :one
+-- Verification codes queued or sent across the platform, for the daily
+-- budget.
+SELECT COUNT(*) FROM sms_messages
+WHERE purpose = 'otp' AND direction = 'outbound' AND status IN ('queued', 'sending', 'sent') AND created_at >= $1;
+
+-- name: CountSMSToPhoneSince :one
+SELECT COUNT(*) FROM sms_messages
+WHERE phone = $1 AND purpose = $2 AND direction = 'outbound' AND created_at >= $3;
 
 -- name: ClaimQueuedSMS :many
 -- SKIP LOCKED lets several API replicas drain the queue without sending the
@@ -92,7 +117,8 @@ LIMIT $2 OFFSET $3;
 SELECT COUNT(*) FROM sms_messages WHERE tenant_id = $1;
 
 -- name: CountSMSSentSince :one
-SELECT COUNT(*) FROM sms_messages
+-- In SMS parts: a long text counts as several.
+SELECT COALESCE(SUM(segments), 0)::bigint FROM sms_messages
 WHERE tenant_id = $1 AND direction = 'outbound' AND status = 'sent' AND sent_at >= $2;
 
 -- name: IsPhoneOptedOut :one

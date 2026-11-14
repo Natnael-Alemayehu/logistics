@@ -1094,8 +1094,17 @@ the requirement, what Menged does instead, and why.
   starts at renewal, so time that already went by isn't billed.
 - **Overage (AC-045.4)**: texts beyond a plan's monthly allowance cost
   ETB 0.50 each, counted by calendar month on annual plans too, and billed on
-  a usage invoice the next month. Texts are never blocked: customer
-  notifications matter more than the limit.
+  a usage invoice the next month. A paying company's texts are never blocked
+  by the allowance: customer notifications matter more than the limit.
+  Allowances, overage and limits count SMS parts, which is what the provider
+  charges for: a long text, or one in Amharic, is two or more.
+- **Text limits (abuse)**: a free trial's texts stop at its allowance, for
+  the whole trial, and every company has an hourly ceiling (100 parts on a
+  trial, 1,000 on a plan); texts past either are recorded as skipped and the
+  company is alerted. Verification codes, which go to any number, have a
+  daily budget for the whole platform (`OTP_DAILY_BUDGET`). Without these, a
+  throwaway sign-up could send spam under the platform's sender ID, at its
+  cost.
 - **Money that can't be applied**: a payment for an invoice that is already
   paid or cancelled, or for a company that was deleted, is set aside as a
   refund for the operator to send back.
