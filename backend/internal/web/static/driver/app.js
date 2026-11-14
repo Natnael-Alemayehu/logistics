@@ -44,7 +44,8 @@
       rejected: "Not applied", dismiss: "Dismiss", priority_high: "High priority", priority_urgent: "Urgent",
       signedOut: "You've been signed out. Sign in again.", networkError: "No connection. Try again when you have signal.",
       codeSent: "If this number belongs to a driver, a code is on its way.", version: "Version", deliveredAt: "Delivered",
-      shipmentGone: "This shipment is no longer assigned to you.", install: "Install the app", installHelp: "Add it to your home screen so it opens without the browser.",
+      shipmentGone: "This shipment is no longer assigned to you.",
+      msgCancelled: "The office cancelled this shipment.", msgReopened: "The office reopened this shipment.", install: "Install the app", installHelp: "Add it to your home screen so it opens without the browser.",
       locationOff: "Location is off", battery: "Battery", appUpdated: "App updated.", pinChanged: "PIN changed.",
       kg: "kg", m: "m", km: "km", weak: "Weak signal", settings: "Settings", photoUnreadable: "The photo couldn't be read. Take it again.",
       batterySaver: "Battery saver", batterySaverHelp: "Records your position every 15 minutes and syncs less often. It turns on by itself when the battery is below 20%.",
@@ -95,7 +96,8 @@
       rejected: "አልተተገበረም", dismiss: "ዝጋ", priority_high: "ከፍተኛ ቅድሚያ", priority_urgent: "አስቸኳይ",
       signedOut: "ከመለያዎ ወጥተዋል። እንደገና ይግቡ።", networkError: "ግንኙነት የለም። ኔትወርክ ሲኖር እንደገና ይሞክሩ።",
       codeSent: "ቁጥሩ የሹፌር ከሆነ ኮድ ይላካል።", version: "ስሪት", deliveredAt: "የተረከበው",
-      shipmentGone: "ይህ ጭነት ከእንግዲህ ለእርስዎ አልተመደበም።", install: "መተግበሪያውን ጫን", installHelp: "ያለ ብሮውዘር እንዲከፈት ወደ መነሻ ገጽ ያክሉት።",
+      shipmentGone: "ይህ ጭነት ከእንግዲህ ለእርስዎ አልተመደበም።",
+      msgCancelled: "ቢሮው ይህን ጭነት ሰርዞታል።", msgReopened: "ቢሮው ይህን ጭነት እንደገና ከፍቶታል።", install: "መተግበሪያውን ጫን", installHelp: "ያለ ብሮውዘር እንዲከፈት ወደ መነሻ ገጽ ያክሉት።",
       locationOff: "አካባቢ ጠፍቷል", battery: "ባትሪ", appUpdated: "መተግበሪያው ተዘምኗል።", pinChanged: "ፒን ተቀይሯል።",
       kg: "ኪ.ግ", m: "ሜ", km: "ኪ.ሜ", weak: "ደካማ ኔትወርክ", settings: "ቅንብሮች", photoUnreadable: "ፎቶው ሊነበብ አልቻለም። እንደገና ያንሱ።",
       batterySaver: "ባትሪ ቆጣቢ", batterySaverHelp: "አካባቢዎን በየ15 ደቂቃው ይመዘግባል፣ ብዙ ጊዜም አያመሳስልም። ባትሪው ከ20% በታች ሲሆን በራሱ ይበራል።",
@@ -189,6 +191,15 @@
     let s = (TEXT[S.lang] && TEXT[S.lang][key]) || TEXT.en[key] || key;
     for (const [k, v] of Object.entries(vars || {})) s = s.replace("{" + k + "}", v);
     return s;
+  }
+  // A message as shown: what the office did to a shipment is said in the
+  // driver's language, with the office's note after it.
+  function msgText(m) {
+    if (m.kind === "cancelled" || m.kind === "reopened") {
+      const said = t(m.kind === "cancelled" ? "msgCancelled" : "msgReopened");
+      return m.note ? said + " " + m.note : said;
+    }
+    return m.text;
   }
   function statusLabel(st) {
     if (S.lang === "am" && STATUS_AM[st]) return STATUS_AM[st];
@@ -490,9 +501,11 @@
       S.weak = Date.now() - started > (pods.length ? 60000 : 10000);
       S.lastSync = Date.now();
       await kvSet("lastSync", S.lastSync);
-      // More waiting (PODs go two at a time): carry on straight away. Saving
-      // battery, the app syncs every five minutes unless the driver acts.
-      scheduleSync(S.outbox.some((o) => o.kind === "pod") ? 500 : saving() ? 300000 : 60000);
+      // More waiting (PODs go two at a time, or more messages than one
+      // response carries): carry on straight away. Saving battery, the app
+      // syncs every five minutes unless the driver acts.
+      const more = resp.more || S.outbox.some((o) => o.kind === "pod");
+      scheduleSync(more ? 500 : saving() ? 300000 : 60000);
     } catch (err) {
       S.failures++;
       if (err instanceof ApiError && err.status === 401) {
@@ -559,20 +572,22 @@
       await adoptSettings(resp.driver.settings);
     }
 
-    // Messages from the office.
-    let fresh = 0;
+    // Messages from the office. The toast shows the newest that is new to
+    // the phone, not whatever happens to be newest.
+    let newest = null;
     const known = new Set(S.messages.map((m) => m.id));
     for (const m of resp.messages || []) {
       if (!known.has(m.id)) {
+        known.add(m.id);
         S.messages.push(m);
-        if (!S.seen.has(m.id)) fresh++;
+        if (!S.seen.has(m.id) && (!newest || m.at > newest.at)) newest = m;
       }
     }
     S.messages.sort((a, b) => b.at.localeCompare(a.at));
     S.messages = S.messages.slice(0, 50);
     await kvSet("messages", S.messages);
-    if (fresh) {
-      toast(t("messages") + ": " + S.messages[0].text);
+    if (newest) {
+      toast(t("messages") + ": " + msgText(newest));
       if (S.settings.vibrate && navigator.vibrate) navigator.vibrate([120, 80, 120]);
     }
     S.cursor = resp.cursor;
@@ -951,7 +966,7 @@
         S.notices.map((n) => h("div", { class: "notice" }, h("span", {}, h("strong", { text: t("rejected") + ": " }), n.text),
           h("button", { type: "button", class: "btn link", text: t("dismiss"), onclick: () => { S.notices = S.notices.filter((x) => x !== n); render(); } }))),
         unseen.length ? h("section", { class: "msgs" }, h("h2", { text: t("messages") }),
-          unseen.slice(0, 3).map((m) => h("div", { class: "msg" }, h("p", { text: m.text }), h("p", { class: "muted small", text: (m.tracking_number ? "#" + m.tracking_number.slice(-4) + " · " : "") + m.from + " · " + fmtTime(m.at) }))),
+          unseen.slice(0, 3).map((m) => h("div", { class: "msg" }, h("p", { text: msgText(m) }), h("p", { class: "muted small", text: (m.tracking_number ? "#" + m.tracking_number.slice(-4) + " · " : "") + m.from + " · " + fmtTime(m.at) }))),
           h("button", { class: "btn link", type: "button", text: t("dismiss"), onclick: async () => { unseen.forEach((m) => S.seen.add(m.id)); await kvSet("seen", [...S.seen]); render(); } })) : null,
         h("h2", { class: "section", text: t("active") + " (" + active.length + ")" }),
         active.length ? active.map(card) : h("div", { class: "empty" }, h("p", { text: t("none") }), h("p", { class: "muted small", text: t("noneHelp") })),
@@ -1080,7 +1095,7 @@
           sh.vehicle ? h("p", {}, h("span", { class: "muted", text: t("vehicle") + ": " }), sh.vehicle) : null) : null,
         sh.instructions ? h("section", { class: "card instructions" }, h("p", { class: "muted small", text: t("instructions") }), h("p", { class: "pre", text: sh.instructions })) : null,
         msgs.length ? h("section", { class: "card" }, h("p", { class: "muted small", text: t("messages") }),
-          msgs.map((m) => h("div", { class: "msg" }, h("p", { text: m.text }), h("p", { class: "muted small", text: m.from + " · " + fmtTime(m.at) })))) : null,
+          msgs.map((m) => h("div", { class: "msg" }, h("p", { text: msgText(m) }), h("p", { class: "muted small", text: m.from + " · " + fmtTime(m.at) })))) : null,
         ACTIVE.includes(sh.status) ? h("a", { class: "btn block", href: "#/s/" + sh.id + "/message", text: "✉ " + t("messageBtn") }) : null,
         smsNum && ACTIVE.includes(sh.status) ? h("p", { class: "muted small sms-help", text: t("smsHelp", { ref: "ET " + sh.ref, num: smsNum }) }) : null,
       ));

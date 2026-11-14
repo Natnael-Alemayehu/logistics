@@ -223,7 +223,8 @@ type ListDriverBroadcastsSinceRow struct {
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-// Messages to every driver on the road that reached this driver.
+// Messages to every driver on the road that reached this driver. The LIMIT
+// is maxDriverBroadcasts in the sync service.
 func (q *Queries) ListDriverBroadcastsSince(ctx context.Context, arg ListDriverBroadcastsSinceParams) ([]ListDriverBroadcastsSinceRow, error) {
 	rows, err := q.db.Query(ctx, listDriverBroadcastsSince, arg.TenantID, arg.DriverID, arg.Since)
 	if err != nil {

@@ -96,13 +96,35 @@ func (q *Queries) CreateShipmentEvent(ctx context.Context, arg CreateShipmentEve
 	return i, err
 }
 
+const getShipmentEventByClientID = `-- name: GetShipmentEventByClientID :one
+SELECT event_type FROM shipment_events
+WHERE tenant_id = $1 AND shipment_id = $2 AND client_id = $3::text
+LIMIT 1
+`
+
+type GetShipmentEventByClientIDParams struct {
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
+	ClientID   string      `db:"client_id" json:"client_id"`
+}
+
+// What an offline device's change was recorded as, if it was: a device
+// sends a batch again when the answer to it was lost.
+func (q *Queries) GetShipmentEventByClientID(ctx context.Context, arg GetShipmentEventByClientIDParams) (string, error) {
+	row := q.db.QueryRow(ctx, getShipmentEventByClientID, arg.TenantID, arg.ShipmentID, arg.ClientID)
+	var event_type string
+	err := row.Scan(&event_type)
+	return event_type, err
+}
+
 const listDriverMessagesSince = `-- name: ListDriverMessagesSince :many
-SELECT e.id, e.shipment_id, e.event_type, e.note, e.actor_name, e.created_at, s.tracking_number
+SELECT e.id, e.shipment_id, e.event_type, e.to_status, e.note, e.actor_name, e.created_at, s.tracking_number
 FROM shipment_events e
 JOIN shipments s ON s.id = e.shipment_id
 WHERE e.tenant_id = $1
   AND e.driver_id = $2
   AND e.visible_to_driver
+  AND e.actor_id IS DISTINCT FROM $2
   AND e.created_at > $3
 ORDER BY e.created_at ASC
 LIMIT 200
@@ -118,13 +140,15 @@ type ListDriverMessagesSinceRow struct {
 	ID             pgtype.UUID        `db:"id" json:"id"`
 	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
 	EventType      string             `db:"event_type" json:"event_type"`
+	ToStatus       *string            `db:"to_status" json:"to_status"`
 	Note           *string            `db:"note" json:"note"`
 	ActorName      string             `db:"actor_name" json:"actor_name"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	TrackingNumber string             `db:"tracking_number" json:"tracking_number"`
 }
 
-// Notes and messages a dispatcher addressed to this driver.
+// Notes and messages a dispatcher addressed to this driver: not the
+// driver's own. The LIMIT is maxDriverMessages in the sync service.
 func (q *Queries) ListDriverMessagesSince(ctx context.Context, arg ListDriverMessagesSinceParams) ([]ListDriverMessagesSinceRow, error) {
 	rows, err := q.db.Query(ctx, listDriverMessagesSince, arg.TenantID, arg.DriverID, arg.Since)
 	if err != nil {
@@ -138,6 +162,7 @@ func (q *Queries) ListDriverMessagesSince(ctx context.Context, arg ListDriverMes
 			&i.ID,
 			&i.ShipmentID,
 			&i.EventType,
+			&i.ToStatus,
 			&i.Note,
 			&i.ActorName,
 			&i.CreatedAt,

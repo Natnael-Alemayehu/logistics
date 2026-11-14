@@ -64,6 +64,21 @@ func (s *ShipmentService) ChangeStatus(ctx context.Context, a Actor, id pgtype.U
 // applyStatus is the single place a shipment's status changes, on a row the
 // caller has locked.
 func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after *afterCommit, a Actor, cur db.Shipment, ch StatusChange) (db.Shipment, error) {
+	// A change the device sent before, whose answer it never received, gets
+	// the same answer again, and nothing happens twice.
+	if ch.ClientID != "" {
+		kind, err := q.GetShipmentEventByClientID(ctx, db.GetShipmentEventByClientIDParams{
+			TenantID: cur.TenantID, ShipmentID: cur.ID, ClientID: ch.ClientID,
+		})
+		switch {
+		case err == nil && kind == "conflict":
+			return cur, ErrStaleUpdate
+		case err == nil:
+			return cur, nil
+		case !isNoRows(err):
+			return cur, err
+		}
+	}
 	if a.isDriver() && cur.DriverID != a.UserID {
 		return cur, ErrNotAssigned
 	}

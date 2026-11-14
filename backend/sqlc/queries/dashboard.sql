@@ -51,7 +51,8 @@ ORDER BY b.created_at DESC
 LIMIT $2;
 
 -- name: ListDriverBroadcastsSince :many
--- Messages to every driver on the road that reached this driver.
+-- Messages to every driver on the road that reached this driver. The LIMIT
+-- is maxDriverBroadcasts in the sync service.
 SELECT b.id, b.body, b.sender_name, b.created_at
 FROM broadcasts b
 JOIN broadcast_recipients r ON r.broadcast_id = b.id
