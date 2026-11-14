@@ -360,7 +360,11 @@
       socket.addEventListener("open", () => {
         delay = 1000;
         setState(true);
-        if (everOpened) refreshBadge(); // catch up on anything missed
+        // Catch up on anything missed while the connection was down.
+        if (everOpened) {
+          refreshBadge();
+          scheduleRefresh(200);
+        }
         everOpened = true;
       });
       socket.addEventListener("message", (e) => {
@@ -401,14 +405,10 @@
       location.reload();
     } else if (msg.type === "invoice" && $("[data-invoice]")?.dataset.invoice === d.id) {
       location.reload();
-    } else if (msg.type === "shipment" && page && page.dataset.shipment === d.id) {
-      toast("This shipment was updated (" + d.status_label.toLowerCase() + ").", {
-        href: location.pathname,
-        linkText: "Reload",
-        ttl: 15000,
-      });
     } else if (msg.type === "shipment") {
-      scheduleRefresh();
+      // On this shipment's own page the parts that changed are swapped in
+      // at once; elsewhere, lists and counts follow shortly.
+      scheduleRefresh(page && page.dataset.shipment === d.id ? 300 : 2000);
     }
   }
 

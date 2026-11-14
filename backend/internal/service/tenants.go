@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -59,10 +60,10 @@ type newCompany struct {
 func (in SignupInput) validate() (newCompany, error) {
 	var c newCompany
 	c.name = strings.Join(strings.Fields(in.Company), " ")
-	if len(c.name) < 2 {
+	if utf8.RuneCountInString(c.name) < 2 {
 		return c, invalid("company", "Enter your company's name.")
 	}
-	if len(c.name) > 120 {
+	if utf8.RuneCountInString(c.name) > 120 {
 		return c, invalid("company", "That name is too long.")
 	}
 	c.city = "Addis Ababa"
@@ -357,7 +358,7 @@ func (s *TenantService) UpdateSettings(ctx context.Context, p *Principal, in Set
 		return db.Tenant{}, ErrUnauthorized
 	}
 	name := strings.Join(strings.Fields(in.Name), " ")
-	if len(name) < 2 || len(name) > 120 {
+	if n := utf8.RuneCountInString(name); n < 2 || n > 120 {
 		return db.Tenant{}, invalid("name", "Enter the company name.")
 	}
 	var contactPhone, contactEmail *string

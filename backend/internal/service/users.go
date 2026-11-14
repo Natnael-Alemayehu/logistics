@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -40,7 +41,7 @@ func validatePerson(in PersonInput, phoneRequired bool) (validPerson, error) {
 	if v.name == "" {
 		return v, invalid("full_name", "Enter the full name.")
 	}
-	if len(v.name) > 120 {
+	if utf8.RuneCountInString(v.name) > 120 {
 		return v, invalid("full_name", "That name is too long.")
 	}
 	if strings.TrimSpace(in.Phone) != "" || phoneRequired {

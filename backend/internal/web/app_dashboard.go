@@ -163,7 +163,7 @@ func (s *Server) apiMap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiBadge(w http.ResponseWriter, r *http.Request) {
-	n, err := s.svc.Alerts.Unread(r.Context(), principal(r).TenantID)
+	n, err := s.svc.Alerts.Unread(r.Context(), principal(r))
 	if err != nil {
 		s.apiError(w, r, err)
 		return

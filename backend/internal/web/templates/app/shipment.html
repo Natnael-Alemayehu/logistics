@@ -1,7 +1,10 @@
 {{define "head"}}<link rel="stylesheet" href="{{asset "vendor/leaflet/leaflet.css"}}">{{end}}
 {{define "scripts"}}<script src="{{asset "vendor/leaflet/leaflet.js"}}" defer></script><script src="{{asset "map.js"}}" defer></script>{{end}}
 {{define "content"}}{{$d := .Data}}{{$s := $d.S}}{{$id := uuid $s.ID}}
-<div class="page-head" data-shipment="{{$id}}">
+{{/* The parts marked data-live-region are fetched again when the driver
+or another dispatcher changes the shipment. The map updates itself; the
+driver card and the note form are left alone, being forms in use. */}}
+<div class="page-head" data-shipment="{{$id}}" id="shipment-head" data-live-region>
   <div>
     <p class="crumbs"><a href="/app/shipments">Shipments</a></p>
     <h1 class="mono">{{$s.TrackingNumber}} <button type="button" class="icon-btn" data-copy="{{$s.TrackingNumber}}" aria-label="Copy tracking number" title="Copy">{{template "icon" "copy"}}</button></h1>
@@ -36,6 +39,7 @@
 {{if $s.AnonymisedAt.Valid}}
 <p class="banner info">The customer's and recipient's details, signatures and photos were removed {{date $s.AnonymisedAt}}, at the end of the keeping period. The dates, route, driver and cargo stay for reports.</p>
 {{end}}
+<div id="shipment-actions" data-live-region>
 {{if $d.Next}}
 <section class="card status-bar">
   <p class="status-bar-label">Update status <span class="muted small">— normally the driver does this from the app</span></p>
@@ -70,11 +74,12 @@
   </div>
 </section>
 {{end}}
+</div>
 
 <div class="grid-detail">
 <div class="col-main">
   <section class="card card-flush">
-    <div class="route-head">
+    <div class="route-head" id="shipment-route" data-live-region>
       <div class="route-end">
         <span class="route-label">From</span>
         <strong>{{with $s.OriginCity}}{{.}}{{else}}—{{end}}</strong>
@@ -106,6 +111,7 @@
     <script type="application/json" id="shipment-map">{{$d.Map}}</script>
   </section>
 
+  <div id="shipment-review" data-live-region>
   {{range $d.Review}}{{$pod := uuid .ID}}
   <section class="card pod" id="pod-{{$pod}}">
     <div class="card-head"><h2>{{if eq .Status "held"}}Delivery to review{{else}}Dismissed delivery record{{end}}</h2>
@@ -134,7 +140,9 @@
     {{end}}
   </section>
   {{end}}
+  </div>
 
+  <div id="shipment-pod" data-live-region>
   {{with $d.D.POD}}
   <section class="card pod">
     <div class="card-head"><h2>Proof of delivery</h2>
@@ -158,8 +166,9 @@
     {{else if eq $s.Status "delivered"}}<p class="muted small">The customer has been sent a link to confirm receipt.</p>{{end}}
   </section>
   {{end}}
+  </div>
 
-  <section class="card">
+  <section class="card" id="shipment-details" data-live-region>
     <div class="card-head"><h2>Details</h2></div>
     <dl class="facts facts-2">
       <div><dt>Customer</dt><dd>{{$s.CustomerName}}<br><a href="{{telURL $s.CustomerPhone}}">{{$s.CustomerPhone}}</a></dd></div>
@@ -248,7 +257,7 @@
   </section>
   {{end}}
 
-  <section class="card">
+  <section class="card" id="shipment-history" data-live-region>
     <div class="card-head"><h2>History</h2></div>
     {{template "timeline" (dict "Items" $d.Timeline)}}
   </section>

@@ -395,8 +395,9 @@ func (s *Server) alertList(w http.ResponseWriter, r *http.Request) {
 	v := s.view(w, r, "Alerts", "alerts", map[string]any{
 		"Alerts": alerts, "Total": total, "Page": page, "Pages": pages, "All": !f.OpenOnly, "Severity": q.Get("severity"),
 	})
-	// Opening the list counts as having seen the alerts, so the badge clears.
-	if err := s.svc.Alerts.MarkAllRead(r.Context(), p.TenantID); err == nil {
+	// Opening the list counts as having seen the alerts, so this person's
+	// badge clears.
+	if err := s.svc.Alerts.MarkSeen(r.Context(), p); err == nil {
 		v.Unread = 0
 	}
 	s.render(w, r, http.StatusOK, "app/alerts", v)
@@ -413,7 +414,7 @@ func (s *Server) alertAck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) alertsRead(w http.ResponseWriter, r *http.Request) {
-	err := s.svc.Alerts.MarkAllRead(r.Context(), principal(r).TenantID)
+	err := s.svc.Alerts.MarkSeen(r.Context(), principal(r))
 	if r.Header.Get("Accept") == "application/json" {
 		if err != nil {
 			s.apiError(w, r, err)

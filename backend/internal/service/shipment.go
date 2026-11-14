@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -151,7 +152,7 @@ func validateShipment(in ShipmentInput, now time.Time) (validShipment, error) {
 	if v.customerName == "" {
 		return v, invalid("customer_name", "Enter the customer's name.")
 	}
-	if len(v.customerName) > 200 {
+	if utf8.RuneCountInString(v.customerName) > 200 {
 		return v, invalid("customer_name", "That name is too long.")
 	}
 	if v.customerPhone, err = phone.Normalize(in.CustomerPhone); err != nil {

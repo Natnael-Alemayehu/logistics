@@ -182,7 +182,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 		Flash: s.takeFlash(w, r),
 	}
 	if v.Me != nil {
-		if n, err := s.svc.Alerts.Unread(r.Context(), v.Me.TenantID); err == nil {
+		if n, err := s.svc.Alerts.Unread(r.Context(), v.Me); err == nil {
 			v.Unread = n
 		}
 		if !v.Me.IsPlatformAdmin() {

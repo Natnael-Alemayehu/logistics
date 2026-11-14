@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -51,7 +52,7 @@ func validateVehicle(in VehicleInput) (string, *string, pgtype.Numeric, error) {
 	if plate == "" {
 		return "", nil, pgtype.Numeric{}, invalid("plate_number", "Enter the plate number.")
 	}
-	if len(plate) > 20 {
+	if utf8.RuneCountInString(plate) > 20 {
 		return "", nil, pgtype.Numeric{}, invalid("plate_number", "That plate number is too long.")
 	}
 	var vt *string
