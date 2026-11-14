@@ -69,7 +69,7 @@
       data-source="map-data" data-meta="map-meta"></div>
     <script type="application/json" id="map-data">{{$d.Map}}</script>
     <script type="application/json" id="map-meta">{{$d.MapMeta}}</script>
-    {{if not $d.Map.Drivers}}<p class="card-foot muted small">Drivers appear on the map once their app has sent a GPS position.</p>{{end}}
+    <p class="card-foot muted small">{{if not $d.Map.Drivers}}Drivers appear on the map once their app has sent a GPS position. {{end}}A phone sends its position while the driver app is open on screen; a driver whose app is closed shows where it last was.</p>
   </section>
 
   <section class="card" data-live-region id="dash-alerts">

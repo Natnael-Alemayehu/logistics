@@ -4,8 +4,9 @@
 መንገድ means "road".
 
 A dispatcher books a load and assigns a driver. The driver's phone keeps
-working with no signal: status changes, signatures, photos and GPS are saved on
-the phone and sent when a network returns. The customer gets an SMS with a
+working with no signal: status changes, signatures, photos and GPS positions
+(taken while the app is open) are saved on the phone and sent when a network
+returns. The customer gets an SMS with a
 tracking link when the load leaves, is delayed, arrives and is delivered, then
 confirms receipt with one tap. Each delivery is recorded with the recipient's
 name, their signature, up to three photos and where the phone was. A delivery
@@ -19,7 +20,7 @@ perfect coverage. Drivers with feature phones report by SMS instead
 
 | For | Where | What they get |
 |---|---|---|
-| Dispatchers, fleet managers, admins | `/app` | A live fleet map with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences; a download of all the company's data; questions to the Menged team on the Help page |
+| Dispatchers, fleet managers, admins | `/app` | A live fleet map (positions come while the driver app is open) with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences; a download of all the company's data; questions to the Menged team on the Help page |
 | Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) with a warning away from the drop-off, distance and direction to the drop-off, battery saver, settings that follow the driver to a new phone, and a sync indicator that shows what is still waiting to send and when the signal is weak |
 | Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
 | Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
@@ -130,10 +131,13 @@ One Go binary serves everything:
 - **Everything is embedded**: templates, static files and migrations are in the
   binary, which migrates the database on start.
 
-Tradeoff: a web app cannot record GPS while it is fully closed, so positions
-come while the app is open or in the background on Android. The app can keep
-the screen on while charging for long drives. Status changes, proof of
-delivery and SMS reporting don't depend on GPS.
+Tradeoff: a web app records GPS only while it is open on screen. When the
+phone locks or the driver switches apps, positions stop until the app is
+opened again, so the map shows where the truck last was, and the "driver
+quiet" and "moving away from the destination" alerts work from what the app
+sent. The app can keep the screen on while charging for long drives. Status
+changes, proof of delivery and SMS reporting don't depend on GPS. Tracking
+with the screen off needs a native wrapper with background location.
 
 ### Code map
 

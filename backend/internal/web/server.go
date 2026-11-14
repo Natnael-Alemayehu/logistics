@@ -318,6 +318,8 @@ func (s *Server) Handler() http.Handler {
 					r.Post("/settings", s.settingsUpdate)
 					r.Get("/billing", s.billingPage)
 					r.Post("/billing/plan", s.billingChoose)
+					r.Post("/billing/cancel", s.billingCancel)
+					r.Post("/billing/resume", s.billingResume)
 					r.Get("/billing/invoices/{id}", s.invoicePage)
 					r.Post("/billing/invoices/{id}/pay", s.invoicePay)
 					r.Get("/billing/payments/{id}", s.paymentPage)

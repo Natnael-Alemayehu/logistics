@@ -59,6 +59,16 @@ func (s *Server) billingChoose(w http.ResponseWriter, r *http.Request) {
 	s.back(w, r, "/app/billing", "success", change.Message)
 }
 
+func (s *Server) billingCancel(w http.ResponseWriter, r *http.Request) {
+	msg, err := s.svc.Billing.CancelRenewal(r.Context(), principal(r), clientInfo(r))
+	s.actionResult(w, r, "/app/billing", err, msg)
+}
+
+func (s *Server) billingResume(w http.ResponseWriter, r *http.Request) {
+	msg, err := s.svc.Billing.ResumeRenewal(r.Context(), principal(r), clientInfo(r))
+	s.actionResult(w, r, "/app/billing", err, msg)
+}
+
 func (s *Server) invoicePage(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r, "id")
 	if err != nil {

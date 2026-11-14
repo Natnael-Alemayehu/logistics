@@ -15,31 +15,36 @@ func TestStanding(t *testing.T) {
 		name     string
 		plan     string
 		trial    *time.Time
+		ends     *time.Time
 		debt     string
 		due      *time.Time
 		state    string
 		days     int
 		readOnly bool
 	}{
-		{"trial with days left", model.PlanTrial, at(36 * time.Hour), "", nil, StandingTrialing, 2, false},
-		{"trial ending within the hour", model.PlanTrial, at(time.Hour), "", nil, StandingTrialing, 1, false},
-		{"trial without an end", model.PlanTrial, nil, "", nil, StandingTrialing, 0, false},
-		{"trial ended", model.PlanTrial, at(-time.Minute), "", nil, StandingTrialEnded, 0, true},
-		{"trial ending this instant", model.PlanTrial, at(0), "", nil, StandingTrialEnded, 0, true},
-		{"paid up", model.PlanStarter, at(-30 * day), "", nil, StandingActive, 0, false},
-		{"invoice not yet due", model.PlanBusiness, nil, "INV-2026-00007", at(3 * day), StandingDue, 0, false},
-		{"invoice overdue", model.PlanBusiness, nil, "INV-2026-00007", at(-2 * day), StandingPastDue, model.GraceDays - 2, false},
-		{"grace ends this instant", model.PlanBusiness, nil, "INV-2026-00007", at(-model.GraceDays * day), StandingReadOnly, 0, true},
-		{"invoice long unpaid", model.PlanBusiness, nil, "INV-2026-00007", at(-40 * day), StandingReadOnly, 0, true},
+		{"trial with days left", model.PlanTrial, at(36 * time.Hour), nil, "", nil, StandingTrialing, 2, false},
+		{"trial ending within the hour", model.PlanTrial, at(time.Hour), nil, "", nil, StandingTrialing, 1, false},
+		{"trial without an end", model.PlanTrial, nil, nil, "", nil, StandingTrialing, 0, false},
+		{"trial ended", model.PlanTrial, at(-time.Minute), nil, "", nil, StandingTrialEnded, 0, true},
+		{"trial ending this instant", model.PlanTrial, at(0), nil, "", nil, StandingTrialEnded, 0, true},
+		{"paid up", model.PlanStarter, at(-30 * day), nil, "", nil, StandingActive, 0, false},
+		{"invoice not yet due", model.PlanBusiness, nil, nil, "INV-2026-00007", at(3 * day), StandingDue, 0, false},
+		{"invoice overdue", model.PlanBusiness, nil, nil, "INV-2026-00007", at(-2 * day), StandingPastDue, model.GraceDays - 2, false},
+		{"grace ends this instant", model.PlanBusiness, nil, nil, "INV-2026-00007", at(-model.GraceDays * day), StandingReadOnly, 0, true},
+		{"invoice long unpaid", model.PlanBusiness, nil, nil, "INV-2026-00007", at(-40 * day), StandingReadOnly, 0, true},
+		{"renewal off, still running", model.PlanStarter, nil, at(3 * day), "", nil, StandingActive, 0, false},
+		{"renewal off, overdue invoice", model.PlanStarter, nil, at(3 * day), "INV-2026-00007", at(-2 * day), StandingPastDue, model.GraceDays - 2, false},
+		{"renewal off and ended", model.PlanStarter, nil, at(-time.Minute), "", nil, StandingEnded, 0, true},
+		{"ended with an unpaid invoice", model.PlanStarter, nil, at(-day), "INV-2026-00007", at(-40 * day), StandingEnded, 0, true},
 	}
 	for _, c := range cases {
-		st := standingOf(c.plan, c.trial, c.debt, c.due, now)
+		st := standingOf(c.plan, c.trial, c.ends, c.debt, c.due, now)
 		if st.State != c.state || st.DaysLeft != c.days || st.ReadOnly() != c.readOnly {
 			t.Errorf("%s: %s with %d days left (read-only %v), want %s with %d (read-only %v)",
 				c.name, st.State, st.DaysLeft, st.ReadOnly(), c.state, c.days, c.readOnly)
 		}
 	}
-	if st := standingOf(model.PlanBusiness, nil, "INV-2026-00007", at(-2*day), now); !st.ReadOnlyAt.Equal(now.Add((model.GraceDays - 2) * day)) {
+	if st := standingOf(model.PlanBusiness, nil, nil, "INV-2026-00007", at(-2*day), now); !st.ReadOnlyAt.Equal(now.Add((model.GraceDays - 2) * day)) {
 		t.Errorf("read-only from %s", st.ReadOnlyAt)
 	}
 }

@@ -699,6 +699,8 @@ var auditActions = map[string]string{
 	"payment_refund_due":         "Payment to refund",
 	"payment_refunded":           "Payment refunded",
 	"subscription_renewed":       "Subscription renewed",
+	"renewal_cancelled":          "Turned off renewal",
+	"renewal_resumed":            "Turned renewal back on",
 	"trial_extended":             "Extended a free trial",
 	"enterprise_offer_set":       "Set Enterprise terms",
 	"enterprise_offer_withdrawn": "Withdrew Enterprise terms",

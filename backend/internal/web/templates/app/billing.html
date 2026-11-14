@@ -13,14 +13,17 @@
     {{else if eq $st.State "trial_ended"}}
       <div class="card-head"><h2>Your free trial has ended</h2><span class="badge s-issue">Read-only</span></div>
       <p>It ended {{when $st.TrialEnds}}. Shipments already on the road carry on and nothing is deleted, but booking or assigning shipments and adding drivers, vehicles or staff wait until you choose a plan.</p>
+    {{else if eq $st.State "ended"}}
+      <div class="card-head"><h2>Your {{planName $t.Plan}} plan has ended</h2><span class="badge s-issue">Read-only</span></div>
+      <p>It ended {{when $st.Ends}}, when renewal was turned off. Shipments already on the road carry on and nothing is deleted, but booking or assigning shipments and adding drivers, vehicles or staff wait until you choose a plan below.</p>
     {{else}}
       <div class="card-head">
         <h2>{{$o.Current.Name}} plan</h2>
-        {{if eq $st.State "read_only"}}<span class="badge s-issue">Read-only</span>{{else if eq $st.State "past_due"}}<span class="badge s-issue">Overdue</span>{{else}}<span class="badge s-delivered">Active</span>{{end}}
+        {{if eq $st.State "read_only"}}<span class="badge s-issue">Read-only</span>{{else if eq $st.State "past_due"}}<span class="badge s-issue">Overdue</span>{{else if $o.Ending}}<span class="badge">Ends {{date $t.PeriodEnd}}</span>{{else}}<span class="badge s-delivered">Active</span>{{end}}
       </div>
       <dl class="facts">
         <div><dt>Price</dt><dd>{{if eq $t.BillingCycle "annual"}}{{birr $o.Current.Annual}} a year{{else}}{{birr $o.Current.Monthly}} a month{{end}}, plus {{$d.VAT}}% VAT</dd></div>
-        <div><dt>{{if $t.PeriodStart.Time.After $.Now}}Starts{{else}}This period{{end}}</dt><dd>{{if $t.PeriodStart.Time.After $.Now}}{{date $t.PeriodStart}}, when your trial ends; paid until {{date $t.PeriodEnd}}{{else}}{{date $t.PeriodStart}} to {{date $t.PeriodEnd}}, then renews {{if eq $t.BillingCycle "annual"}}yearly{{else}}monthly{{end}}{{end}}</dd></div>
+        <div><dt>{{if $t.PeriodStart.Time.After $.Now}}Starts{{else}}This period{{end}}</dt><dd>{{if $t.PeriodStart.Time.After $.Now}}{{date $t.PeriodStart}}, when your trial ends; paid until {{date $t.PeriodEnd}}{{else}}{{date $t.PeriodStart}} to {{date $t.PeriodEnd}}{{if $o.Ending}}, then ends: renewal is off{{else}}, then renews {{if eq $t.BillingCycle "annual"}}yearly{{else}}monthly{{end}}{{end}}{{end}}</dd></div>
         <div><dt>Includes</dt><dd>Up to {{$t.MaxDrivers}} drivers and {{grouped $t.SmsQuota}} text messages a month</dd></div>
       </dl>
       {{if eq $st.State "read_only"}}
@@ -28,7 +31,12 @@
       {{else if eq $st.State "past_due"}}
         <p class="banner warn">Invoice {{$st.DebtNumber}} was due on {{date $st.DebtDue}}. If it isn't paid by {{when $st.ReadOnlyAt}}, the account becomes read-only.</p>
       {{end}}
-      {{if or $t.PendingPlan $t.PendingCycle}}
+      {{if $o.Ending}}
+      <form method="post" action="/app/billing/resume">
+        <p>Your plan won't renew: from <strong>{{date $t.PeriodEnd}}</strong> the account is read-only until a plan is chosen again.
+          <button class="link" type="submit">Turn renewal back on</button></p>
+      </form>
+      {{else if or $t.PendingPlan $t.PendingCycle}}
       <form method="post" action="/app/billing/plan" class="pending-change">
         <input type="hidden" name="plan" value="{{$t.Plan}}">
         <input type="hidden" name="cycle" value="{{$t.BillingCycle}}">
@@ -47,6 +55,15 @@
         <p class="small muted">Billed monthly. <button class="link" type="submit">Switch to annual billing from {{date $t.PeriodEnd}}</button> and pay for 10 months a year instead of 12.</p>
         {{end}}
       </form>
+      {{end}}
+      {{if not $o.Ending}}
+      <details class="cancel-renewal">
+        <summary class="small muted">Cancel the subscription</summary>
+        <form method="post" action="/app/billing/cancel" class="stack">
+          <p class="small">Renewal stops: no invoice is issued for after {{date $t.PeriodEnd}}, and from then the account is read-only. Shipments on the road carry on, nothing is deleted, and you can choose a plan again at any time.{{range $o.Open}}{{if eq .Kind "renewal"}} Invoice {{.Number}}, for the period that has started, is cancelled and the plan ends now.{{end}}{{end}}</p>
+          <p><button class="btn btn-danger btn-sm" type="submit">Turn off renewal</button></p>
+        </form>
+      </details>
       {{end}}
     {{end}}
   </section>
@@ -109,7 +126,7 @@
     </div>
     <p class="small muted">
       {{if $o.Subscribed}}An upgrade applies once you pay the difference for the rest of this period. A smaller plan or a new billing cycle starts with your next period.
-      {{else}}You pay for a period in advance, by telebirr, CBE Birr or bank transfer. Paying before the trial ends doesn't cut it short: the plan starts when it ends.{{end}}
+      {{else}}You pay for a period in advance, by telebirr, CBE Birr or bank transfer.{{if eq $t.Plan "trial"}} Paying before the trial ends doesn't cut it short: the plan starts when it ends.{{end}}{{end}}
       Texts are counted in SMS parts: a long text, or one in Amharic, can be two or more. On a plan, texts beyond the allowance are never blocked; each costs ETB 0.50 plus VAT on the next month's invoice. The free trial's texts stop at its allowance.
     </p>
   </form>
