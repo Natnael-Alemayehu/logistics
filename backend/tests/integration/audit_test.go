@@ -7,7 +7,12 @@ package integration
 // covers.
 
 import (
+	"bytes"
+	"compress/zlib"
+	"encoding/base64"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"net/http"
 	"net/url"
 	"strings"
@@ -503,4 +508,61 @@ func TestPositionsKeptAfterReassignment(t *testing.T) {
 	if resp.LocationsStored != 0 {
 		t.Errorf("%d positions stored for someone else's load", resp.LocationsStored)
 	}
+}
+
+// TestHugePhotoRefused (R6, S4): a delivery photo claiming 8000×8000
+// pixels is refused before it is decoded, for good, and so is an SVG
+// signature.
+func TestHugePhotoRefused(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Big Picture Freight")
+	driverID, phone, pin := office.addDriver("Lulit Kebede")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+
+	r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Almaz Desta", Photos: []string{blankPNG(8000, 8000)}})
+	if r.OK || r.Retry || !strings.Contains(r.Message, "too large") {
+		t.Errorf("huge photo: %+v, want refused for good as too large", r)
+	}
+	svg := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
+	if r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Almaz Desta", Signature: svg}); r.OK || r.Retry {
+		t.Errorf("SVG signature: %+v, want refused for good", r)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM proof_of_deliveries WHERE shipment_id = $1`, shipmentID); n != 0 {
+		t.Errorf("%d proofs stored, want none", n)
+	}
+}
+
+// blankPNG is a valid, blank one-bit PNG of the given size: a few
+// kilobytes, however large it claims to be.
+func blankPNG(w, h int) string {
+	var out bytes.Buffer
+	out.WriteString("\x89PNG\r\n\x1a\n")
+	chunk := func(kind string, data []byte) {
+		_ = binary.Write(&out, binary.BigEndian, uint32(len(data)))
+		c := crc32.NewIEEE()
+		c.Write([]byte(kind))
+		c.Write(data)
+		out.WriteString(kind)
+		out.Write(data)
+		_ = binary.Write(&out, binary.BigEndian, c.Sum32())
+	}
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], uint32(w))
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(h))
+	ihdr[8] = 1 // one bit, greyscale
+	chunk("IHDR", ihdr)
+	var idat bytes.Buffer
+	z := zlib.NewWriter(&idat)
+	row := make([]byte, 1+(w+7)/8)
+	for range h {
+		_, _ = z.Write(row)
+	}
+	_ = z.Close()
+	chunk("IDAT", idat.Bytes())
+	chunk("IEND", nil)
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(out.Bytes())
 }

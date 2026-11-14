@@ -563,7 +563,8 @@ func (s *Server) serveMedia(w http.ResponseWriter, r *http.Request, key string) 
 	defer rc.Close()
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "private, max-age=86400")
-	// An uploaded SVG signature is drawn, never executed.
+	// SVG signatures are refused now, but ones stored before that are
+	// still here: drawn, never executed.
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	_, _ = io.Copy(w, rc)
 }
