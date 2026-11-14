@@ -185,6 +185,9 @@ type Querier interface {
 	// instead of both validating against the same stale status.
 	GetShipmentByIDForUpdate(ctx context.Context, arg GetShipmentByIDForUpdateParams) (Shipment, error)
 	GetShipmentByTrackingNumber(ctx context.Context, trackingNumber string) (Shipment, error)
+	// What an offline device's change was recorded as, if it was: a device
+	// sends a batch again when the answer to it was lost.
+	GetShipmentEventByClientID(ctx context.Context, arg GetShipmentEventByClientIDParams) (string, error)
 	GetSyncMetadata(ctx context.Context, driverID pgtype.UUID) (SyncMetadatum, error)
 	GetTenantByID(ctx context.Context, id pgtype.UUID) (Tenant, error)
 	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
@@ -218,9 +221,11 @@ type Querier interface {
 	ListBillingContacts(ctx context.Context, tenantID pgtype.UUID) ([]ListBillingContactsRow, error)
 	ListBroadcasts(ctx context.Context, arg ListBroadcastsParams) ([]ListBroadcastsRow, error)
 	ListCompanyTickets(ctx context.Context, tenantID pgtype.UUID) ([]ListCompanyTicketsRow, error)
-	// Messages to every driver on the road that reached this driver.
+	// Messages to every driver on the road that reached this driver. The LIMIT
+	// is maxDriverBroadcasts in the sync service.
 	ListDriverBroadcastsSince(ctx context.Context, arg ListDriverBroadcastsSinceParams) ([]ListDriverBroadcastsSinceRow, error)
-	// Notes and messages a dispatcher addressed to this driver.
+	// Notes and messages a dispatcher addressed to this driver: not the
+	// driver's own. The LIMIT is maxDriverMessages in the sync service.
 	ListDriverMessagesSince(ctx context.Context, arg ListDriverMessagesSinceParams) ([]ListDriverMessagesSinceRow, error)
 	// Active drivers with a shipment assigned or under way: who a message to
 	// "every driver on the road" reaches.

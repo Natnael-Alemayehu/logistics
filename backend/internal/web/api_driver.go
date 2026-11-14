@@ -155,7 +155,9 @@ func (s *Server) apiChangePIN(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiSync(w http.ResponseWriter, r *http.Request) {
-	var req service.SyncRequest
+	// Before the body is read: a body with photos can take minutes to
+	// upload, which mustn't count as the phone's clock being slow.
+	req := service.SyncRequest{ReceivedAt: time.Now()}
 	if err := decodeJSON(r, &req); err != nil {
 		s.apiError(w, r, err)
 		return

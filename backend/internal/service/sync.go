@@ -40,6 +40,9 @@ type SyncRequest struct {
 	Settings *SettingsChange `json:"settings,omitempty"`
 	// Since is the cursor from the previous response; empty on first sync.
 	Since *time.Time `json:"since"`
+	// ReceivedAt is when the request reached the server, set by the handler
+	// before it reads the body: the moment to compare DeviceTime with.
+	ReceivedAt time.Time `json:"-"`
 
 	Statuses  []SyncStatus   `json:"statuses"`
 	PODs      []SyncPOD      `json:"pods"`
@@ -120,6 +123,9 @@ type SyncResponse struct {
 	RemovedShipmentIDs []string         `json:"removed_shipment_ids"`
 	Messages           []DriverMessage  `json:"messages"`
 	Driver             DriverProfile    `json:"driver"`
+	// More says there were more messages than one response carries: the
+	// cursor stops at the last one sent, and the app asks again at once.
+	More bool `json:"more,omitempty"`
 }
 
 // DriverShipment is a shipment as the driver app holds it.
@@ -161,12 +167,18 @@ type DriverShipment struct {
 
 // DriverMessage is a note from the office, shown in the app.
 type DriverMessage struct {
-	ID             string    `json:"id"`
-	ShipmentID     string    `json:"shipment_id"`
-	TrackingNumber string    `json:"tracking_number"`
-	Text           string    `json:"text"`
-	From           string    `json:"from"`
-	At             time.Time `json:"at"`
+	ID             string `json:"id"`
+	ShipmentID     string `json:"shipment_id"`
+	TrackingNumber string `json:"tracking_number"`
+	// Text is the message as shown, in English for what the office did.
+	Text string `json:"text"`
+	// Kind is "cancelled" or "reopened" when the office did that to the
+	// shipment, for the app to say in the driver's language; Note is then
+	// what the office wrote, if anything.
+	Kind string    `json:"kind,omitempty"`
+	Note string    `json:"note,omitempty"`
+	From string    `json:"from"`
+	At   time.Time `json:"at"`
 }
 
 // DriverProfile is who the app is signed in as.
@@ -210,8 +222,6 @@ const (
 	maxSyncPODs      = 20
 	maxSyncLocations = 5000
 	maxSyncMessages  = 100
-	// Device clocks within two minutes of the server's are left alone.
-	clockTolerance = 2 * time.Minute
 )
 
 // Sync processes a round trip.
@@ -224,12 +234,19 @@ func (s *SyncService) Sync(ctx context.Context, p *Principal, req SyncRequest, c
 
 	// Phones are often set to the wrong time, and everything the device
 	// recorded is stamped with its clock. The difference between its clock
-	// and ours at the moment of the request corrects every timestamp in it.
+	// and ours when the request arrived corrects every timestamp in it,
+	// however small: a phone a minute slow would otherwise report a move
+	// made just after the office's as made before it, and have it refused
+	// as out of date. Arrived means when the request's headers did, before
+	// a body with photos had uploaded, so a slow upload doesn't pass for a
+	// slow clock.
+	arrived := req.ReceivedAt
+	if arrived.IsZero() || arrived.After(now) || now.Sub(arrived) > 10*time.Minute {
+		arrived = now
+	}
 	var offset time.Duration
 	if req.DeviceTime != nil {
-		if d := now.Sub(*req.DeviceTime); d > clockTolerance || d < -clockTolerance {
-			offset = d
-		}
+		offset = arrived.Sub(*req.DeviceTime)
 	}
 	correct := func(t time.Time) time.Time {
 		if t.IsZero() {
@@ -290,6 +307,21 @@ func (s *SyncService) Sync(ctx context.Context, p *Principal, req SyncRequest, c
 		allowed[sh.ID] = true
 	}
 	if locs := capSlice(req.Locations, maxSyncLocations); len(locs) > 0 {
+		// Points recorded offline for a shipment handed to another driver
+		// meanwhile are still this driver's trip: kept, if it was theirs.
+		checked := map[pgtype.UUID]bool{}
+		for _, l := range locs {
+			id := toUUID(l.ShipmentID)
+			if !id.Valid || allowed[id] || checked[id] {
+				continue
+			}
+			checked[id] = true
+			had, err := s.q.WasAssignedTo(ctx, db.WasAssignedToParams{TenantID: p.TenantID, ShipmentID: id, DriverID: p.UserID})
+			if err != nil {
+				return nil, err
+			}
+			allowed[id] = had
+		}
 		pings := make([]Ping, 0, len(locs))
 		for _, l := range locs {
 			pings = append(pings, Ping{
@@ -318,7 +350,7 @@ func (s *SyncService) Sync(ctx context.Context, p *Principal, req SyncRequest, c
 		storageKB = ptr(int32(*req.StorageKB))
 	}
 	if req.DeviceTime != nil {
-		clockOffset = ptr(int32(now.Sub(*req.DeviceTime).Seconds()))
+		clockOffset = ptr(int32(offset.Seconds()))
 	}
 	if err := s.q.UpsertSyncMetadata(ctx, db.UpsertSyncMetadataParams{
 		DriverID: p.UserID, DeviceID: toText(truncate(req.DeviceID, 100)), AppVersion: toText(truncate(req.AppVersion, 40)),
@@ -519,10 +551,28 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 		return err
 	}
 	for _, m := range msgs {
-		resp.Messages = append(resp.Messages, DriverMessage{
+		dm := DriverMessage{
 			ID: m.ID.String(), ShipmentID: m.ShipmentID.String(), TrackingNumber: m.TrackingNumber,
 			Text: deref(m.Note), From: m.ActorName, At: m.CreatedAt.Time,
-		})
+		}
+		if m.EventType == "status_changed" {
+			// The office cancelled or reopened the shipment: said even
+			// when it wrote nothing.
+			if deref(m.ToStatus) == model.StatusCancelled {
+				dm.Kind, dm.Note = "cancelled", dm.Text
+				dm.Text = "The office cancelled this shipment."
+			} else {
+				dm.Kind = "reopened"
+				dm.Text = "The office reopened this shipment."
+			}
+			if dm.Note != "" {
+				dm.Text += " " + dm.Note
+			}
+		}
+		resp.Messages = append(resp.Messages, dm)
+	}
+	if len(msgs) == maxDriverMessages {
+		s.cutCursor(resp, msgSince, msgs[len(msgs)-1].CreatedAt.Time)
 	}
 	// Messages to every driver on the road belong to no shipment.
 	all, err := s.q.ListDriverBroadcastsSince(ctx, db.ListDriverBroadcastsSinceParams{
@@ -533,6 +583,9 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 	}
 	for _, m := range all {
 		resp.Messages = append(resp.Messages, DriverMessage{ID: m.ID.String(), Text: m.Body, From: m.SenderName, At: m.CreatedAt.Time})
+	}
+	if len(all) == maxDriverBroadcasts {
+		s.cutCursor(resp, msgSince, all[len(all)-1].CreatedAt.Time)
 	}
 
 	u, err := s.q.GetUserByID(ctx, db.GetUserByIDParams{ID: p.UserID, TenantID: p.TenantID})
@@ -553,6 +606,29 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 		}
 	}
 	return nil
+}
+
+// The most messages and broadcasts one sync returns: the LIMITs of
+// ListDriverMessagesSince and ListDriverBroadcastsSince.
+const (
+	maxDriverMessages   = 200
+	maxDriverBroadcasts = 50
+)
+
+// cutCursor stops the cursor just before the last of a full page of
+// messages, so the next sync, made at once, carries on from there instead
+// of skipping the rest. Messages seen twice are dropped by the app. A page
+// whose rows all share one time moves on past it, or it would come back
+// for ever.
+func (s *SyncService) cutCursor(resp *SyncResponse, since, last time.Time) {
+	c := last.Add(-time.Microsecond)
+	if !c.After(since) {
+		c = last
+	}
+	if c.Before(resp.Cursor) {
+		resp.Cursor = c
+	}
+	resp.More = true
 }
 
 func toDriverShipment(sh db.Shipment, plate string) DriverShipment {
