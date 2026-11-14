@@ -106,6 +106,9 @@ func (c *Client) Disconnect() {
 	c.cancel()
 }
 
+// Done is closed once the client has disconnected.
+func (c *Client) Done() <-chan struct{} { return c.ctx.Done() }
+
 func (c *Client) IsConnected() bool {
 	select {
 	case <-c.ctx.Done():

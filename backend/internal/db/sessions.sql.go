@@ -308,6 +308,26 @@ func (q *Queries) RevokeSessionByUser(ctx context.Context, arg RevokeSessionByUs
 	return err
 }
 
+const sessionStillValid = `-- name: SessionStillValid :one
+SELECT EXISTS (
+    SELECT 1 FROM sessions s
+    JOIN users u ON u.id = s.user_id
+    JOIN tenants t ON t.id = u.tenant_id
+    WHERE s.id = $1 AND s.revoked_at IS NULL AND s.expires_at > NOW()
+      AND u.is_active AND (t.is_active OR u.role = 'platform_admin')
+)
+`
+
+// Whether a session still lets its holder in, for connections that outlive
+// the request that opened them: not signed out or expired, the person
+// active, and their company not suspended.
+func (q *Queries) SessionStillValid(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, sessionStillValid, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions
 SET last_seen_at = NOW(), expires_at = GREATEST(expires_at, $1)

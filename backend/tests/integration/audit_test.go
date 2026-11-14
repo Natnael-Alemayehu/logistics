@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/natnael-alemayehu/logistics/internal/model"
 	"github.com/natnael-alemayehu/logistics/internal/service"
 )
@@ -735,4 +736,36 @@ func TestRenewalKeepsTheBillingDay(t *testing.T) {
 	if day := scalar[int32](t, `SELECT billing_anchor_day FROM tenants WHERE id = $1`, tenant); day != 31 {
 		t.Errorf("billing day %d after renewal, want 31", day)
 	}
+}
+
+// TestLiveFeedSessionCheck (S3): what the live feed asks every half
+// minute. A session stops letting its holder in on sign-out, deactivation
+// or the company's suspension, and the feed is then closed.
+func TestLiveFeedSessionCheck(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	office := e.company("Live Feed Logistics")
+	session := scalar[pgtype.UUID](t, `SELECT s.id FROM sessions s JOIN users u ON u.id = s.user_id
+		WHERE u.email = $1 AND s.revoked_at IS NULL ORDER BY s.created_at DESC LIMIT 1`, office.email)
+	active := func(want bool, when string) {
+		t.Helper()
+		ok, err := e.svc.Auth.SessionActive(ctx, session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok != want {
+			t.Errorf("%s: session active %v, want %v", when, ok, want)
+		}
+	}
+	active(true, "signed in")
+	exec(t, `UPDATE tenants SET is_active = false WHERE id = $1`, office.tenant())
+	active(false, "company suspended")
+	exec(t, `UPDATE tenants SET is_active = true WHERE id = $1`, office.tenant())
+	active(true, "company reinstated")
+	exec(t, `UPDATE users SET is_active = false WHERE email = $1`, office.email)
+	active(false, "deactivated")
+	exec(t, `UPDATE users SET is_active = true WHERE email = $1`, office.email)
+	active(true, "reactivated")
+	office.post("/logout", nil)
+	active(false, "signed out")
 }
