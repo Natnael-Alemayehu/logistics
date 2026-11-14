@@ -47,7 +47,7 @@ findings. Each finding below carries its commit.
 | `543ed4f` | W2, W3, W9 |
 | `4c49f17` | L1, L2, L3, L4, L6, L7, S6 |
 | `375981b` | S3 |
-| `69f87c2` | R7, O2, O5 |
+| `69f87c2`, `a36954b` | R7, O2, O5 (the alert rules were corrected on staging in `a36954b`) |
 | `eacd5fc` | M1 (wording), W5 |
 
 Still open:
@@ -354,7 +354,7 @@ debounced live refresh; responsive breakpoints at 1100, 900 and 600 px.
 | ID | Finding | Recommendation | Status |
 |---|---|---|---|
 | O1 | One machine holds the app, the database and the uploaded photos. Backups land on the same machine unless someone copies them off, are unencrypted, and contain the app secret. There is no point-in-time recovery. | Ship backups off the machine, encrypted. Consider WAL archiving. | Open: infrastructure. |
-| O2 | No alert rules are provisioned: `provisioning/alerting/` holds only `.gitkeep`. Nobody is told when jobs fail or the SMS queue stalls. | Add rules for job failures, outbox age, error rate and disk space. | Fixed in `69f87c2` |
+| O2 | No alert rules are provisioned: `provisioning/alerting/` holds only `.gitkeep`. Nobody is told when jobs fail or the SMS queue stalls. | Add rules for job failures, outbox age, error rate and disk space. | Fixed in `69f87c2` and `a36954b` |
 | O3 | The live-map query (`GetLatestDriverLocations`) scans seven days of GPS points per company on every load, and points are inserted one row at a time, up to 5000 per sync. | Fine at today's size. Add a last-position table and batch inserts before a fleet reaches hundreds of drivers. | Open: not needed at today's size. |
 | O4 | Rate limits and the WebSocket hub are in memory, so the app must run as a single instance. This is documented. | No action until a second instance is needed. | Open: documented. |
 | O5 | Leftovers: the unused `device_tokens` table from the retired native app, duplicate indexes, and login by email on `lower(email)` with no matching index. | Drop the table and duplicates; add an index on `lower(email)`. | Fixed in `69f87c2`. `device_tokens` was already dropped by the `product_core` migration. |
