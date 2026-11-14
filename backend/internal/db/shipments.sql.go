@@ -484,6 +484,42 @@ func (q *Queries) GetShipmentByTrackingNumber(ctx context.Context, trackingNumbe
 	return i, err
 }
 
+const getVehicleLoad = `-- name: GetVehicleLoad :one
+SELECT COALESCE(SUM(s.cargo_weight), 0)::float8 AS weight_kg,
+       COALESCE(MIN(u.full_name) FILTER (WHERE s.driver_id IS DISTINCT FROM $1::uuid), '')::text AS other_driver
+FROM shipments s
+LEFT JOIN users u ON u.id = s.driver_id
+WHERE s.tenant_id = $2 AND s.vehicle_id = $3
+  AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+  AND s.id IS DISTINCT FROM $4::uuid
+`
+
+type GetVehicleLoadParams struct {
+	DriverID  pgtype.UUID `db:"driver_id" json:"driver_id"`
+	TenantID  pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	VehicleID pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
+	Exclude   pgtype.UUID `db:"exclude" json:"exclude"`
+}
+
+type GetVehicleLoadRow struct {
+	WeightKg    float64 `db:"weight_kg" json:"weight_kg"`
+	OtherDriver string  `db:"other_driver" json:"other_driver"`
+}
+
+// What a vehicle carries already: the weight of its active shipments other
+// than this one, and another driver on any of them.
+func (q *Queries) GetVehicleLoad(ctx context.Context, arg GetVehicleLoadParams) (GetVehicleLoadRow, error) {
+	row := q.db.QueryRow(ctx, getVehicleLoad,
+		arg.DriverID,
+		arg.TenantID,
+		arg.VehicleID,
+		arg.Exclude,
+	)
+	var i GetVehicleLoadRow
+	err := row.Scan(&i.WeightKg, &i.OtherDriver)
+	return i, err
+}
+
 const listActiveShipmentsByDriver = `-- name: ListActiveShipmentsByDriver :many
 SELECT id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at FROM shipments
 WHERE driver_id = $1
@@ -629,6 +665,11 @@ FROM shipments s
 WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
   AND s.estimated_delivery IS NOT NULL
   AND s.estimated_delivery < NOW()
+  AND NOT EXISTS (
+      SELECT 1 FROM alerts a
+      WHERE a.tenant_id = s.tenant_id AND a.alert_type = 'eta_exceeded' AND a.shipment_id = s.id
+        AND a.episode = floor(extract(epoch FROM s.estimated_delivery))::bigint::text)
+ORDER BY s.estimated_delivery
 LIMIT 1000
 `
 
@@ -644,6 +685,8 @@ type ListOverdueShipmentsRow struct {
 // Across tenants: the job that raises ETA alerts runs once for the platform.
 // Only loads on the road can be late; one not yet collected is caught by
 // ListPickupOverdue. The episode identifies the ETA the alert is about.
+// Loads already alerted for that ETA are left out, so a backlog of more
+// than a run's worth is worked through, oldest first, over the next runs.
 func (q *Queries) ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error) {
 	rows, err := q.db.Query(ctx, listOverdueShipments)
 	if err != nil {
@@ -678,6 +721,11 @@ FROM shipments s
 WHERE s.status IN ('pending', 'assigned')
   AND s.planned_pickup_at IS NOT NULL
   AND s.planned_pickup_at < $1
+  AND NOT EXISTS (
+      SELECT 1 FROM alerts a
+      WHERE a.tenant_id = s.tenant_id AND a.alert_type = 'pickup_overdue' AND a.shipment_id = s.id
+        AND a.episode = floor(extract(epoch FROM s.planned_pickup_at))::bigint::text)
+ORDER BY s.planned_pickup_at
 LIMIT 1000
 `
 
@@ -691,7 +739,8 @@ type ListPickupOverdueRow struct {
 	Episode         string             `db:"episode" json:"episode"`
 }
 
-// Loads still waiting to be collected well after their planned pickup.
+// Loads still waiting to be collected well after their planned pickup, not
+// yet alerted for that pickup time, oldest first.
 func (q *Queries) ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error) {
 	rows, err := q.db.Query(ctx, listPickupOverdue, dueBefore)
 	if err != nil {
@@ -1240,17 +1289,18 @@ UPDATE shipments
 SET customer_confirmed_at = COALESCE(customer_confirmed_at, NOW()),
     customer_feedback = COALESCE($1, customer_feedback),
     updated_at = NOW()
-WHERE id = $2
+WHERE id = $2 AND tenant_id = $3
 RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
 `
 
 type SetCustomerConfirmationParams struct {
 	Feedback *string     `db:"feedback" json:"feedback"`
 	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 }
 
 func (q *Queries) SetCustomerConfirmation(ctx context.Context, arg SetCustomerConfirmationParams) (Shipment, error) {
-	row := q.db.QueryRow(ctx, setCustomerConfirmation, arg.Feedback, arg.ID)
+	row := q.db.QueryRow(ctx, setCustomerConfirmation, arg.Feedback, arg.ID, arg.TenantID)
 	var i Shipment
 	err := row.Scan(
 		&i.ID,
@@ -1297,18 +1347,19 @@ func (q *Queries) SetCustomerConfirmation(ctx context.Context, arg SetCustomerCo
 const setCustomerFeedback = `-- name: SetCustomerFeedback :one
 UPDATE shipments
 SET customer_feedback = $1, updated_at = NOW()
-WHERE id = $2
+WHERE id = $2 AND tenant_id = $3
 RETURNING id, tenant_id, tracking_number, origin_address, destination_address, customer_name, customer_phone, cargo_description, cargo_weight, cargo_value, special_instructions, driver_id, vehicle_id, status, status_note, status_reason, estimated_delivery, actual_delivery, created_at, updated_at, created_by, status_changed_at, priority, origin_city, destination_city, origin_lat, origin_lng, destination_lat, destination_lng, destination_precise, picked_up_at, confirm_token, customer_confirmed_at, customer_feedback, eta_manual, planned_pickup_at, anonymised_at
 `
 
 type SetCustomerFeedbackParams struct {
 	Feedback *string     `db:"feedback" json:"feedback"`
 	ID       pgtype.UUID `db:"id" json:"id"`
+	TenantID pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 }
 
 // A problem report: the customer has answered but not confirmed receipt.
 func (q *Queries) SetCustomerFeedback(ctx context.Context, arg SetCustomerFeedbackParams) (Shipment, error) {
-	row := q.db.QueryRow(ctx, setCustomerFeedback, arg.Feedback, arg.ID)
+	row := q.db.QueryRow(ctx, setCustomerFeedback, arg.Feedback, arg.ID, arg.TenantID)
 	var i Shipment
 	err := row.Scan(
 		&i.ID,
@@ -1423,16 +1474,18 @@ func (q *Queries) SetShipmentAssignment(ctx context.Context, arg SetShipmentAssi
 }
 
 const setShipmentConfirmToken = `-- name: SetShipmentConfirmToken :exec
-UPDATE shipments SET confirm_token = $2 WHERE id = $1 AND confirm_token IS NULL
+UPDATE shipments SET confirm_token = $1
+WHERE id = $2 AND tenant_id = $3 AND confirm_token IS NULL
 `
 
 type SetShipmentConfirmTokenParams struct {
-	ID           pgtype.UUID `db:"id" json:"id"`
 	ConfirmToken *string     `db:"confirm_token" json:"confirm_token"`
+	ID           pgtype.UUID `db:"id" json:"id"`
+	TenantID     pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 }
 
 func (q *Queries) SetShipmentConfirmToken(ctx context.Context, arg SetShipmentConfirmTokenParams) error {
-	_, err := q.db.Exec(ctx, setShipmentConfirmToken, arg.ID, arg.ConfirmToken)
+	_, err := q.db.Exec(ctx, setShipmentConfirmToken, arg.ConfirmToken, arg.ID, arg.TenantID)
 	return err
 }
 
@@ -1524,7 +1577,8 @@ SET status = $1,
         ELSE actual_delivery
     END,
     picked_up_at = CASE
-        WHEN $1 = 'in_transit' THEN COALESCE(picked_up_at, $4)
+        WHEN $1 IN ('in_transit', 'arrived') THEN COALESCE(picked_up_at, $4)
+        WHEN $1 = 'delivered' THEN COALESCE(picked_up_at, $5, $4)
         ELSE picked_up_at
     END,
     updated_at = NOW()
@@ -1546,7 +1600,9 @@ type SetShipmentStatusParams struct {
 // thereafter; picked_up_at likewise records the first departure. Both use the
 // time the change happened, which for an offline driver is earlier than now.
 // A delivery accepted on review is stamped with when the proof was recorded
-// (delivered_at), not when the office accepted it.
+// (delivered_at), not when the office accepted it. A shipment delivered
+// without being marked departed (a proof of delivery straight from
+// assigned) left then too, as far as anyone knows.
 func (q *Queries) SetShipmentStatus(ctx context.Context, arg SetShipmentStatusParams) (Shipment, error) {
 	row := q.db.QueryRow(ctx, setShipmentStatus,
 		arg.Status,

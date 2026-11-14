@@ -180,23 +180,23 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 	// the load, which would otherwise hide it: a breakdown, then a delay,
 	// then an accident is news three times.
 	case model.StatusIssue:
-		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: out.ID, AlertTypes: []string{AlertIssueReported}})
+		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{TenantID: out.TenantID, ShipmentID: out.ID, AlertTypes: []string{AlertIssueReported}})
 		s.raise(ctx, q, after, newAlert{
 			TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: AlertIssueReported, Severity: SeverityCritical,
 			Message: fmt.Sprintf("%s reported a problem on %s: %s%s", who, out.TrackingNumber, model.ReasonLabel(reason), noteSuffix(note)),
 		})
 	case model.StatusDelayed:
-		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: out.ID, AlertTypes: []string{AlertDelayReported}})
+		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{TenantID: out.TenantID, ShipmentID: out.ID, AlertTypes: []string{AlertDelayReported}})
 		s.raise(ctx, q, after, newAlert{
 			TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: AlertDelayReported, Severity: SeverityWarning,
 			Message: fmt.Sprintf("%s reported a delay on %s: %s%s", who, out.TrackingNumber, model.ReasonLabel(reason), noteSuffix(note)),
 		})
 	case model.StatusInTransit:
 		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{
-			ShipmentID: out.ID, AlertTypes: []string{AlertDelayReported, AlertIssueReported},
+			TenantID: out.TenantID, ShipmentID: out.ID, AlertTypes: []string{AlertDelayReported, AlertIssueReported},
 		})
 	case model.StatusDelivered:
-		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: out.ID, AlertTypes: resolvedByCompletion})
+		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{TenantID: out.TenantID, ShipmentID: out.ID, AlertTypes: resolvedByCompletion})
 		if ch.By == model.ActorDriverSMS {
 			s.raise(ctx, q, after, newAlert{
 				TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: AlertDeliveredNoPOD, Severity: SeverityWarning,
@@ -205,7 +205,7 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 		}
 		if out.ConfirmToken == nil {
 			token := randomToken(18)
-			if err := q.SetShipmentConfirmToken(ctx, db.SetShipmentConfirmTokenParams{ID: out.ID, ConfirmToken: &token}); err == nil {
+			if err := q.SetShipmentConfirmToken(ctx, db.SetShipmentConfirmTokenParams{ID: out.ID, TenantID: out.TenantID, ConfirmToken: &token}); err == nil {
 				out.ConfirmToken = &token
 			}
 		}
@@ -285,7 +285,7 @@ func (s *ShipmentService) updateStatusDetail(ctx context.Context, q *db.Queries,
 		who = "The driver"
 	}
 	// The new alert replaces the open one, which described the old cause.
-	_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: out.ID, AlertTypes: []string{alertType}})
+	_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{TenantID: out.TenantID, ShipmentID: out.ID, AlertTypes: []string{alertType}})
 	s.raise(ctx, q, after, newAlert{
 		TenantID: out.TenantID, ShipmentID: out.ID, DriverID: out.DriverID, Type: alertType, Severity: severity,
 		Message: fmt.Sprintf("%s updated the %s on %s: %s%s", who, what, out.TrackingNumber, model.ReasonLabel(reason), noteSuffix(note)),
@@ -343,7 +343,7 @@ func (s *ShipmentService) Cancel(ctx context.Context, a Actor, id pgtype.UUID, r
 			Type: "status_changed", From: cur.Status, To: model.StatusCancelled, Reason: reason, Note: note, Public: true,
 			DriverID: cur.DriverID, VisibleToDriver: cur.DriverID.Valid,
 		})
-		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: id, AlertTypes: resolvedByCompletion})
+		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{TenantID: a.TenantID, ShipmentID: id, AlertTypes: resolvedByCompletion})
 
 		tenant, err := q.GetTenantByID(ctx, a.TenantID)
 		if err != nil {
@@ -382,10 +382,24 @@ func (s *ShipmentService) Reopen(ctx context.Context, a Actor, id pgtype.UUID) (
 		if cur.AnonymisedAt.Valid {
 			return errShipmentAnonymised
 		}
+		// Reopening is new work: not in read-only mode, and the driver gets
+		// it back only if they could be assigned it now.
+		tenant, err := q.GetTenantByID(ctx, a.TenantID)
+		if err != nil {
+			return err
+		}
+		if err := s.requireWritable(ctx, q, tenant); err != nil {
+			return err
+		}
 		to := model.StatusPending
+		var why string
 		if cur.DriverID.Valid {
-			if d, err := q.GetUserByID(ctx, db.GetUserByIDParams{ID: cur.DriverID, TenantID: a.TenantID}); err == nil && d.IsActive {
+			if _, err := s.assignableDriver(ctx, q, tenant, cur.DriverID.String(), id); err == nil {
 				to = model.StatusAssigned
+			} else if de, ok := AsError(err); ok {
+				why = de.Message
+			} else {
+				return err
 			}
 		}
 		if to == model.StatusPending && cur.DriverID.Valid {
@@ -403,6 +417,12 @@ func (s *ShipmentService) Reopen(ctx context.Context, a Actor, id pgtype.UUID) (
 			Type: "status_changed", From: model.StatusCancelled, To: to, Note: "Reopened", Public: true,
 			DriverID: out.DriverID, VisibleToDriver: out.DriverID.Valid,
 		})
+		if to == model.StatusPending && cur.DriverID.Valid {
+			s.event(ctx, q, a, out, shipmentEvent{
+				Type: "unassigned", From: model.StatusCancelled, To: to, PreviousDriverID: cur.DriverID,
+				Note: "Reopened without the driver. " + why,
+			})
+		}
 		after.do(func() { s.publishShipment(out, "reopened") })
 		return nil
 	})

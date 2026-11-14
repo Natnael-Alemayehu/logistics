@@ -281,7 +281,7 @@ func (s *ShipmentService) RecordPOD(ctx context.Context, a Actor, id pgtype.UUID
 		if cur.Status == model.StatusDelivered {
 			// The office confirmed it first, by phone or from the driver's
 			// SMS; this is the proof it lacked.
-			_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: id, AlertTypes: []string{AlertDeliveredNoPOD}})
+			_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{TenantID: a.TenantID, ShipmentID: id, AlertTypes: []string{AlertDeliveredNoPOD}})
 			after.do(func() { s.publishShipment(cur, "pod") })
 			return nil
 		}
@@ -355,10 +355,10 @@ func (s *ShipmentService) AcceptHeldPOD(ctx context.Context, a Actor, id, podID 
 		s.audit(ctx, q, a, "pod_accepted", "shipment", id, map[string]any{"status": cur.Status}, map[string]any{"pod_id": podID.String()})
 		if n, err := q.CountHeldPODs(ctx, db.CountHeldPODsParams{ShipmentID: id, TenantID: a.TenantID}); err == nil && n == 0 {
 			_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{
-				ShipmentID: id, AlertTypes: []string{AlertDeliveryHeld, AlertDeliveryOnCanceled},
+				TenantID: a.TenantID, ShipmentID: id, AlertTypes: []string{AlertDeliveryHeld, AlertDeliveryOnCanceled},
 			})
 		}
-		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{ShipmentID: id, AlertTypes: []string{AlertDeliveredNoPOD}})
+		_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{TenantID: a.TenantID, ShipmentID: id, AlertTypes: []string{AlertDeliveredNoPOD}})
 
 		out, err = s.applyStatus(ctx, q, after, a, cur, StatusChange{
 			Status: model.StatusDelivered, By: model.ActorReview, recipient: pod.RecipientName,
@@ -401,7 +401,7 @@ func (s *ShipmentService) DismissHeldPOD(ctx context.Context, a Actor, id, podID
 		s.audit(ctx, q, a, "pod_dismissed", "shipment", id, nil, map[string]any{"pod_id": podID.String()})
 		if n, err := q.CountHeldPODs(ctx, db.CountHeldPODsParams{ShipmentID: id, TenantID: a.TenantID}); err == nil && n == 0 {
 			_ = q.AcknowledgeShipmentAlerts(ctx, db.AcknowledgeShipmentAlertsParams{
-				ShipmentID: id, AlertTypes: []string{AlertDeliveryHeld, AlertDeliveryOnCanceled},
+				TenantID: a.TenantID, ShipmentID: id, AlertTypes: []string{AlertDeliveryHeld, AlertDeliveryOnCanceled},
 			})
 		}
 		after.do(func() { s.publishShipment(cur, "pod") })

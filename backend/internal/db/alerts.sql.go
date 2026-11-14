@@ -50,18 +50,19 @@ func (q *Queries) AcknowledgeDriverAlerts(ctx context.Context, arg AcknowledgeDr
 const acknowledgeShipmentAlerts = `-- name: AcknowledgeShipmentAlerts :exec
 UPDATE alerts
 SET acknowledged_at = NOW(), read_at = COALESCE(read_at, NOW())
-WHERE shipment_id = $1 AND acknowledged_at IS NULL
-  AND alert_type = ANY($2::text[])
+WHERE tenant_id = $1 AND shipment_id = $2 AND acknowledged_at IS NULL
+  AND alert_type = ANY($3::text[])
 `
 
 type AcknowledgeShipmentAlertsParams struct {
+	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 	ShipmentID pgtype.UUID `db:"shipment_id" json:"shipment_id"`
 	AlertTypes []string    `db:"alert_types" json:"alert_types"`
 }
 
 // A shipment that reaches a final state resolves whatever was open on it.
 func (q *Queries) AcknowledgeShipmentAlerts(ctx context.Context, arg AcknowledgeShipmentAlertsParams) error {
-	_, err := q.db.Exec(ctx, acknowledgeShipmentAlerts, arg.ShipmentID, arg.AlertTypes)
+	_, err := q.db.Exec(ctx, acknowledgeShipmentAlerts, arg.TenantID, arg.ShipmentID, arg.AlertTypes)
 	return err
 }
 

@@ -102,19 +102,36 @@ func PeriodPrice(monthly int64, cycle string) int64 {
 }
 
 // PeriodEnd is when a billing period starting at start ends: a month or a
-// year later on the same day, or on the last day of a shorter month, so a
-// month from 31 January ends on 28 February, not 3 March. Days are counted
-// in start's location.
-func PeriodEnd(start time.Time, cycle string) time.Time {
+// year later, on the company's billing day, anchorDay, or on the last day of
+// a month too short for it. A month from 31 January ends on 28 February, not
+// 3 March, and the next on 31 March, not 28 March: the day doesn't drift.
+// An anchorDay of 0 is start's own day. Days are counted in start's
+// location, at start's time of day.
+func PeriodEnd(start time.Time, cycle string, anchorDay int) time.Time {
 	months := 1
 	if cycle == CycleAnnual {
 		months = 12
 	}
-	end := start.AddDate(0, months, 0)
-	if end.Day() != start.Day() {
-		end = end.AddDate(0, 0, -end.Day())
+	if anchorDay < 1 || anchorDay > 31 {
+		anchorDay = start.Day()
 	}
-	return end
+	y, m, _ := start.Date()
+	first := time.Date(y, m+time.Month(months), 1, start.Hour(), start.Minute(), start.Second(), start.Nanosecond(), start.Location())
+	last := first.AddDate(0, 1, -1).Day()
+	return first.AddDate(0, 0, min(anchorDay, last)-1)
+}
+
+// AnchorDay is the billing day of a company whose day wasn't recorded: the
+// day its current period started, unless that is the last day of a short
+// month that the company's first day was later than, as when a period from
+// 31 January ended on 28 February.
+func AnchorDay(periodStart, subscribedAt time.Time) int {
+	day := periodStart.Day()
+	lastOfMonth := periodStart.AddDate(0, 0, 1).Day() == 1
+	if lastOfMonth && !subscribedAt.IsZero() && subscribedAt.Day() > day {
+		return subscribedAt.Day()
+	}
+	return day
 }
 
 // VAT is the tax on a subtotal, rounded to the santim.

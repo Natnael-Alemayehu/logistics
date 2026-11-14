@@ -379,6 +379,7 @@ type Tenant struct {
 	SmsBilledMonth        pgtype.Date        `db:"sms_billed_month" json:"sms_billed_month"`
 	Tin                   *string            `db:"tin" json:"tin"`
 	AlertOnDelivery       bool               `db:"alert_on_delivery" json:"alert_on_delivery"`
+	BillingAnchorDay      *int32             `db:"billing_anchor_day" json:"billing_anchor_day"`
 }
 
 type TrackingEvent struct {

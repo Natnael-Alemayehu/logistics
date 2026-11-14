@@ -238,7 +238,7 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 				return err
 			}
 			driver = &d
-			if vehicleID, err = s.assignableVehicle(ctx, q, a.TenantID, in.VehicleID, d); err != nil {
+			if vehicleID, err = s.assignableVehicle(ctx, q, a.TenantID, in.VehicleID, d, pgtype.UUID{}, in.CargoWeightKg); err != nil {
 				return err
 			}
 			status = model.StatusAssigned
@@ -483,7 +483,8 @@ func (s *ShipmentService) Assign(ctx context.Context, a Actor, id pgtype.UUID, d
 		if err != nil {
 			return err
 		}
-		vid, err := s.assignableVehicle(ctx, q, a.TenantID, vehicleID, driver)
+		weight, _ := numericFloat(cur.CargoWeight)
+		vid, err := s.assignableVehicle(ctx, q, a.TenantID, vehicleID, driver, id, weight)
 		if err != nil {
 			return err
 		}
@@ -592,22 +593,51 @@ func (s *ShipmentService) assignableDriver(ctx context.Context, q *db.Queries, t
 	return d, nil
 }
 
-// assignableVehicle resolves the vehicle for an assignment: the one chosen,
-// or the driver's usual truck.
-func (s *ShipmentService) assignableVehicle(ctx context.Context, q *db.Queries, tenantID pgtype.UUID, vehicleID string, driver db.User) (pgtype.UUID, error) {
-	if strings.TrimSpace(vehicleID) == "" {
-		return driver.VehicleID, nil
+// assignableVehicle resolves the vehicle for an assignment of shipment (none
+// yet when booking) weighing weightKg: the one chosen, or the driver's usual
+// truck. A vehicle out of service, on another driver's trip, or that the
+// load would take over its capacity is refused when chosen. The driver's
+// usual truck in that state is left off instead, so that assigning the
+// driver still works.
+func (s *ShipmentService) assignableVehicle(ctx context.Context, q *db.Queries, tenantID pgtype.UUID, vehicleID string, driver db.User, shipment pgtype.UUID, weightKg float64) (pgtype.UUID, error) {
+	chosen := strings.TrimSpace(vehicleID) != ""
+	refuse := func(msg string) (pgtype.UUID, error) {
+		if !chosen {
+			return pgtype.UUID{}, nil
+		}
+		return pgtype.UUID{}, invalid("vehicle_id", msg)
 	}
-	id, err := parseUUID(vehicleID)
-	if err != nil {
-		return pgtype.UUID{}, invalid("vehicle_id", "Choose a vehicle.")
+	id := driver.VehicleID
+	if chosen {
+		var err error
+		if id, err = parseUUID(vehicleID); err != nil {
+			return refuse("Choose a vehicle.")
+		}
+	}
+	if !id.Valid {
+		return pgtype.UUID{}, nil
 	}
 	v, err := q.GetVehicleByID(ctx, db.GetVehicleByIDParams{ID: id, TenantID: tenantID})
 	if err != nil {
-		return pgtype.UUID{}, invalid("vehicle_id", "Choose a vehicle.")
+		return refuse("Choose a vehicle.")
 	}
 	if !v.IsActive {
-		return pgtype.UUID{}, invalid("vehicle_id", v.PlateNumber+" is out of service.")
+		return refuse(v.PlateNumber + " is out of service.")
+	}
+	load, err := q.GetVehicleLoad(ctx, db.GetVehicleLoadParams{TenantID: tenantID, VehicleID: v.ID, DriverID: driver.ID, Exclude: shipment})
+	if err != nil {
+		return pgtype.UUID{}, err
+	}
+	if load.OtherDriver != "" {
+		return refuse(fmt.Sprintf("%s is on %s's trip. Choose another vehicle, or finish or reassign that trip first.", v.PlateNumber, load.OtherDriver))
+	}
+	if capacity, ok := numericFloat(v.CapacityKg); ok && capacity > 0 && load.WeightKg+weightKg > capacity {
+		kg := func(x float64) string { return grouped(int64(math.Round(x))) }
+		if load.WeightKg > 0 {
+			return refuse(fmt.Sprintf("%s carries up to %s kg and already has %s kg on board: this load would take it to %s kg.",
+				v.PlateNumber, kg(capacity), kg(load.WeightKg), kg(load.WeightKg+weightKg)))
+		}
+		return refuse(fmt.Sprintf("%s carries up to %s kg; this load is %s kg.", v.PlateNumber, kg(capacity), kg(weightKg)))
 	}
 	return v.ID, nil
 }

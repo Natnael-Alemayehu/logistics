@@ -200,6 +200,9 @@ type Querier interface {
 	GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error)
 	GetUserByPhone(ctx context.Context, phone *string) (User, error)
 	GetVehicleByID(ctx context.Context, arg GetVehicleByIDParams) (Vehicle, error)
+	// What a vehicle carries already: the weight of its active shipments other
+	// than this one, and another driver on any of them.
+	GetVehicleLoad(ctx context.Context, arg GetVehicleLoadParams) (GetVehicleLoadRow, error)
 	IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error)
 	IsPhoneOptedOut(ctx context.Context, phone string) (bool, error)
 	ListActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error)
@@ -242,6 +245,8 @@ type Querier interface {
 	// Across tenants: the job that raises ETA alerts runs once for the platform.
 	// Only loads on the road can be late; one not yet collected is caught by
 	// ListPickupOverdue. The episode identifies the ETA the alert is about.
+	// Loads already alerted for that ETA are left out, so a backlog of more
+	// than a run's worth is worked through, oldest first, over the next runs.
 	ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error)
 	ListPODMediaForShipments(ctx context.Context, ids []pgtype.UUID) ([]ListPODMediaForShipmentsRow, error)
 	ListPaymentsByInvoice(ctx context.Context, arg ListPaymentsByInvoiceParams) ([]Payment, error)
@@ -249,7 +254,8 @@ type Querier interface {
 	// us: open a minute or more, a few hours old at most, and not asked about
 	// recently. Across companies, for the billing job.
 	ListPaymentsToCheck(ctx context.Context, arg ListPaymentsToCheckParams) ([]Payment, error)
-	// Loads still waiting to be collected well after their planned pickup.
+	// Loads still waiting to be collected well after their planned pickup, not
+	// yet alerted for that pickup time, oldest first.
 	ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error)
 	ListPlatformAdmins(ctx context.Context) ([]ListPlatformAdminsRow, error)
 	// The people running Menged: every company's audit log, support tickets
@@ -437,7 +443,9 @@ type Querier interface {
 	// thereafter; picked_up_at likewise records the first departure. Both use the
 	// time the change happened, which for an offline driver is earlier than now.
 	// A delivery accepted on review is stamped with when the proof was recorded
-	// (delivered_at), not when the office accepted it.
+	// (delivered_at), not when the office accepted it. A shipment delivered
+	// without being marked departed (a proof of delivery straight from
+	// assigned) left then too, as far as anyone knows.
 	SetShipmentStatus(ctx context.Context, arg SetShipmentStatusParams) (Shipment, error)
 	// A new cause for the status a shipment is already in, such as a second
 	// delay. When the status was entered is unchanged.
