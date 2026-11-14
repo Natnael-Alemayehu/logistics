@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestDriverPINReset: a driver who forgot their PIN gets a code by SMS and
@@ -241,6 +242,12 @@ func TestRetentionClearsAccountLinks(t *testing.T) {
 func TestRateLimits(t *testing.T) {
 	e := newEnv(t)
 	b := e.browser()
+	// The limiter's window is the wall-clock minute, and its estimate drops
+	// once a new one starts; the 30 refused passwords take seconds, so
+	// start them early in a minute.
+	if left := time.Until(time.Now().Truncate(time.Minute).Add(time.Minute)); left < 20*time.Second {
+		time.Sleep(left)
+	}
 	for i := range 30 {
 		if p := b.post("/login", url.Values{"identifier": {fmt.Sprintf("nobody%d@example.et", i)}, "password": {"wrong-password"}}); p.Status != http.StatusUnauthorized {
 			t.Fatalf("sign-in %d: status %d, want it refused for the password", i+1, p.Status)

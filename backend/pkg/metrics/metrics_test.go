@@ -25,6 +25,7 @@ func TestMetricsFollowConventions(t *testing.T) {
 		HTTPRequests, HTTPDuration, HTTPInFlight, SyncChanges, SyncLocations,
 		Messages, OutboxWaiting, OutboxOldest, VerificationBudgetUsed, WebSocketConnections,
 		JobDuration, JobFailures, JobLastSuccess,
+		diskFreeRatio(func() float64 { return 0.5 }),
 	} {
 		problems, err := testutil.CollectAndLint(c)
 		if err != nil {

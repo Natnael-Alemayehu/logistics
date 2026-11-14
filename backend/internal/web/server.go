@@ -6,6 +6,7 @@ import (
 	"context"
 	"embed"
 	"io/fs"
+	"math"
 	"net/http"
 	"os"
 	"time"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/natnael-alemayehu/logistics/internal/config"
 	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 	"github.com/natnael-alemayehu/logistics/pkg/payments"
 	"github.com/natnael-alemayehu/logistics/pkg/websocket"
 )
@@ -66,6 +68,16 @@ func New(cfg *config.Config, svc *service.Services, pool *pgxpool.Pool, hub *web
 	}
 	for _, p := range svc.Billing.Providers() {
 		s.mockPay = s.mockPay || p.Mock()
+	}
+	if cfg.StorageType == "local" {
+		dir := cfg.StoragePath
+		metrics.WatchDisk(func() float64 {
+			free, total, err := diskSpace(dir)
+			if err != nil || total == 0 {
+				return math.NaN()
+			}
+			return float64(free) / float64(total)
+		})
 	}
 	s.version = assetVersion(assets)
 	s.views, err = newRenderer(tpl, s.funcs(), cfg.DevReload)

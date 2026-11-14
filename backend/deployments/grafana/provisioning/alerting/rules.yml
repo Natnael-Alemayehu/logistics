@@ -1,0 +1,180 @@
+# Alerts on Menged's own health, from the metrics in pkg/metrics, emailed by
+# contact-points.yml. Each rule queries Prometheus (A) and compares the
+# result with its threshold (C). Annotations use .Labels and .Values, not $:
+# provisioning files expand $ as environment variables.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: menged
+    folder: Menged
+    interval: 1m
+    rules:
+      - uid: menged-job-failing
+        title: A background job is failing
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: 'The {{ .Labels.name }} job failed in the last 15 minutes.'
+          description: 'Alerts, renewals and the outbox depend on the jobs. Check the app log for "job failed".'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum by (name) (increase(menged_job_failures_total[15m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
+      # The jobs that run every minute. Retention and plan limits run less
+      # often. No data means no server is running the jobs at all.
+      - uid: menged-job-stale
+        title: A background job hasn't succeeded for 10 minutes
+        condition: C
+        for: 0m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: 'The {{ .Labels.name }} job last succeeded {{ humanizeDuration .Values.A.Value }} ago.'
+          description: 'No data means no app server is running the jobs, or Prometheus can''t reach it.'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: time() - max by (name) (menged_job_last_success_timestamp_seconds{name=~"driver_check|eta_check|pickup_check|route_check|outbox_requeue|billing"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [600] }
+
+      - uid: menged-outbox-stuck
+        title: Texts or emails are stuck in the outbox
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: 'The oldest {{ .Labels.channel }} has waited {{ humanizeDuration .Values.A.Value }} to be sent.'
+          description: 'The provider may be down or refusing. Check the platform health page and the provider sandbox or dashboard.'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: max by (channel) (menged_outbox_oldest_seconds)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [900] }
+
+      - uid: menged-server-errors
+        title: Over 5% of requests are failing
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ humanizePercentage .Values.A.Value }} of requests answered with a server error over 10 minutes.'
+          description: 'See the error rate and slowest routes on the Menged dashboard, and the app log.'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: (sum(rate(menged_http_requests_total{status=~"5.."}[10m])) or vector(0)) / clamp_min(sum(rate(menged_http_requests_total[10m])), 1e-9)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+
+      - uid: menged-disk-low
+        title: The disk is nearly full
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Only {{ humanizePercentage .Values.A.Value }} of the disk holding uploads is free.'
+          description: 'Photos, backups and the database share it. Free space or grow the disk before uploads and writes fail.'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(menged_disk_free_ratio)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [0.1] }
+
+      - uid: menged-code-budget
+        title: Most of the day's verification codes are used
+        condition: C
+        for: 0m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ humanizePercentage .Values.A.Value }} of the daily budget of verification codes was texted in the last 24 hours.'
+          description: 'A script may be requesting codes. At 100% sign-up, tracking by phone and resets by phone stop until the day rolls on. OTP_DAILY_BUDGET sets the budget.'
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: max(menged_verification_budget_used_ratio)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
