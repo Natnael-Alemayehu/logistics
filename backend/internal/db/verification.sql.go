@@ -11,13 +11,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const consumeVerificationCode = `-- name: ConsumeVerificationCode :exec
-UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1
+const consumeVerificationCode = `-- name: ConsumeVerificationCode :execrows
+UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1 AND consumed_at IS NULL
 `
 
-func (q *Queries) ConsumeVerificationCode(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, consumeVerificationCode, id)
-	return err
+func (q *Queries) ConsumeVerificationCode(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeVerificationCode, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const countVerificationAttempt = `-- name: CountVerificationAttempt :one
+UPDATE verification_codes SET attempts = attempts + 1
+WHERE id = $1 AND attempts < $2::int
+RETURNING attempts
+`
+
+type CountVerificationAttemptParams struct {
+	ID          pgtype.UUID `db:"id" json:"id"`
+	MaxAttempts int32       `db:"max_attempts" json:"max_attempts"`
+}
+
+// Counts a try at a code, unless it has had all its tries: then no row.
+func (q *Queries) CountVerificationAttempt(ctx context.Context, arg CountVerificationAttemptParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countVerificationAttempt, arg.ID, arg.MaxAttempts)
+	var attempts int32
+	err := row.Scan(&attempts)
+	return attempts, err
 }
 
 const countVerificationCodesSince = `-- name: CountVerificationCodesSince :one
@@ -109,11 +131,13 @@ func (q *Queries) GetActiveVerificationCode(ctx context.Context, arg GetActiveVe
 	return i, err
 }
 
-const incrementVerificationAttempts = `-- name: IncrementVerificationAttempts :exec
-UPDATE verification_codes SET attempts = attempts + 1 WHERE id = $1
+const lockVerificationSubject = `-- name: LockVerificationSubject :exec
+SELECT pg_advisory_xact_lock(hashtext($1::text))
 `
 
-func (q *Queries) IncrementVerificationAttempts(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, incrementVerificationAttempts, id)
+// Held until the transaction ends: requests for one number and purpose
+// take turns.
+func (q *Queries) LockVerificationSubject(ctx context.Context, subject string) error {
+	_, err := q.db.Exec(ctx, lockVerificationSubject, subject)
 	return err
 }

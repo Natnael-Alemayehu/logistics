@@ -132,6 +132,8 @@ func (s *Server) Handler() http.Handler {
 		r.With(strict).Post("/signup/resend", s.signupResend)
 		r.Get("/forgot", s.forgotPage)
 		r.With(strict).Post("/forgot", s.forgot)
+		r.Get("/reset/phone", s.resetPhonePage)
+		r.With(strict).Post("/reset/phone", s.resetPhone)
 		r.With(lookup).Get("/reset/{token}", s.resetPage)
 		r.With(strict).Post("/reset/{token}", s.reset)
 		r.With(lookup).Get("/verify-email/{token}", s.verifyEmail)

@@ -64,8 +64,10 @@ SET failed_login_attempts = 0, locked_until = NULL, last_login_at = NOW()
 WHERE id = $1;
 
 -- name: LockUserAccount :exec
+-- Locking clears the count: when the lock expires the account starts again
+-- from zero, instead of one mistype locking it at once.
 UPDATE users
-SET locked_until = $2
+SET locked_until = $2, failed_login_attempts = 0
 WHERE id = $1;
 
 -- name: UpdatePassword :exec

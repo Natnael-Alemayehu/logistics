@@ -2,12 +2,16 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/mail"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/natnael-alemayehu/logistics/internal/db"
 	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/logistics/internal/phone"
 	"github.com/natnael-alemayehu/logistics/pkg/hash"
 )
 
@@ -46,7 +50,10 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email string, ci
 	if err != nil {
 		return err
 	}
-	if u.Role == model.RoleDriver || !u.IsActive || u.Email == nil {
+	// Only a confirmed address gets a link: an unconfirmed one may be a
+	// mistyped address that belongs to someone else. Such staff reset by
+	// phone, or ask an administrator.
+	if u.Role == model.RoleDriver || !u.IsActive || u.Email == nil || !u.EmailVerifiedAt.Valid {
 		return nil
 	}
 	recent, err := s.q.CountEmailTokensSince(ctx, db.CountEmailTokensSinceParams{
@@ -140,6 +147,84 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, password string,
 	if err != nil {
 		return nil, err
 	}
+	return s.startSession(ctx, u, SessionWeb, false, ci)
+}
+
+// RequestPasswordCode texts a reset code to the staff member who signs in
+// with this phone: staff without a confirmed email address have no other
+// way to reset their password themselves. As with RequestPasswordReset, the
+// answer is the same whoever holds the number, hourly limit included. It
+// returns the number as stored, for the page that takes the code.
+func (s *AuthService) RequestPasswordCode(ctx context.Context, rawPhone string) (string, error) {
+	p, err := phone.Normalize(rawPhone)
+	if err != nil {
+		return "", invalid("phone", err.Error())
+	}
+	u, err := s.q.GetUserByPhone(ctx, &p)
+	if err != nil && !isNoRows(err) {
+		return "", err
+	}
+	if err != nil || u.Role == model.RoleDriver || !u.IsActive || u.PasswordHash == nil {
+		return p, s.issueCode(ctx, pgtype.UUID{}, p, codePurposeStaffReset, nil)
+	}
+	return p, s.issueCode(ctx, u.TenantID, p, codePurposeStaffReset, func(code string) string {
+		return fmt.Sprintf("%s: your password reset code is %s. It expires in 10 minutes. Never share it.", s.cfg.AppName, code)
+	})
+}
+
+// ResetPasswordByCode sets a new password with a texted code. As with a
+// reset link, every other session ends and the person is signed in here.
+func (s *AuthService) ResetPasswordByCode(ctx context.Context, rawPhone, code, password string, ci ClientInfo) (*LoginResult, error) {
+	p, err := phone.Normalize(rawPhone)
+	if err != nil {
+		return nil, invalid("phone", err.Error())
+	}
+	if err := checkPassword(password); err != nil {
+		return nil, err
+	}
+	codeID, err := s.verifyCode(ctx, p, codePurposeStaffReset, strings.TrimSpace(code))
+	if err != nil {
+		return nil, err
+	}
+	h, err := hash.Password(password)
+	if err != nil {
+		return nil, err
+	}
+	var u db.User
+	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		if err := consumeCode(ctx, q, codeID); err != nil {
+			return err
+		}
+		if u, err = q.GetUserByPhone(ctx, &p); isNoRows(err) {
+			return errCodeInvalid
+		} else if err != nil {
+			return err
+		}
+		if u.Role == model.RoleDriver || !u.IsActive || u.PasswordHash == nil {
+			return errCodeInvalid
+		}
+		if u.Role != model.RolePlatformAdmin {
+			t, err := q.GetTenantByID(ctx, u.TenantID)
+			if err != nil {
+				return err
+			}
+			if !t.IsActive {
+				return s.suspended()
+			}
+		}
+		if err := q.UpdatePassword(ctx, db.UpdatePasswordParams{ID: u.ID, PasswordHash: &h, PasswordResetRequired: false}); err != nil {
+			return err
+		}
+		if err := q.RevokeAllUserSessions(ctx, u.ID); err != nil {
+			return err
+		}
+		s.audit(ctx, q, userActor(u, ci), "password_reset", "user", u.ID, nil, map[string]any{"by": "sms"})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	u.LockedUntil = pgtype.Timestamptz{}
 	return s.startSession(ctx, u, SessionWeb, false, ci)
 }
 

@@ -15,10 +15,11 @@ import (
 	"github.com/natnael-alemayehu/logistics/internal/db"
 )
 
-// One-time codes sent by SMS: driver PIN reset, customer lookups, and the
-// phone check at sign-up.
+// One-time codes sent by SMS: driver PIN reset, staff password reset,
+// customer lookups, and the phone check at sign-up.
 const (
 	codePurposePINReset    = "pin_reset"
+	codePurposeStaffReset  = "staff_reset"
 	codePurposeTrackLookup = "track_lookup"
 	codePurposeSignup      = "signup"
 
@@ -54,50 +55,88 @@ func randomDigits(n int) string {
 	return string(b)
 }
 
-// issueCode creates a code and queues it by SMS. text formats the message
-// around the code.
+// issueCode creates a code and queues it by SMS; text formats the message
+// around the code. With a nil text the code is only recorded, not sent:
+// callers use that for a number with no account behind it, so that it
+// counts towards the hourly limit like any other and the answer to the
+// request is the same whoever holds the number.
 func (c *core) issueCode(ctx context.Context, tenantID pgtype.UUID, phone, purpose string, text func(code string) string) error {
-	recent, err := c.q.CountVerificationCodesSince(ctx, db.CountVerificationCodesSinceParams{
-		Phone: phone, Purpose: purpose, CreatedAt: toTimestamp(c.now().Add(-codeWindow)),
-	})
-	if err != nil {
-		return err
-	}
-	if recent >= codeMaxPerWindow {
-		return errCodeTooMany
-	}
 	code := randomDigits(6)
 	return c.tx(ctx, func(q *db.Queries, after *afterCommit) error {
+		// One request at a time for a number and purpose, so that requests
+		// sent together can't all pass the count below.
+		if err := q.LockVerificationSubject(ctx, purpose+"|"+phone); err != nil {
+			return err
+		}
+		recent, err := q.CountVerificationCodesSince(ctx, db.CountVerificationCodesSinceParams{
+			Phone: phone, Purpose: purpose, CreatedAt: toTimestamp(c.now().Add(-codeWindow)),
+		})
+		if err != nil {
+			return err
+		}
+		if recent >= codeMaxPerWindow {
+			return errCodeTooMany
+		}
 		if _, err := q.CreateVerificationCode(ctx, db.CreateVerificationCodeParams{
 			Phone: phone, Purpose: purpose, CodeHash: c.hashCode(phone, purpose, code),
 			ExpiresAt: toTimestamp(c.now().Add(codeTTL)),
 		}); err != nil {
 			return err
 		}
-		c.enqueueSMS(ctx, q, after, outboundSMS{
-			TenantID: tenantID, Phone: phone, Body: text(code), Purpose: PurposeOTP, Sensitive: true,
-		})
+		if text != nil {
+			c.enqueueSMS(ctx, q, after, outboundSMS{
+				TenantID: tenantID, Phone: phone, Body: text(code), Purpose: PurposeOTP, Sensitive: true,
+			})
+		}
 		return nil
 	})
 }
 
-// checkCode verifies and consumes a code.
-func (c *core) checkCode(ctx context.Context, phone, purpose, code string) error {
+// verifyCode checks a code without using it up, and returns its ID for
+// consumeCode. The try is counted first, in one statement that also enforces
+// the limit, so guesses sent together can't get more than codeMaxAttempts
+// tries between them; it is counted on its own, outside any transaction of
+// the caller's, so that a wrong guess always counts.
+func (c *core) verifyCode(ctx context.Context, phone, purpose, code string) (pgtype.UUID, error) {
 	vc, err := c.q.GetActiveVerificationCode(ctx, db.GetActiveVerificationCodeParams{Phone: phone, Purpose: purpose})
 	if isNoRows(err) {
-		return errCodeInvalid
+		return pgtype.UUID{}, errCodeInvalid
 	}
+	if err != nil {
+		return pgtype.UUID{}, err
+	}
+	if _, err := c.q.CountVerificationAttempt(ctx, db.CountVerificationAttemptParams{ID: vc.ID, MaxAttempts: codeMaxAttempts}); isNoRows(err) {
+		return pgtype.UUID{}, errCodeAttempts
+	} else if err != nil {
+		return pgtype.UUID{}, err
+	}
+	if !hmac.Equal([]byte(vc.CodeHash), []byte(c.hashCode(phone, purpose, code))) {
+		return pgtype.UUID{}, errCodeInvalid
+	}
+	return vc.ID, nil
+}
+
+// consumeCode uses up a code verifyCode accepted. In the caller's
+// transaction, the code is spent only if what it unlocks is saved too; a
+// code used meanwhile by another request is refused.
+func consumeCode(ctx context.Context, q *db.Queries, id pgtype.UUID) error {
+	n, err := q.ConsumeVerificationCode(ctx, id)
 	if err != nil {
 		return err
 	}
-	if vc.Attempts >= codeMaxAttempts {
-		return errCodeAttempts
-	}
-	if !hmac.Equal([]byte(vc.CodeHash), []byte(c.hashCode(phone, purpose, code))) {
-		_ = c.q.IncrementVerificationAttempts(ctx, vc.ID)
+	if n == 0 {
 		return errCodeInvalid
 	}
-	return c.q.ConsumeVerificationCode(ctx, vc.ID)
+	return nil
+}
+
+// checkCode verifies and consumes a code.
+func (c *core) checkCode(ctx context.Context, phone, purpose, code string) error {
+	id, err := c.verifyCode(ctx, phone, purpose, code)
+	if err != nil {
+		return err
+	}
+	return consumeCode(ctx, c.q, id)
 }
 
 // Sign returns an HMAC of value under the deployment secret, for short-lived
