@@ -4,7 +4,7 @@ Usability and logic audit of the whole product: the dispatcher dashboard and
 public pages (web), the Go backend, and the driver app (mobile).
 
 - **Date:** 2026-11-12
-- **Commit audited:** `2eac8e6` on `product-consolidation`
+- **Commit audited:** `d0d6204` on `product-consolidation`, now on `main`
 - **Auditor:** Claude Fable 5.2 (Claude Code)
 - **Paths** are relative to the repository root. In the tables they are
   shortened: `service/`, `model/`, `static/` and `templates/` sit under
@@ -39,21 +39,21 @@ findings. Each finding below carries its commit.
 
 | Commit | Findings |
 |---|---|
-| `eae635d` | R1, R5, S5, L10, W6, W7 |
-| `37ffb3a` | S1, S2, L5, W8 |
-| `aead7ec` | R2, R3, R4, L8, L9 |
-| `d21335a` | R6, S4 |
-| `6990f78` | M2 to M8 |
-| `543ed4f` | W2, W3, W9 |
-| `4c49f17` | L1, L2, L3, L4, L6, L7, S6 |
-| `375981b` | S3 |
-| `69f87c2`, `a36954b` | R7, O2, O5 (the alert rules were corrected on staging in `a36954b`) |
-| `eacd5fc` | M1 (wording), W5 |
+| `56a3133` | R1, R5, S5, L10, W6, W7 |
+| `de63535` | S1, S2, L5, W8 |
+| `2b3fc83` | R2, R3, R4, L8, L9 |
+| `45c9578` | R6, S4 |
+| `c6b2fa8` | M2 to M8 |
+| `0a270db` | W2, W3, W9 |
+| `36446b6` | L1, L2, L3, L4, L6, L7, S6 |
+| `103a129` | S3 |
+| `3654d0e`, `b6cfd41` | R7, O2, O5 (the alert rules were corrected on staging in `b6cfd41`) |
+| `05611d9` | M1 (wording), W5 |
 
 Still open:
 
 - **W1** (Amharic on the dashboard, tracking pages and customer texts) needs
-  a native speaker. The new driver-app strings from `aead7ec` and `6990f78`
+  a native speaker. The new driver-app strings from `2b3fc83` and `c6b2fa8`
   were drafted in Amharic and need the same review.
 - **W4** (separate shipper and consignee) is a schema change.
 - **M1** is resolved in wording only. Tracking with the screen off needs a
@@ -115,7 +115,7 @@ Appendix D of `functional_requirements.md`.
 
 ### R1. Account lockout never resets (High)
 
-**Fixed in `eae635d`.** Locking clears the counter.
+**Fixed in `56a3133`.** Locking clears the counter.
 
 - **Where:** `backend/internal/service/auth.go:138-157`;
   `IncrementFailedLoginAttempts` and `LockUserAccount` in
@@ -134,7 +134,7 @@ Appendix D of `functional_requirements.md`.
 
 ### R2. A slow phone clock makes status updates "stale" (Medium)
 
-**Fixed in `aead7ec`.** Every offset is applied, measured when the request arrived.
+**Fixed in `2b3fc83`.** Every offset is applied, measured when the request arrived.
 
 - **Where:** `backend/internal/service/sync.go:228-243` (offset only applied
   when it exceeds the 2-minute `clockTolerance`);
@@ -152,7 +152,7 @@ Appendix D of `functional_requirements.md`.
 
 ### R3. A resent sync reports a false conflict (Low to Medium)
 
-**Fixed in `aead7ec`.** A change seen before by its client ID gets its first answer again.
+**Fixed in `2b3fc83`.** A change seen before by its client ID gets its first answer again.
 
 - **Where:** `applyStatus` in
   `backend/internal/service/shipment_status.go:87`.
@@ -167,7 +167,7 @@ Appendix D of `functional_requirements.md`.
 
 ### R4. Drivers receive their own messages, and blank ones (Low)
 
-**Fixed in `aead7ec`.**
+**Fixed in `2b3fc83`.**
 
 - **Where:** `ListDriverMessagesSince` in
   `backend/sqlc/queries/shipment_events.sql`;
@@ -185,7 +185,7 @@ Appendix D of `functional_requirements.md`.
 
 ### R5. Password reset links go to unconfirmed email addresses (High)
 
-**Fixed in `eae635d`.**
+**Fixed in `56a3133`.**
 
 - **Where:** `RequestPasswordReset` in
   `backend/internal/service/accounts.go`.
@@ -199,7 +199,7 @@ Appendix D of `functional_requirements.md`.
 
 ### R6. Uploaded photos have no pixel limit (High)
 
-**Fixed in `d21335a`.** Images are measured from their header and refused over 4096 px a side.
+**Fixed in `45c9578`.** Images are measured from their header and refused over 4096 px a side.
 
 - **Where:** `decodeBase64Image` in `backend/pkg/storage/pod.go:170-190`.
 - **Observed:** a PNG of 8000×8000 pixels, 565 KB as sent, was accepted and
@@ -214,7 +214,7 @@ Appendix D of `functional_requirements.md`.
 
 ### R7. `TestGatewayFaults` fails (Low; test only)
 
-**Fixed in `69f87c2`.** The test counts only texts sent after barring.
+**Fixed in `3654d0e`.** The test counts only texts sent after barring.
 
 - **Where:** `backend/tests/integration/sandbox_test.go:404-442`, failing at
   line 440 with "a barred number received 1 texts".
@@ -229,7 +229,7 @@ Appendix D of `functional_requirements.md`.
 
 ### S1. SMS relay at the operator's cost (High)
 
-**Fixed in `37ffb3a`.** Trial cap, hourly ceiling per company, and `OTP_DAILY_BUDGET` with an alert at 80% (alert rule in `69f87c2`).
+**Fixed in `de63535`.** Trial cap, hourly ceiling per company, and `OTP_DAILY_BUDGET` with an alert at 80% (alert rule in `3654d0e`).
 
 Several rules combine into one hole:
 
@@ -249,7 +249,7 @@ global daily budget for verification codes with an alert when it is close.
 
 ### S2. Inbound SMS has no duplicate check or reply throttle (Medium)
 
-**Fixed in `37ffb3a`.**
+**Fixed in `de63535`.**
 
 `Inbound` in `backend/internal/service/sms.go`. A provider retry is processed
 twice, and a phone with an auto-responder can loop with the help reply.
@@ -258,7 +258,7 @@ number.
 
 ### S3. The dashboard's live feed survives sign-out (Medium)
 
-**Fixed in `375981b`.** An open feed re-checks its session every 30 seconds.
+**Fixed in `103a129`.** An open feed re-checks its session every 30 seconds.
 
 `live` in `backend/internal/web/app_dashboard.go:175`. The session is checked
 when the WebSocket opens and never again, so the feed keeps flowing after
@@ -267,7 +267,7 @@ when their sessions are revoked, or re-check the session periodically.
 
 ### S4. Legacy SVG signatures are still accepted (Low)
 
-**Fixed in `d21335a`.**
+**Fixed in `45c9578`.**
 
 `uploadSVGSignature` in `backend/pkg/storage/pod.go:76`. The file is stored
 unsanitised. The sandbox CSP that `serveMedia` sets on the response contains
@@ -275,7 +275,7 @@ it today, and the driver app only sends PNG. **Fix:** remove the path.
 
 ### S5. Account and shipment enumeration (Low)
 
-**Fixed in `eae635d`.** Login, sign-up and track-by-phone answer alike; code checks are atomic.
+**Fixed in `56a3133`.** Login, sign-up and track-by-phone answer alike; code checks are atomic.
 
 - Driver login answers "belongs to an office account", and staff login
   answers "Drivers sign in through the driver app", before checking the
@@ -287,7 +287,7 @@ it today, and the driver app only sends PNG. **Fix:** remove the path.
 
 ### S6. Four write queries without a tenant filter (Low)
 
-**Fixed in `4c49f17`.**
+**Fixed in `36446b6`.**
 
 `SetCustomerConfirmation`, `SetCustomerFeedback`, `SetShipmentConfirmToken`
 and `AcknowledgeShipmentAlerts` update by ID alone. Their IDs come from
@@ -302,14 +302,14 @@ There is no native app. "Mobile" is the PWA in
 
 | ID | Severity | Finding | Where | Fix | Status |
 |---|---|---|---|---|---|
-| M1 | High (product) | GPS is recorded only while the app is open and in the foreground. The live map, route-deviation alerts and "driver quiet" alerts degrade when the phone sleeps. The README acknowledges this. | Platform limit of a PWA | Wrap the app (for example Capacitor with background location), or describe tracking as "while the app is open". | Wording only, in `eacd5fc`: the product says "while the driver app is open". Background GPS still needs a native wrapper. |
-| M2 | Medium | Start-up waits on the network. `boot()` awaits `/driver/config` with a 30-second timeout before drawing anything, and the service worker is network-first with no timeout. On weak signal the driver sees "Loading…" although all the data is already on the phone. | `static/driver/app.js:1451`, `static/driver/sw.js` | Draw from the cached config and refresh it in the background. Make the service worker cache-first or give it a short timeout. | Fixed in `6990f78` |
-| M3 | Medium | The delivery form is not saved as a draft. Low-memory Android phones often reload the page when the camera opens, which would lose the name, signature and photos. | `static/driver/app.js:1201` onwards | Save the form to IndexedDB as it is filled in. Test on a cheap phone first. | Fixed in `6990f78` |
-| M4 | Low | Refusal and "held for review" notices are kept in memory only (`S.notices`). A reload loses them, so the driver never learns a delivery was held. | `static/driver/app.js:525` | Store notices in IndexedDB until dismissed. | Fixed in `6990f78` |
-| M5 | Medium | When a company is suspended, sync returns 403. The app handles only 401, so it retries forever and shows nothing. | `static/driver/app.js:496-507` | Handle 403 with a message telling the driver to contact the office. | Fixed in `6990f78` |
-| M6 | Low | The home-screen icons are SVG only. iOS ignores SVG touch icons. Check Android's install prompt as well. | `static/driver/index.html`, `manifest.webmanifest` | Add PNG icons (180, 192, 512 px). | Fixed in `6990f78` |
-| M7 | Low | The signature canvas is not resized when the phone rotates. | `static/driver/app.js` | Resize on `orientationchange`, keeping the drawing. | Fixed in `6990f78` |
-| M8 | Low | The server cuts requests at 2 minutes while the app waits 3 minutes for a proof-of-delivery upload. | `backend/cmd/server/main.go:176`, `static/driver/app.js:480` | Make the two agree. | Fixed in `6990f78` |
+| M1 | High (product) | GPS is recorded only while the app is open and in the foreground. The live map, route-deviation alerts and "driver quiet" alerts degrade when the phone sleeps. The README acknowledges this. | Platform limit of a PWA | Wrap the app (for example Capacitor with background location), or describe tracking as "while the app is open". | Wording only, in `05611d9`: the product says "while the driver app is open". Background GPS still needs a native wrapper. |
+| M2 | Medium | Start-up waits on the network. `boot()` awaits `/driver/config` with a 30-second timeout before drawing anything, and the service worker is network-first with no timeout. On weak signal the driver sees "Loading…" although all the data is already on the phone. | `static/driver/app.js:1451`, `static/driver/sw.js` | Draw from the cached config and refresh it in the background. Make the service worker cache-first or give it a short timeout. | Fixed in `c6b2fa8` |
+| M3 | Medium | The delivery form is not saved as a draft. Low-memory Android phones often reload the page when the camera opens, which would lose the name, signature and photos. | `static/driver/app.js:1201` onwards | Save the form to IndexedDB as it is filled in. Test on a cheap phone first. | Fixed in `c6b2fa8` |
+| M4 | Low | Refusal and "held for review" notices are kept in memory only (`S.notices`). A reload loses them, so the driver never learns a delivery was held. | `static/driver/app.js:525` | Store notices in IndexedDB until dismissed. | Fixed in `c6b2fa8` |
+| M5 | Medium | When a company is suspended, sync returns 403. The app handles only 401, so it retries forever and shows nothing. | `static/driver/app.js:496-507` | Handle 403 with a message telling the driver to contact the office. | Fixed in `c6b2fa8` |
+| M6 | Low | The home-screen icons are SVG only. iOS ignores SVG touch icons. Check Android's install prompt as well. | `static/driver/index.html`, `manifest.webmanifest` | Add PNG icons (180, 192, 512 px). | Fixed in `c6b2fa8` |
+| M7 | Low | The signature canvas is not resized when the phone rotates. | `static/driver/app.js` | Resize on `orientationchange`, keeping the drawing. | Fixed in `c6b2fa8` |
+| M8 | Low | The server cuts requests at 2 minutes while the app waits 3 minutes for a proof-of-delivery upload. | `backend/cmd/server/main.go:176`, `static/driver/app.js:480` | Make the two agree. | Fixed in `c6b2fa8` |
 
 What the driver app already does well: the outbox survives a forced
 sign-out, signing out warns about unsent items, Amharic and English, a
@@ -321,14 +321,14 @@ one or two at a time.
 | ID | Severity | Finding | Where | Status |
 |---|---|---|---|---|
 | W1 | High (product) | English only. The dashboard, customer SMS, the tracking page and the confirmation page have no Amharic. Only the driver app does. | Templates, `service/notify.go` | Open: needs a native Amharic reviewer. |
-| W2 | Medium | The shipment page does not update live. It shows a toast with a "Reload" button, because `shipment.html` has no `data-live-region`. After the WebSocket reconnects, only the alert badge is refreshed, not the live regions. | `templates/app/shipment.html`, `static/app.js:360-364` | Fixed in `543ed4f` |
-| W3 | Medium | An alert's read state is shared by the whole company. One dispatcher opening the list clears the badge for everyone. | `sqlc/queries/alerts.sql` | Fixed in `543ed4f` |
+| W2 | Medium | The shipment page does not update live. It shows a toast with a "Reload" button, because `shipment.html` has no `data-live-region`. After the WebSocket reconnects, only the alert badge is refreshed, not the live regions. | `templates/app/shipment.html`, `static/app.js:360-364` | Fixed in `0a270db` |
+| W3 | Medium | An alert's read state is shared by the whole company. One dispatcher opening the list clears the badge for everyone. | `sqlc/queries/alerts.sql` | Fixed in `0a270db` |
 | W4 | Medium (product) | A shipment has one "customer". Shipper and consignee are not separate, so tracking texts, the confirmation link and the driver's Call button all go to one phone. | Schema, `service/shipment.go` | Open: a schema change. |
-| W5 | Medium | A company cannot cancel its subscription. Renewal invoices issue automatically, an unpaid one makes the account read-only with a standing debt, and only the operator can void it. | `service/billing.go` | Fixed in `eacd5fc`: an admin turns off renewal. |
-| W6 | Low | Staff who have a phone but no email cannot reset their own password. Reset is by email only. | `service/accounts.go` | Fixed in `eae635d` |
-| W7 | Medium (product) | A phone number is unique across all companies (`idx_users_phone_unique`), so a driver cannot work for two companies. The error does not explain why. | Migrations, `GetUserByPhone` | Error explained in `eae635d`. A number still belongs to one account. |
-| W8 | Medium | The quota counts messages, not SMS segments. Long or Amharic texts are several segments each, so they cost more than is billed. | `service/sms.go` | Fixed in `37ffb3a` |
-| W9 | Low | Name length limits count bytes. Amharic names get about a third of the intended room. | `service/shipment.go:154`, `service/users.go:42` | Fixed in `543ed4f` |
+| W5 | Medium | A company cannot cancel its subscription. Renewal invoices issue automatically, an unpaid one makes the account read-only with a standing debt, and only the operator can void it. | `service/billing.go` | Fixed in `05611d9`: an admin turns off renewal. |
+| W6 | Low | Staff who have a phone but no email cannot reset their own password. Reset is by email only. | `service/accounts.go` | Fixed in `56a3133` |
+| W7 | Medium (product) | A phone number is unique across all companies (`idx_users_phone_unique`), so a driver cannot work for two companies. The error does not explain why. | Migrations, `GetUserByPhone` | Error explained in `56a3133`. A number still belongs to one account. |
+| W8 | Medium | The quota counts messages, not SMS segments. Long or Amharic texts are several segments each, so they cost more than is billed. | `service/sms.go` | Fixed in `de63535` |
+| W9 | Low | Name length limits count bytes. Amharic names get about a third of the intended room. | `service/shipment.go:154`, `service/users.go:42` | Fixed in `0a270db` |
 
 What the web side already does well: light, fast pages; a skip link and ARIA
 labels; dark mode; reduced-motion support; a guard against double submits;
@@ -338,26 +338,26 @@ debounced live refresh; responsive breakpoints at 1100, 900 and 600 px.
 
 | ID | Finding | Where | Status |
 |---|---|---|---|
-| L1 | A proof of delivery is accepted straight from `assigned`, leaving `picked_up_at` empty. | `model/status.go`, `service/pod.go` | Fixed in `4c49f17` |
-| L2 | Reopening a shipment skips the read-only check and the per-driver load limit. | `service/shipment_status.go:357` onwards | Fixed in `4c49f17` |
-| L3 | A vehicle can be on two trips at once, and its capacity is not checked against cargo weight. | `service/vehicles.go`, `service/dispatch.go` | Fixed in `4c49f17` |
-| L4 | Quota and limit checks run outside the lock, so concurrent requests can exceed a limit by one. | `service/users.go`, `service/sms.go` | Fixed in `4c49f17` (drivers); the text ceilings stay soft. |
-| L5 | A verification SMS is retried for up to about 21 minutes, although the code expires in 10. | `service/sms.go`, `service/verification.go` | Fixed in `37ffb3a` |
-| L6 | The billing day drifts: 31 January, then 28 February, then 28 March. | `PeriodEnd` in `model/plan.go` | Fixed in `4c49f17` |
-| L7 | Job queries use `LIMIT 1000` without `ORDER BY`, so which rows are handled is arbitrary under load. | `sqlc/queries`, `service/jobs.go` | Fixed in `4c49f17` |
-| L8 | `ListDriverMessagesSince` stops at 200 rows and the cursor then jumps past the rest, so overflow is lost. | `sqlc/queries/shipment_events.sql` | Fixed in `aead7ec` |
-| L9 | GPS points for a shipment that was reassigned while the driver was offline are discarded. | `service/tracking.go:167` | Fixed in `aead7ec` |
-| L10 | `CompleteSignup` consumes the verification code outside the transaction, so a failure afterwards burns the code. | `service/tenants.go:173` | Fixed in `eae635d` |
+| L1 | A proof of delivery is accepted straight from `assigned`, leaving `picked_up_at` empty. | `model/status.go`, `service/pod.go` | Fixed in `36446b6` |
+| L2 | Reopening a shipment skips the read-only check and the per-driver load limit. | `service/shipment_status.go:357` onwards | Fixed in `36446b6` |
+| L3 | A vehicle can be on two trips at once, and its capacity is not checked against cargo weight. | `service/vehicles.go`, `service/dispatch.go` | Fixed in `36446b6` |
+| L4 | Quota and limit checks run outside the lock, so concurrent requests can exceed a limit by one. | `service/users.go`, `service/sms.go` | Fixed in `36446b6` (drivers); the text ceilings stay soft. |
+| L5 | A verification SMS is retried for up to about 21 minutes, although the code expires in 10. | `service/sms.go`, `service/verification.go` | Fixed in `de63535` |
+| L6 | The billing day drifts: 31 January, then 28 February, then 28 March. | `PeriodEnd` in `model/plan.go` | Fixed in `36446b6` |
+| L7 | Job queries use `LIMIT 1000` without `ORDER BY`, so which rows are handled is arbitrary under load. | `sqlc/queries`, `service/jobs.go` | Fixed in `36446b6` |
+| L8 | `ListDriverMessagesSince` stops at 200 rows and the cursor then jumps past the rest, so overflow is lost. | `sqlc/queries/shipment_events.sql` | Fixed in `2b3fc83` |
+| L9 | GPS points for a shipment that was reassigned while the driver was offline are discarded. | `service/tracking.go:167` | Fixed in `2b3fc83` |
+| L10 | `CompleteSignup` consumes the verification code outside the transaction, so a failure afterwards burns the code. | `service/tenants.go:173` | Fixed in `56a3133` |
 
 ## Operations and scale (read)
 
 | ID | Finding | Recommendation | Status |
 |---|---|---|---|
 | O1 | One machine holds the app, the database and the uploaded photos. Backups land on the same machine unless someone copies them off, are unencrypted, and contain the app secret. There is no point-in-time recovery. | Ship backups off the machine, encrypted. Consider WAL archiving. | Open: infrastructure. |
-| O2 | No alert rules are provisioned: `provisioning/alerting/` holds only `.gitkeep`. Nobody is told when jobs fail or the SMS queue stalls. | Add rules for job failures, outbox age, error rate and disk space. | Fixed in `69f87c2` and `a36954b` |
+| O2 | No alert rules are provisioned: `provisioning/alerting/` holds only `.gitkeep`. Nobody is told when jobs fail or the SMS queue stalls. | Add rules for job failures, outbox age, error rate and disk space. | Fixed in `3654d0e` and `b6cfd41` |
 | O3 | The live-map query (`GetLatestDriverLocations`) scans seven days of GPS points per company on every load, and points are inserted one row at a time, up to 5000 per sync. | Fine at today's size. Add a last-position table and batch inserts before a fleet reaches hundreds of drivers. | Open: not needed at today's size. |
 | O4 | Rate limits and the WebSocket hub are in memory, so the app must run as a single instance. This is documented. | No action until a second instance is needed. | Open: documented. |
-| O5 | Leftovers: the unused `device_tokens` table from the retired native app, duplicate indexes, and login by email on `lower(email)` with no matching index. | Drop the table and duplicates; add an index on `lower(email)`. | Fixed in `69f87c2`. `device_tokens` was already dropped by the `product_core` migration. |
+| O5 | Leftovers: the unused `device_tokens` table from the retired native app, duplicate indexes, and login by email on `lower(email)` with no matching index. | Drop the table and duplicates; add an index on `lower(email)`. | Fixed in `3654d0e`. `device_tokens` was already dropped by the `product_core` migration. |
 | O6 | The real telebirr, CBE Birr and Ethio telecom contracts are unconfirmed, so production can only take bank transfers. This is a documented go-live blocker. | Confirm each contract, then change the adapter and the sandbox together. | Open: needs the providers. |
 
 ## What is solid
