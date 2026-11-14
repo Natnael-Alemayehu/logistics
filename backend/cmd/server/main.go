@@ -173,10 +173,12 @@ func serve(ctx context.Context, cfg *config.Config, log zerolog.Logger) error {
 		Addr:              ":" + cfg.Port,
 		Handler:           a.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       2 * time.Minute, // a sync with photos on a slow link
-		WriteTimeout:      2 * time.Minute,
-		IdleTimeout:       2 * time.Minute,
-		MaxHeaderBytes:    1 << 16,
+		// A sync with photos on a slow link: longer than the driver app's own
+		// three minutes, so the app gives up first and knows to try again.
+		ReadTimeout:    4 * time.Minute,
+		WriteTimeout:   4 * time.Minute,
+		IdleTimeout:    2 * time.Minute,
+		MaxHeaderBytes: 1 << 16,
 	}
 	errc := make(chan error, 1)
 	go func() {

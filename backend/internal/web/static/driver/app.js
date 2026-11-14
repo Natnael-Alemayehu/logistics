@@ -4,7 +4,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.2.0";
   const API = "/api/v1";
   const ON_ROAD = ["in_transit", "delayed", "arrived", "issue"];
   const ACTIVE = ["assigned", ...ON_ROAD];
@@ -45,7 +45,9 @@
       signedOut: "You've been signed out. Sign in again.", networkError: "No connection. Try again when you have signal.",
       codeSent: "If this number belongs to a driver, a code is on its way.", version: "Version", deliveredAt: "Delivered",
       shipmentGone: "This shipment is no longer assigned to you.",
-      msgCancelled: "The office cancelled this shipment.", msgReopened: "The office reopened this shipment.", install: "Install the app", installHelp: "Add it to your home screen so it opens without the browser.",
+      msgCancelled: "The office cancelled this shipment.", msgReopened: "The office reopened this shipment.",
+      blocked: "Your company's account is paused. Call your office. What you record is kept on this phone and sent when the account is back.",
+      draftRestored: "Your unfinished delivery is back as you left it.", install: "Install the app", installHelp: "Add it to your home screen so it opens without the browser.",
       locationOff: "Location is off", battery: "Battery", appUpdated: "App updated.", pinChanged: "PIN changed.",
       kg: "kg", m: "m", km: "km", weak: "Weak signal", settings: "Settings", photoUnreadable: "The photo couldn't be read. Take it again.",
       batterySaver: "Battery saver", batterySaverHelp: "Records your position every 15 minutes and syncs less often. It turns on by itself when the battery is below 20%.",
@@ -97,7 +99,9 @@
       signedOut: "ከመለያዎ ወጥተዋል። እንደገና ይግቡ።", networkError: "ግንኙነት የለም። ኔትወርክ ሲኖር እንደገና ይሞክሩ።",
       codeSent: "ቁጥሩ የሹፌር ከሆነ ኮድ ይላካል።", version: "ስሪት", deliveredAt: "የተረከበው",
       shipmentGone: "ይህ ጭነት ከእንግዲህ ለእርስዎ አልተመደበም።",
-      msgCancelled: "ቢሮው ይህን ጭነት ሰርዞታል።", msgReopened: "ቢሮው ይህን ጭነት እንደገና ከፍቶታል።", install: "መተግበሪያውን ጫን", installHelp: "ያለ ብሮውዘር እንዲከፈት ወደ መነሻ ገጽ ያክሉት።",
+      msgCancelled: "ቢሮው ይህን ጭነት ሰርዞታል።", msgReopened: "ቢሮው ይህን ጭነት እንደገና ከፍቶታል።",
+      blocked: "የድርጅትዎ መለያ ለጊዜው ቆሟል። ቢሮዎን ይደውሉ። የሚመዘግቡት በዚህ ስልክ ተቀምጦ መለያው ሲመለስ ይላካል።",
+      draftRestored: "ያልጨረሱት የማስረከቢያ ቅጽ እንደተዉት ተመልሷል።", install: "መተግበሪያውን ጫን", installHelp: "ያለ ብሮውዘር እንዲከፈት ወደ መነሻ ገጽ ያክሉት።",
       locationOff: "አካባቢ ጠፍቷል", battery: "ባትሪ", appUpdated: "መተግበሪያው ተዘምኗል።", pinChanged: "ፒን ተቀይሯል።",
       kg: "ኪ.ግ", m: "ሜ", km: "ኪ.ሜ", weak: "ደካማ ኔትወርክ", settings: "ቅንብሮች", photoUnreadable: "ፎቶው ሊነበብ አልቻለም። እንደገና ያንሱ።",
       batterySaver: "ባትሪ ቆጣቢ", batterySaverHelp: "አካባቢዎን በየ15 ደቂቃው ይመዘግባል፣ ብዙ ጊዜም አያመሳስልም። ባትሪው ከ20% በታች ሲሆን በራሱ ይበራል።",
@@ -171,6 +175,9 @@
   const put = (store, v) => tx(store, "readwrite", (s) => s.put(v));
   const del = (store, k) => tx(store, "readwrite", (s) => s.delete(k));
   const clear = (store) => tx(store, "readwrite", (s) => s.clear());
+  // Delivery forms being filled in, kept under draft:<shipment id>.
+  const dropDrafts = () => tx("kv", "readwrite", (s) => req2p(s.getAllKeys()).then((keys) =>
+    keys.filter((k) => String(k).startsWith("draft:")).forEach((k) => s.delete(k))));
 
   // ---------------------------------------------------------------------------
   // State
@@ -185,6 +192,8 @@
     // during a sync.
     settings: { ...DEFAULT_SETTINGS }, changed: {}, settingsRev: 0,
     keepAwake: false, storage: null, persisted: false, parked: false, anchor: null,
+    // blocked: the company's account is suspended, so syncs are refused.
+    blocked: false,
   };
 
   function t(key, vars) {
@@ -506,10 +515,24 @@
       // syncs every five minutes unless the driver acts.
       const more = resp.more || S.outbox.some((o) => o.kind === "pod");
       scheduleSync(more ? 500 : saving() ? 300000 : 60000);
+      if (S.blocked) {
+        S.blocked = false;
+        rerender();
+      }
     } catch (err) {
       S.failures++;
       if (err instanceof ApiError && err.status === 401) {
         await signedOut();
+        return;
+      }
+      // The company's account is suspended: say so, and ask again now and
+      // then rather than every few seconds. Nothing recorded is dropped.
+      if (err instanceof ApiError && err.status === 403) {
+        if (!S.blocked) {
+          S.blocked = true;
+          rerender();
+        }
+        scheduleSync(600000);
         return;
       }
       // The phone says it is online, but the server can't be reached.
@@ -525,7 +548,10 @@
   }
 
   async function applySync(resp, locKeys) {
-    // Outbox: drop everything the server accepted or refused for good.
+    // Outbox: drop everything the server accepted or refused for good. What
+    // was refused stays on screen until the driver dismisses it, even if
+    // the app restarts.
+    let noticesChanged = false;
     const byId = new Map(S.outbox.map((o) => [o.client_id, o]));
     for (const r of resp.results || []) {
       const item = byId.get(r.client_id);
@@ -533,13 +559,15 @@
       if (r.ok || !r.retry) {
         await del("outbox", r.client_id);
         byId.delete(r.client_id);
-        if (!r.ok) {
+        if (!r.ok && !S.notices.some((n) => n.id === r.client_id)) {
           const sh = S.shipments.get(item.payload.shipment_id);
           S.notices.push({ id: r.client_id, text: (sh ? sh.ref + ": " : "") + r.message });
+          noticesChanged = true;
         }
       }
     }
     S.outbox = [...byId.values()];
+    if (noticesChanged) await kvSet("notices", S.notices);
     if (locKeys.length) {
       await tx("locations", "readwrite", (s) => locKeys.forEach((k) => s.delete(k)));
       S.pendingLocations = Math.max(0, S.pendingLocations - locKeys.length);
@@ -554,6 +582,7 @@
       if (S.shipments.has(id)) {
         S.shipments.delete(id);
         await del("shipments", id);
+        await del("kv", "draft:" + id);
         if (location.hash.includes(id)) toast(t("shipmentGone"));
       }
     }
@@ -611,6 +640,7 @@
   }
 
   async function forgetShipments() {
+    await dropDrafts();
     await clear("shipments");
     S.shipments.clear();
     S.messages = [];
@@ -962,9 +992,10 @@
     return h("div", {},
       header(t("myShipments")),
       h("main", { class: "page" },
+        S.blocked ? h("div", { class: "notice caution", role: "alert" }, h("p", { text: t("blocked") })) : null,
         storageLow() ? h("div", { class: "notice caution" }, h("p", { text: t("storageLow") }), h("a", { class: "btn link", href: "#/menu", text: t("storage") })) : null,
         S.notices.map((n) => h("div", { class: "notice" }, h("span", {}, h("strong", { text: t("rejected") + ": " }), n.text),
-          h("button", { type: "button", class: "btn link", text: t("dismiss"), onclick: () => { S.notices = S.notices.filter((x) => x !== n); render(); } }))),
+          h("button", { type: "button", class: "btn link", text: t("dismiss"), onclick: async () => { S.notices = S.notices.filter((x) => x !== n); await kvSet("notices", S.notices); render(); } }))),
         unseen.length ? h("section", { class: "msgs" }, h("h2", { text: t("messages") }),
           unseen.slice(0, 3).map((m) => h("div", { class: "msg" }, h("p", { text: msgText(m) }), h("p", { class: "muted small", text: (m.tracking_number ? "#" + m.tracking_number.slice(-4) + " · " : "") + m.from + " · " + fmtTime(m.at) }))),
           h("button", { class: "btn link", type: "button", text: t("dismiss"), onclick: async () => { unseen.forEach((m) => S.seen.add(m.id)); await kvSet("seen", [...S.seen]); render(); } })) : null,
@@ -1139,53 +1170,111 @@
   }
 
   // ---- proof of delivery --------------------------------------------------------------
-  function signaturePad() {
+  // The signature box. The strokes are kept as points, so the signature is
+  // drawn again unchanged when the phone turns, and saved with the draft.
+  // onChange is told when a stroke ends or the box is cleared.
+  function signaturePad(onChange) {
     const canvas = h("canvas", { class: "sig", "aria-label": t("signHere") });
     const ctx = canvas.getContext("2d");
-    let strokes = 0, drawing = false, last = null;
+    // lines: each stroke's points, with the size of the box it was drawn in.
+    let lines = [], drawing = null, box = null;
+    function scaleOf(l) {
+      return Math.min(box.width / l.w, box.height / l.h);
+    }
+    function drawLine(l) {
+      const k = scaleOf(l);
+      const [x0, y0] = l.pts[0];
+      ctx.beginPath();
+      if (l.pts.length === 1) {
+        ctx.arc(x0 * k, y0 * k, 1.1, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      }
+      ctx.moveTo(x0 * k, y0 * k);
+      for (const [x, y] of l.pts.slice(1)) ctx.lineTo(x * k, y * k);
+      ctx.stroke();
+    }
+    // size fits the canvas to the box it is shown in and draws the strokes
+    // again.
     function size() {
       const r = canvas.getBoundingClientRect();
       if (!r.width) return;
+      if (box && box.width === r.width && box.height === r.height) return;
       const ratio = Math.max(1, window.devicePixelRatio || 1);
       canvas.width = Math.round(r.width * ratio);
       canvas.height = Math.round(r.height * ratio);
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      box = { width: r.width, height: r.height };
+      redraw();
+    }
+    function redraw() {
       ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, r.width, r.height);
+      ctx.fillRect(0, 0, box.width, box.height);
       ctx.lineWidth = 2.4;
       ctx.lineCap = ctx.lineJoin = "round";
-      ctx.strokeStyle = "#111";
-      strokes = 0;
+      ctx.strokeStyle = ctx.fillStyle = "#111";
+      lines.forEach(drawLine);
+    }
+    function clearPad() {
+      lines = [];
+      if (box) redraw();
+      if (onChange) onChange();
+    }
+    // restore draws saved strokes back.
+    function restore(saved) {
+      if (!Array.isArray(saved)) return;
+      lines = saved.filter((l) => l && l.w > 0 && l.h > 0 && Array.isArray(l.pts) && l.pts.length);
+      if (!box) size();
+      else redraw();
     }
     const pos = (e) => {
       const r = canvas.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      return [Math.round((e.clientX - r.left) * 10) / 10, Math.round((e.clientY - r.top) * 10) / 10];
     };
     canvas.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      if (!box) return;
       canvas.setPointerCapture(e.pointerId);
-      drawing = true;
-      last = pos(e);
-      ctx.beginPath();
-      ctx.arc(last.x, last.y, 1.1, 0, Math.PI * 2);
-      ctx.fillStyle = "#111";
-      ctx.fill();
-      strokes++;
+      drawing = { w: box.width, h: box.height, pts: [pos(e)] };
+      lines.push(drawing);
+      drawLine(drawing);
     });
     canvas.addEventListener("pointermove", (e) => {
       if (!drawing) return;
+      const last = drawing.pts[drawing.pts.length - 1];
       const p = pos(e);
+      drawing.pts.push(p);
       ctx.beginPath();
-      ctx.moveTo(last.x, last.y);
-      ctx.lineTo(p.x, p.y);
+      ctx.moveTo(last[0], last[1]);
+      ctx.lineTo(p[0], p[1]);
       ctx.stroke();
-      last = p;
     });
-    const end = () => (drawing = false);
+    const end = () => {
+      if (!drawing) return;
+      drawing = null;
+      if (onChange) onChange();
+    };
     canvas.addEventListener("pointerup", end);
     canvas.addEventListener("pointercancel", end);
-    requestAnimationFrame(size);
-    return { canvas, clear: size, empty: () => strokes === 0, data: () => canvas.toDataURL("image/png") };
+    // The phone turned or the window changed size: fit the box again. The
+    // listener goes once the form has.
+    let resizeTimer = null;
+    const onResize = () => {
+      if (!canvas.isConnected) {
+        window.removeEventListener("resize", onResize);
+        window.removeEventListener("orientationchange", onResize);
+        return;
+      }
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(size, 150);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    requestAnimationFrame(() => box || size());
+    return {
+      canvas, clear: clearPad, restore, empty: () => lines.length === 0,
+      lines: () => lines, data: () => canvas.toDataURL("image/png"),
+    };
   }
 
   function compress(file) {
@@ -1217,10 +1306,30 @@
     formOpen = true;
     const photos = [];
     const err = h("p", { class: "err", role: "alert" });
-    const name = h("input", { required: true, autocomplete: "off", maxlength: "120" });
-    const phone = h("input", { type: "tel", inputmode: "tel", maxlength: "20" });
-    const notes = h("textarea", { rows: "2", maxlength: "500" });
-    const pad = signaturePad();
+    // The form is saved as it is filled in: a phone short of memory often
+    // reloads the page when the camera opens, and the driver would otherwise
+    // start again.
+    const draftKey = "draft:" + sh.id;
+    let draftTimer = null, restoring = true;
+    const saveDraft = () => {
+      if (restoring) return;
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(() => {
+        kvSet(draftKey, {
+          name: name.value, phone: phone.value, notes: notes.value, photos: photos.slice(),
+          strokes: pad.lines(), why, saved: Date.now(),
+        }).catch(() => {});
+      }, 400);
+    };
+    const dropDraft = () => {
+      clearTimeout(draftTimer);
+      restoring = true; // nothing more to save
+      return del("kv", draftKey).catch(() => {});
+    };
+    const name = h("input", { required: true, autocomplete: "off", maxlength: "120", oninput: saveDraft });
+    const phone = h("input", { type: "tel", inputmode: "tel", maxlength: "20", oninput: saveDraft });
+    const notes = h("textarea", { rows: "2", maxlength: "500", oninput: saveDraft });
+    const pad = signaturePad(saveDraft);
     const thumbs = h("div", { class: "thumbs" });
     const fileInput = h("input", { type: "file", accept: "image/*", capture: "environment", class: "visually-hidden", onchange: async () => {
       const f = fileInput.files[0];
@@ -1229,6 +1338,7 @@
       try {
         photos.push(await compress(f));
         drawThumbs();
+        saveDraft();
       } catch {
         toast(t("photoUnreadable"));
       }
@@ -1236,7 +1346,7 @@
     const addBtn = h("button", { type: "button", class: "btn", onclick: () => fileInput.click() }, "📷 " + t("addPhoto"));
     function drawThumbs() {
       thumbs.replaceChildren(...photos.map((p, i) => h("figure", {}, h("img", { src: p, alt: "" }),
-        h("button", { type: "button", class: "btn link small", text: t("remove"), onclick: () => { photos.splice(i, 1); drawThumbs(); } }))));
+        h("button", { type: "button", class: "btn link small", text: t("remove"), onclick: () => { photos.splice(i, 1); drawThumbs(); saveDraft(); } }))));
       addBtn.hidden = photos.length >= MAX_PHOTOS;
     }
     const submit = h("button", { class: "btn primary big", type: "submit", text: t("confirmDelivery") });
@@ -1248,12 +1358,13 @@
       return k && !taken.has(k) && taken.add(k);
     }).slice(0, 6);
     const suggestions = names.length ? h("div", { class: "chips", role: "group", "aria-label": t("suggested") },
-      names.map((n) => h("button", { type: "button", class: "chip", text: n, onclick: () => { name.value = n; phone.focus(); } }))) : null;
+      names.map((n) => h("button", { type: "button", class: "chip", text: n, onclick: () => { name.value = n; saveDraft(); phone.focus(); } }))) : null;
     const quickNotes = h("div", { class: "chips", role: "group", "aria-label": t("quickNotes") },
       ["security", "reception", "partial", "damaged"].map((k) => h("button", { type: "button", class: "chip", text: t("note_" + k), onclick: () => {
         const cur = notes.value.trim(), add = t("note_" + k);
         if (!cur.split("\n").includes(add)) notes.value = (cur ? cur + "\n" + add : add).slice(0, 500);
         err.textContent = "";
+        saveDraft();
       } })));
 
     // Too far from the drop-off (AC-022.2): the driver says why, or goes
@@ -1270,7 +1381,7 @@
         h("p", { class: "small", text: t("farHelp", { tol: fmtDist(sh.tolerance_m) }) }),
         h("p", { class: "small" }, h("strong", { text: t("whyHere") })),
         h("div", { class: "choices" }, (S.config.location_reasons || []).map((r) =>
-          h("label", { class: "choice" }, h("input", { type: "radio", name: "why", value: r.code, checked: why === r.code, onchange: () => ((why = r.code), (err.textContent = "")) }), h("span", { text: reasonLabel(r.code) })))),
+          h("label", { class: "choice" }, h("input", { type: "radio", name: "why", value: r.code, checked: why === r.code, onchange: () => ((why = r.code), (err.textContent = ""), saveDraft()) }), h("span", { text: reasonLabel(r.code) })))),
         h("a", { class: "btn", href: "#/s/" + sh.id, text: t("goBack") }));
     }
     freshFix(15000).then((fix) => {
@@ -1306,6 +1417,7 @@
         signature: pad.data(), photos: photos.slice(), notes: notes.value.trim(), location_reason: why,
         lat: fix ? fix.lat : null, lng: fix ? fix.lng : null, recorded_at: new Date().toISOString(),
       });
+      await dropDraft();
       if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
       toast(fix ? t("delivered") : t("noFix"));
       updateTracking();
@@ -1317,7 +1429,22 @@
         h("button", { type: "button", class: "btn link small", text: t("clear"), onclick: () => pad.clear() })),
       h("div", { class: "field" }, h("span", { text: t("photos") }), thumbs, addBtn, fileInput),
       field(t("deliveryNotes"), notes), quickNotes, err, submit,
-      h("a", { class: "btn link", href: "#/s/" + sh.id, text: t("cancel") }));
+      // Cancel throws the form away; going back keeps it for later.
+      h("a", { class: "btn link", href: "#/s/" + sh.id, text: t("cancel"), onclick: () => { dropDraft(); } }));
+
+    kvGet(draftKey).then((d) => {
+      if (d && form.isConnected !== false) {
+        name.value = d.name || "";
+        phone.value = d.phone || "";
+        notes.value = d.notes || "";
+        photos.push(...(d.photos || []).slice(0, MAX_PHOTOS));
+        drawThumbs();
+        if (d.strokes) pad.restore(d.strokes);
+        if (d.why) why = d.why;
+        if (d.name || (d.strokes || []).length || photos.length) toast(t("draftRestored"));
+      }
+    }).catch(() => {}).finally(() => { restoring = false; });
+
     return h("div", {}, header(t("deliverBtn") + " · #" + sh.ref, "#/s/" + sh.id),
       h("main", { class: "page" }, h("p", { class: "muted small" }, sh.customer_name + " · " + sh.destination_address), form));
   }
@@ -1404,6 +1531,7 @@
     if (!navigator.onLine) return toast(t("clearDataOffline"));
     await forgetShipments();
     S.notices = [];
+    await kvSet("notices", []);
     toast(t("clearDataDone"));
     go("#/");
     render();
@@ -1417,8 +1545,10 @@
     } catch { /* signing out locally is what matters */ }
     S.token = null;
     await kvSet("token", null);
-    await Promise.all([clear("outbox"), clear("locations"), forgetShipments()]);
+    await Promise.all([clear("outbox"), clear("locations"), forgetShipments(), kvSet("notices", [])]);
     S.outbox = [];
+    S.notices = [];
+    S.blocked = false;
     S.pendingLocations = 0;
     stopTracking();
     go("#/");
@@ -1428,13 +1558,31 @@
   // ---------------------------------------------------------------------------
   // Start
   // ---------------------------------------------------------------------------
+  // The config the phone has is used at once, so the app opens without
+  // waiting on a weak signal, and the server's is fetched behind it. Only the
+  // very first start waits for the network.
   async function loadConfig() {
-    try {
-      const cfg = await api("/driver/config", { auth: false });
+    const cached = await kvGet("config");
+    const fresh = api("/driver/config", { auth: false, timeout: cached ? 30000 : 15000 }).then(async (cfg) => {
       await kvSet("config", cfg);
       return cfg;
-    } catch {
-      return kvGet("config");
+    });
+    if (!cached) return fresh.catch(() => null);
+    fresh.then((cfg) => {
+      if (JSON.stringify(cfg) === JSON.stringify(S.config)) return;
+      S.config = cfg;
+      rerender();
+    }).catch(() => {});
+    return cached;
+  }
+  // A first start without signal has nothing to draw: try again when the
+  // signal or the driver comes back.
+  async function retryConfig() {
+    if (S.config) return;
+    const cfg = await loadConfig();
+    if (cfg && !S.config) {
+      S.config = cfg;
+      render();
     }
   }
 
@@ -1458,6 +1606,7 @@
     S.lastSync = await kvGet("lastSync");
     S.messages = (await kvGet("messages")) || [];
     S.seen = new Set((await kvGet("seen")) || []);
+    S.notices = (await kvGet("notices")) || [];
     const tracking = await kvGet("tracking");
     S.tracking = tracking !== false;
     for (const sh of await all("shipments")) S.shipments.set(sh.id, sh);
@@ -1489,10 +1638,13 @@
       }).catch(() => {});
     }
     window.addEventListener("hashchange", render);
-    window.addEventListener("online", () => { S.online = true; renderPill(); scheduleSync(500); });
+    window.addEventListener("online", () => { S.online = true; renderPill(); retryConfig(); scheduleSync(500); });
     window.addEventListener("offline", () => { S.online = false; renderPill(); });
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) scheduleSync(300);
+      if (!document.hidden) {
+        retryConfig();
+        scheduleSync(300);
+      }
       updateWakeLock(); // the browser lets go of it while the app is hidden
     });
     window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); S.installPrompt = e; rerender(); });
