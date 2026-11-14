@@ -431,13 +431,18 @@ func TestGatewayFaults(t *testing.T) {
 	within(t, 10*time.Second, "the second try", func() bool { return state(down) == "sent delivered 2" })
 	e.received("sms", down, "new shipment")
 
-	// Barred: refused for good, so it isn't tried again.
+	// Barred: refused for good, so it isn't tried again. The driver's
+	// welcome text goes before the number is barred, and isn't counted.
 	id, barred := driver("Hirut Mekonnen")
+	within(t, 10*time.Second, "the welcome text", func() bool {
+		return scalar[int64](t, `SELECT count(*) FROM sms_messages WHERE phone = $1 AND status IN ('queued', 'sending')`, barred) == 0
+	})
+	welcomed := len(p.phone(barred).from(senderID))
 	p.faults(map[string]any{"barred": []string{barred}})
 	assign(id)
 	within(t, 5*time.Second, "the refusal", func() bool { return state(barred) == "failed - 1" })
-	if tx := p.phone(barred).from(senderID); len(tx) != 0 {
-		t.Errorf("a barred number received %d texts", len(tx))
+	if tx := p.phone(barred).from(senderID); len(tx) != welcomed {
+		t.Errorf("a barred number received %d texts", len(tx)-welcomed)
 	}
 
 	// Out of reach: taken, then reported undelivered.

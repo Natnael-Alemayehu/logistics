@@ -4,6 +4,8 @@
 package metrics
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -75,6 +77,23 @@ var VerificationBudgetUsed = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "menged_verification_budget_used_ratio",
 	Help: "Share of the daily budget of verification codes texted in the last 24 hours.",
 })
+
+var diskOnce sync.Once
+
+// WatchDisk exports menged_disk_free_ratio, read from free() at each
+// scrape: the share of the disk holding uploads that is free. Only the
+// first call counts; a server with no disk to watch (S3 storage) doesn't
+// call it, and the metric is then absent.
+func WatchDisk(free func() float64) {
+	diskOnce.Do(func() { prometheus.MustRegister(diskFreeRatio(free)) })
+}
+
+func diskFreeRatio(free func() float64) prometheus.GaugeFunc {
+	return prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "menged_disk_free_ratio",
+		Help: "Share of the disk holding uploads that is free.",
+	}, free)
+}
 
 var WebSocketConnections = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "menged_websocket_connections",

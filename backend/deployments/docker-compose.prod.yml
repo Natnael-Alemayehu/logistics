@@ -117,11 +117,20 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # The alert rules (grafana/provisioning/alerting) email this address,
+      # through the app's mail server.
+      GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:?set GRAFANA_ALERT_EMAIL}
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${SMTP_ADDR:-}
+      GF_SMTP_USER: ${SMTP_USERNAME:-}
+      GF_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_ALERT_FROM:?set GRAFANA_ALERT_FROM}
+      GF_SMTP_FROM_NAME: Menged monitoring
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      # The Prometheus data source and the Menged dashboard.
+      # The Prometheus data source, the Menged dashboard and its alerts.
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
     cap_drop: [ALL]
