@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,4 +217,35 @@ func TestPODLocationReasonIsKnownOrOther(t *testing.T) {
 			t.Errorf("reason %q became %q, want %q", in, p.LocationReason, want)
 		}
 	}
+}
+
+// TestSMSParts: texts count as the SMS parts the provider charges for (W8).
+func TestSMSParts(t *testing.T) {
+	cases := []struct {
+		body string
+		want int32
+	}{
+		{"", 1},
+		{strings.Repeat("a", 160), 1},
+		{strings.Repeat("a", 161), 2},
+		{strings.Repeat("a", 306), 2},
+		{strings.Repeat("a", 307), 3},
+		{strings.Repeat("ሀ", 70), 1},
+		{strings.Repeat("ሀ", 71), 2},
+		{"Menged: ጭነትዎ ተልኳል " + strings.Repeat("x", 60), 2},
+		{"line one\nline two", 1},
+	}
+	for _, c := range cases {
+		if got := smsParts(c.body); got != c.want {
+			t.Errorf("smsParts(%d runes starting %q) = %d, want %d", len([]rune(c.body)), firstRunes(c.body, 8), got, c.want)
+		}
+	}
+}
+
+func firstRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) > n {
+		r = r[:n]
+	}
+	return string(r)
 }

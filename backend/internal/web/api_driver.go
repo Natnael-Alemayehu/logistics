@@ -188,7 +188,9 @@ func (s *Server) apiSMSInbound(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "from and body are required.")
 		return
 	}
-	res, err := s.svc.SMS.Inbound(r.Context(), from, body)
+	res, err := s.svc.SMS.Inbound(r.Context(), service.InboundSMS{
+		From: from, Body: body, ProviderMessageID: pick(fields, "message_id", "messageId", "MessageSid", "id"),
+	})
 	if err != nil {
 		s.apiError(w, r, err)
 		return

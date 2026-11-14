@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/logistics/pkg/metrics"
 )
 
 // One-time codes sent by SMS: driver PIN reset, staff password reset,
@@ -33,6 +34,7 @@ var (
 	errCodeInvalid  = &Error{Kind: KindInvalid, Field: "code", Message: "That code is wrong or has expired. Request a new one."}
 	errCodeTooMany  = &Error{Kind: KindLimit, Message: "Too many codes requested for this number. Try again in an hour."}
 	errCodeAttempts = &Error{Kind: KindInvalid, Field: "code", Message: "Too many wrong attempts. Request a new code."}
+	errCodeBudget   = &Error{Kind: KindLimit, Message: "We can't send codes right now. Please try again in a few hours."}
 )
 
 // hashCode keys a code to its phone and purpose with the deployment secret,
@@ -77,6 +79,11 @@ func (c *core) issueCode(ctx context.Context, tenantID pgtype.UUID, phone, purpo
 		if recent >= codeMaxPerWindow {
 			return errCodeTooMany
 		}
+		// Checked for codes recorded but not sent too, so that the answer
+		// stays the same for every number.
+		if err := c.withinCodeBudget(ctx, q); err != nil {
+			return err
+		}
 		if _, err := q.CreateVerificationCode(ctx, db.CreateVerificationCodeParams{
 			Phone: phone, Purpose: purpose, CodeHash: c.hashCode(phone, purpose, code),
 			ExpiresAt: toTimestamp(c.now().Add(codeTTL)),
@@ -90,6 +97,31 @@ func (c *core) issueCode(ctx context.Context, tenantID pgtype.UUID, phone, purpo
 		}
 		return nil
 	})
+}
+
+// withinCodeBudget refuses a code once the platform has texted its daily
+// budget of them (Settings.CodesPerDay). Codes go to any number someone
+// types in, so without a ceiling a script could run up the SMS bill. The
+// share used is exported for the monitoring alert.
+func (c *core) withinCodeBudget(ctx context.Context, q *db.Queries) error {
+	budget := int64(c.cfg.CodesPerDay)
+	if budget <= 0 {
+		return nil
+	}
+	sent, err := q.CountCodesTextedSince(ctx, toTimestamp(c.now().Add(-24*time.Hour)))
+	if err != nil {
+		return err
+	}
+	if sent >= budget {
+		metrics.VerificationBudgetUsed.Set(1)
+		c.log.Error().Int64("sent", sent).Int64("budget", budget).Msg("daily budget of verification codes reached: codes refused")
+		return errCodeBudget
+	}
+	metrics.VerificationBudgetUsed.Set(float64(sent+1) / float64(budget))
+	if (sent+1)*5 == budget*4 {
+		c.log.Warn().Int64("sent", sent+1).Int64("budget", budget).Msg("80% of the daily budget of verification codes used")
+	}
+	return nil
 }
 
 // verifyCode checks a code without using it up, and returns its ID for

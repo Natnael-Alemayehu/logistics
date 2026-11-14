@@ -97,6 +97,10 @@ type Config struct {
 	// RetainShipmentDays is how long a delivered or cancelled shipment keeps
 	// its customer details, signatures and photos (FR-041).
 	RetainShipmentDays int
+	// CodesPerDay is how many verification codes (sign-up, PIN and password
+	// resets, track by phone) the platform texts in 24 hours at most; 0
+	// means no limit.
+	CodesPerDay int
 
 	// AllowMockProviders lets a production deployment start with stand-in
 	// SMS, email or payments, for a demo or staging site.
@@ -218,6 +222,12 @@ func Load() (*Config, error) {
 		return nil, errors.New("RETAIN_SHIPMENT_DAYS must be a number of days, at least 30")
 	}
 	c.RetainShipmentDays = days
+
+	codes, err := strconv.Atoi(getEnv("OTP_DAILY_BUDGET", "2000"))
+	if err != nil || codes < 0 {
+		return nil, errors.New("OTP_DAILY_BUDGET must be a number of codes, or 0 for no limit")
+	}
+	c.CodesPerDay = codes
 
 	tz, err := time.LoadLocation(getEnv("APP_TIMEZONE", "Africa/Addis_Ababa"))
 	if err != nil {

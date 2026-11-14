@@ -7,11 +7,15 @@ package integration
 // covers.
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/natnael-alemayehu/logistics/internal/service"
 )
 
 // TestLockoutStartsAgainAfterExpiry (R1): once a lockout has expired, one
@@ -217,5 +221,112 @@ func TestPhoneTakenElsewhereIsExplained(t *testing.T) {
 	p := second.post("/app/drivers", url.Values{"full_name": {"Shared Driver"}, "phone": {phone}})
 	if p.Status != http.StatusBadRequest || !strings.Contains(p.Body, "another company") || strings.Contains(p.Body, "First Haulage") {
 		t.Errorf("a number taken at another company: status %d %q", p.Status, errorText(p.Body))
+	}
+}
+
+// TestTrialTextsStopAtTheAllowance (S1): a trial company's texts stop at
+// the trial's allowance and at the hourly ceiling, and the company is told;
+// a paying company's texts go on past its monthly allowance.
+func TestTrialTextsStopAtTheAllowance(t *testing.T) {
+	e := newEnv(t)
+	sent := func(tenant string, parts int, at string) {
+		exec(t, `INSERT INTO sms_messages (tenant_id, direction, phone, body, purpose, status, segments, created_at, sent_at)
+			VALUES ($1, 'outbound', '0911000000', 'earlier texts', 'customer_update', 'sent', $2, `+at+`, `+at+`)`, tenant, parts)
+	}
+	textTo := func(customer string) (status, why string) {
+		err := pool.QueryRow(t.Context(), `SELECT status, COALESCE(last_error, '') FROM sms_messages WHERE phone = $1 AND purpose = 'customer_update'`, customer).Scan(&status, &why)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return status, why
+	}
+
+	trial := e.company("Spam Free Trial")
+	exec(t, `UPDATE tenants SET created_at = NOW() - INTERVAL '3 days' WHERE id = $1`, trial.tenant())
+	sent(trial.tenant(), 500, "NOW() - INTERVAL '2 days'")
+	customer := phoneNumber()
+	trial.bookFor("Addis Ababa", "Adama", "", customer)
+	if status, why := textTo(customer); status != "skipped" || !strings.Contains(why, "trial") {
+		t.Errorf("a trial past its allowance: text %s (%s)", status, why)
+	}
+	if n := scalar[int64](t, `SELECT COUNT(*) FROM alerts WHERE tenant_id = $1 AND alert_type = 'sms_paused'`, trial.tenant()); n != 1 {
+		t.Errorf("%d alerts about paused texts, want 1", n)
+	}
+
+	hourly := e.company("Busy Hour Trial")
+	sent(hourly.tenant(), 100, "NOW()")
+	customer = phoneNumber()
+	hourly.bookFor("Addis Ababa", "Adama", "", customer)
+	if status, why := textTo(customer); status != "skipped" || !strings.Contains(why, "an hour") {
+		t.Errorf("a trial past its hourly ceiling: text %s (%s)", status, why)
+	}
+
+	paying := e.subscribed("Paying Customer", "starter", e.operator())
+	sent(paying.tenant(), 600, "NOW() - INTERVAL '2 hours'")
+	customer = phoneNumber()
+	paying.bookFor("Addis Ababa", "Adama", "", customer)
+	if status, why := textTo(customer); status == "skipped" {
+		t.Errorf("a paying company past its monthly allowance had a text skipped: %s", why)
+	}
+}
+
+// TestCodeBudget (S1): once the platform has texted its daily budget of
+// codes, more are refused, for every number alike.
+func TestCodeBudget(t *testing.T) {
+	sent := scalar[int64](t, `SELECT COUNT(*) FROM sms_messages WHERE purpose = 'otp' AND created_at >= NOW() - INTERVAL '1 day'`)
+	e := newEnv(t, func(s *setup) { s.cfg.CodesPerDay = int(sent) + 1 })
+	office := e.company("Last Code") // uses the last code of the budget
+	customer := phoneNumber()
+	office.bookFor("Addis Ababa", "Adama", "", customer)
+	for _, number := range []string{customer, phoneNumber()} {
+		if p := e.browser().post("/track/phone", url.Values{"phone": {number}}); p.Status != http.StatusPaymentRequired || !strings.Contains(p.Body, "send codes right now") {
+			t.Errorf("a code for %s past the budget: status %d %q", number, p.Status, errorText(p.Body))
+		}
+	}
+}
+
+// TestInboundSMSOnceAndRepliesLimited (S2): the provider sending a message
+// again doesn't make it count twice, and one number gets only so many
+// replies an hour.
+func TestInboundSMSOnceAndRepliesLimited(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Echo Freight")
+	_, phone, _ := office.addDriver("Auto Reply")
+	inbound := func(id, body string) service.InboundResult {
+		var out service.InboundResult
+		if code := e.api("POST", "/api/v1/sms/inbound", "", map[string]string{"message_id": id, "from": phone, "message": body}, &out); code != http.StatusOK {
+			t.Fatalf("inbound: status %d", code)
+		}
+		return out
+	}
+	if out := inbound("MSG-1", "HELP"); out.Outcome != "replied" {
+		t.Fatalf("first delivery: %+v", out)
+	}
+	if out := inbound("MSG-1", "HELP"); out.Outcome != "duplicate" {
+		t.Errorf("the same message again: %+v", out)
+	}
+	if n := scalar[int64](t, `SELECT COUNT(*) FROM sms_messages WHERE phone = $1 AND direction = 'inbound'`, phone); n != 1 {
+		t.Errorf("%d inbound messages recorded, want 1", n)
+	}
+	for i := 2; i <= 14; i++ {
+		inbound(fmt.Sprintf("MSG-%d", i), "what?")
+	}
+	if n := scalar[int64](t, `SELECT COUNT(*) FROM sms_messages WHERE phone = $1 AND purpose = 'driver_reply'`, phone); n != 10 {
+		t.Errorf("%d replies in an hour, want 10", n)
+	}
+}
+
+// TestExpiredCodesAreNotSent (L5): a code still waiting when it expires
+// isn't sent late.
+func TestExpiredCodesAreNotSent(t *testing.T) {
+	newEnv(t) // its SMS worker picks the code up
+	phone := phoneNumber()
+	exec(t, `INSERT INTO sms_messages (direction, phone, body, purpose, sensitive, status, created_at)
+		VALUES ('outbound', $1, 'Menged: your code is 123456', 'otp', true, 'queued', NOW() - INTERVAL '11 minutes')`, phone)
+	within(t, 10*time.Second, "the expired code to fail", func() bool {
+		return scalar[string](t, `SELECT status FROM sms_messages WHERE phone = $1`, phone) == "failed"
+	})
+	if why := scalar[string](t, `SELECT last_error FROM sms_messages WHERE phone = $1`, phone); !strings.Contains(why, "expired") {
+		t.Errorf("failed because %q", why)
 	}
 }

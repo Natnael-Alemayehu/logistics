@@ -24,6 +24,7 @@ const (
 	AlertPickupOverdue      = "pickup_overdue"
 	AlertDriverLimitNear    = "driver_limit_near"
 	AlertSMSQuotaNear       = "sms_quota_near"
+	AlertSMSPaused          = "sms_paused"
 	AlertDelivered          = "delivered"
 	AlertRouteDeviation     = "route_deviation"
 )
@@ -53,6 +54,7 @@ var alertLabels = map[string]string{
 	AlertPickupOverdue:      "Not collected",
 	AlertDriverLimitNear:    "Driver places running out",
 	AlertSMSQuotaNear:       "Text allowance running out",
+	AlertSMSPaused:          "Texts paused",
 	AlertDelivered:          "Delivered",
 	AlertRouteDeviation:     "Moving away from the destination",
 }
@@ -63,7 +65,7 @@ var AlertTypes = []string{
 	AlertIssueReported, AlertDeliveryHeld, AlertCustomerIssue, AlertDeliveryOnCanceled,
 	AlertDelayReported, AlertETAExceeded, AlertPickupOverdue, AlertRouteDeviation, AlertDriverOffline,
 	AlertPODLocation, AlertDeliveredNoPOD, AlertSyncConflict,
-	AlertDelivered, AlertDriverMessage, AlertDriverLimitNear, AlertSMSQuotaNear,
+	AlertDelivered, AlertDriverMessage, AlertDriverLimitNear, AlertSMSQuotaNear, AlertSMSPaused,
 }
 
 // AlertLabel is the display name of an alert type.

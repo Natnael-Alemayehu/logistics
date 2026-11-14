@@ -23,9 +23,16 @@ const (
 	VATPercent   = 15
 	AnnualMonths = 10
 	// SMSOverageSantim is the price of a text beyond the month's allowance.
-	// Texts are never blocked: a customer missing a delivery update costs
-	// the company more than the text.
+	// A paying company's texts are never blocked by the allowance: a
+	// customer missing a delivery update costs the company more than the
+	// text.
 	SMSOverageSantim = 50
+	// SMSPerHour and TrialSMSPerHour cap the texts (in SMS parts) a company
+	// may send in an hour, far above what dispatching needs, so that an
+	// account can't be used to send spam at the platform's expense. A
+	// trial also stops at its plan's SMSIncluded for the whole trial.
+	SMSPerHour      = 1000
+	TrialSMSPerHour = 100
 	// TrialDays is the length of the free trial.
 	TrialDays = 14
 	// InvoiceDueDays is how long an invoice waits for payment. GraceDays

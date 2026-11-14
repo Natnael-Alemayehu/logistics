@@ -297,6 +297,7 @@ type SmsMessage struct {
 	ProviderMessageID *string            `db:"provider_message_id" json:"provider_message_id"`
 	Delivery          *string            `db:"delivery" json:"delivery"`
 	DeliveryAt        pgtype.Timestamptz `db:"delivery_at" json:"delivery_at"`
+	Segments          int32              `db:"segments" json:"segments"`
 }
 
 type SmsOptOut struct {

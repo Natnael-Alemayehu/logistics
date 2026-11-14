@@ -62,8 +62,13 @@ type credential struct {
 	dummy  string
 }
 
-func pinOf(u db.User) credential      { return credential{u.PinHash, hash.CheckPIN, dummyPINHash} }
-func passwordOf(u db.User) credential { return credential{u.PasswordHash, hash.CheckPassword, dummyHash} }
+func pinOf(u db.User) credential {
+	return credential{u.PinHash, hash.CheckPIN, dummyPINHash}
+}
+
+func passwordOf(u db.User) credential {
+	return credential{u.PasswordHash, hash.CheckPassword, dummyHash}
+}
 
 var errOfficeAccount = &Error{Kind: KindUnauthorized, Message: "This number belongs to an office account. Sign in to the dashboard instead."}
 

@@ -448,8 +448,12 @@ func (s *TenantService) Usage(ctx context.Context, tenantID pgtype.UUID) (*Usage
 	if u.DeliveredThisMonth, err = s.q.CountDeliveredSince(ctx, db.CountDeliveredSinceParams{TenantID: tenantID, ActualDelivery: toTimestamp(month)}); err != nil {
 		return nil, err
 	}
+	// A trial's allowance covers the whole trial (smsRefusal), so its
+	// meter counts from the start.
 	since := month
-	if t.Plan != model.PlanTrial && t.SubscribedAt.Valid && t.SubscribedAt.Time.After(since) {
+	if t.Plan == model.PlanTrial {
+		since = t.CreatedAt.Time
+	} else if t.SubscribedAt.Valid && t.SubscribedAt.Time.After(since) {
 		since = t.SubscribedAt.Time
 	}
 	if u.SMSThisMonth, err = s.q.CountSMSSentSince(ctx, db.CountSMSSentSinceParams{TenantID: tenantID, SentAt: toTimestamp(since)}); err != nil {

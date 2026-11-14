@@ -84,7 +84,7 @@ func (q *Queries) CountOpenRenewals(ctx context.Context, tenantID pgtype.UUID) (
 }
 
 const countSMSSentBetween = `-- name: CountSMSSentBetween :one
-SELECT COUNT(*) FROM sms_messages
+SELECT COALESCE(SUM(segments), 0)::bigint FROM sms_messages
 WHERE tenant_id = $1 AND direction = 'outbound' AND status = 'sent'
   AND sent_at >= $2 AND sent_at < $3
 `
@@ -95,11 +95,12 @@ type CountSMSSentBetweenParams struct {
 	Until    pgtype.Timestamptz `db:"until" json:"until"`
 }
 
+// In SMS parts: a long text counts as several.
 func (q *Queries) CountSMSSentBetween(ctx context.Context, arg CountSMSSentBetweenParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countSMSSentBetween, arg.TenantID, arg.Since, arg.Until)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const createInvoice = `-- name: CreateInvoice :one
@@ -1234,7 +1235,7 @@ const listTenantsNearLimits = `-- name: ListTenantsNearLimits :many
 WITH usage AS (
     SELECT t.id, t.plan, t.max_drivers, t.sms_month_quota, t.period_start, t.trial_ends_at,
            (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role = 'driver' AND u.is_active)::bigint AS active_drivers,
-           (SELECT COUNT(*) FROM sms_messages m
+           (SELECT COALESCE(SUM(m.segments), 0) FROM sms_messages m
             WHERE m.tenant_id = t.id AND m.direction = 'outbound' AND m.status = 'sent'
               -- Texts from before a subscription started were the trial's.
               AND m.sent_at >= GREATEST($1::timestamptz, t.subscribed_at))::bigint AS sms_sent

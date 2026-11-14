@@ -534,7 +534,7 @@ func (s *Server) smsSimulate(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
-	res, err := s.svc.SMS.Inbound(r.Context(), r.PostFormValue("from"), r.PostFormValue("body"))
+	res, err := s.svc.SMS.Inbound(r.Context(), service.InboundSMS{From: r.PostFormValue("from"), Body: r.PostFormValue("body")})
 	if err != nil {
 		s.fail(w, r, err)
 		return

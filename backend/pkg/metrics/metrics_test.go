@@ -23,7 +23,7 @@ func TestMetricsFollowConventions(t *testing.T) {
 
 	for _, c := range []prometheus.Collector{
 		HTTPRequests, HTTPDuration, HTTPInFlight, SyncChanges, SyncLocations,
-		Messages, OutboxWaiting, OutboxOldest, WebSocketConnections,
+		Messages, OutboxWaiting, OutboxOldest, VerificationBudgetUsed, WebSocketConnections,
 		JobDuration, JobFailures, JobLastSuccess,
 	} {
 		problems, err := testutil.CollectAndLint(c)
