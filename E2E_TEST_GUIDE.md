@@ -60,7 +60,12 @@ you to confirm your email before paying; section 9 continues from there.
    email: the page reads the same whether or not an account has that address.
    Open the `/reset/…` link from the terminal and choose a new password. You
    are signed in, and the dispatcher's other sessions end. The link works
-   once, within the hour.
+   once, within the hour. A link goes only to a confirmed address.
+6. **Forgot your password?** also takes a phone number, for staff with a
+   phone but no confirmed email. Enter the dispatcher's phone: the next page
+   asks for the code texted to it (read it in the server terminal) and a new
+   password. A number with no office account gets the same page, but no
+   text.
 
 Check: the trial allows 10 drivers, and adding an eleventh explains the
 limit.
@@ -115,6 +120,19 @@ Also try:
   passes raises a new alert.
 - **Forgot your PIN?**: request a code, read it in the server terminal, and
   set a new PIN.
+- **An unfinished delivery is kept.** Open **Record delivery**, type a name,
+  sign and add a photo, then reload the page (as a phone short of memory does
+  when the camera opens). Open **Record delivery** again: everything is back,
+  and a toast says so. Turn the phone (or resize the window): the signature
+  is drawn again at the new size. **Cancel** throws the draft away.
+- **Notices last.** A delivery held for review or a refused update leaves a
+  notice in the app. Reload: it is still there until dismissed.
+- **A suspended company.** Suspend the company (section 10) and sync: the
+  app says the company's account is paused and to call the office, keeps
+  what the driver records, and asks again every ten minutes rather than
+  every few seconds.
+- **Weak signal at start-up.** With the network cut, or a server that never
+  answers, the app opens on what the phone holds within about three seconds.
 
 ### On the road
 
@@ -264,6 +282,11 @@ moves while you are typing or have a menu open; the page catches up after.
 Check: change the destination of an assigned shipment. The driver gets an SMS
 ("now goes to Hawassa"), and the app shows it.
 
+Keep a shipment's page open while the driver starts the trip or delivers in
+the app. Within a moment of the sync the status, its buttons, the route times,
+the proof of delivery and the history change on their own, with no reload.
+The same happens after the live connection drops and comes back.
+
 A shipment's page has a **Location history** with the newest 200 positions:
 time, coordinates, accuracy, speed and battery. **Download every position as
 CSV** has all of them.
@@ -297,6 +320,10 @@ The alert types are:
 Each delivery also raises an information alert. Turn it off with **Settings →
 Alert the office when a shipment is delivered**. Dismiss alerts one at a time,
 or mark all read.
+
+The bell's count is each person's own: it counts alerts raised since that
+person last opened the list. Opening it as the dispatcher leaves the admin's
+count as it was. Dismissing an alert clears it for everyone.
 
 Under **Account → Alerts**:
 - **Turn on notifications in this browser** makes critical alerts pop up as
@@ -417,9 +444,22 @@ docker compose exec postgres psql -U logistics -c "UPDATE tenants SET trial_ends
    change. While a renewal or usage invoice is unpaid, plan buttons say
    which invoice to pay first.
 7. **Limits.** At 80% of the plan's driver places, an alert says so, once
-   per billing period; at 80% of the month's texts, once a month. Texts are
-   never blocked: those beyond the allowance appear on a usage invoice early
-   the next month, at ETB 0.50 each, with the month's count.
+   per billing period; at 80% of the month's texts, once a month. On a plan,
+   texts are never blocked by the allowance: those beyond it appear on a
+   usage invoice early the next month, at ETB 0.50 each, counted in SMS
+   parts. A trial's texts stop at its allowance, and any company sending more
+   than its hourly ceiling has the rest skipped and gets a **Texts paused**
+   alert.
+8. **Cancel the subscription.** On a paid company, **Cancel the
+   subscription** under the plan, then **Turn off renewal**. The plan shows
+   **Ends** with its date, and an email confirms it. Plan changes now ask you
+   to turn renewal back on first; **Turn renewal back on** does. Turn it off
+   again and end the period (`UPDATE tenants SET period_end = NOW() WHERE
+   name = '…'`): no renewal invoice is issued, and the banner says the plan
+   wasn't renewed and the account is read-only. Choosing a plan issues a new
+   subscription invoice; once it is paid, the plan renews as before. Turning
+   renewal off while a renewal invoice is unpaid cancels that invoice, and
+   the plan ends at once with nothing owed.
 
 Check:
 - **Print** on an invoice gives a one-page document with the company's TIN
