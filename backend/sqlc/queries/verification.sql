@@ -9,11 +9,19 @@ WHERE phone = $1 AND purpose = $2 AND consumed_at IS NULL AND expires_at > NOW()
 ORDER BY created_at DESC
 LIMIT 1;
 
--- name: IncrementVerificationAttempts :exec
-UPDATE verification_codes SET attempts = attempts + 1 WHERE id = $1;
+-- name: CountVerificationAttempt :one
+-- Counts a try at a code, unless it has had all its tries: then no row.
+UPDATE verification_codes SET attempts = attempts + 1
+WHERE id = sqlc.arg(id) AND attempts < sqlc.arg(max_attempts)::int
+RETURNING attempts;
 
--- name: ConsumeVerificationCode :exec
-UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1;
+-- name: ConsumeVerificationCode :execrows
+UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1 AND consumed_at IS NULL;
+
+-- name: LockVerificationSubject :exec
+-- Held until the transaction ends: requests for one number and purpose
+-- take turns.
+SELECT pg_advisory_xact_lock(hashtext(sqlc.arg(subject)::text));
 
 -- name: CountVerificationCodesSince :one
 SELECT COUNT(*) FROM verification_codes

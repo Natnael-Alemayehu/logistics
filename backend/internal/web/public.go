@@ -230,7 +230,24 @@ func (s *Server) forgotPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) forgot(w http.ResponseWriter, r *http.Request) {
-	email := strings.TrimSpace(r.PostFormValue("email"))
+	email := strings.TrimSpace(r.PostFormValue("identifier"))
+	if email == "" {
+		email = strings.TrimSpace(r.PostFormValue("email"))
+	}
+	// A phone number gets a code by SMS, for staff without a confirmed
+	// email address.
+	if email != "" && !strings.Contains(email, "@") {
+		p, err := s.svc.Auth.RequestPasswordCode(r.Context(), email)
+		if err != nil {
+			v := s.view(w, r, "Reset your password", "", map[string]any{})
+			if !s.formError(w, r, "public/forgot", v, err) {
+				s.fail(w, r, err)
+			}
+			return
+		}
+		s.render(w, r, http.StatusOK, "public/reset_phone", s.view(w, r, "Choose a new password", "", map[string]any{"Sent": true, "Phone": p}))
+		return
+	}
 	if err := s.svc.Auth.RequestPasswordReset(r.Context(), email, clientInfo(r)); err != nil {
 		v := s.view(w, r, "Reset your password", "", map[string]any{})
 		if !s.formError(w, r, "public/forgot", v, err) {
@@ -240,6 +257,35 @@ func (s *Server) forgot(w http.ResponseWriter, r *http.Request) {
 	}
 	v := s.view(w, r, "Check your email", "", map[string]any{"Sent": true, "Email": strings.ToLower(email)})
 	s.render(w, r, http.StatusOK, "public/forgot", v)
+}
+
+func (s *Server) resetPhonePage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, http.StatusOK, "public/reset_phone", s.view(w, r, "Choose a new password", "", map[string]any{"Phone": r.URL.Query().Get("phone")}))
+}
+
+// resetPhone sets a new password with a code texted by forgot.
+func (s *Server) resetPhone(w http.ResponseWriter, r *http.Request) {
+	var res *service.LoginResult
+	var err error
+	if r.PostFormValue("new_password") != r.PostFormValue("confirm_password") {
+		err = &service.Error{Kind: service.KindInvalid, Field: "confirm_password", Message: "The passwords don't match."}
+	} else {
+		res, err = s.svc.Auth.ResetPasswordByCode(r.Context(), r.PostFormValue("phone"), r.PostFormValue("code"), r.PostFormValue("new_password"), clientInfo(r))
+	}
+	if err != nil {
+		v := s.view(w, r, "Choose a new password", "", map[string]any{"Phone": r.PostFormValue("phone")})
+		if !s.formError(w, r, "public/reset_phone", v, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	s.setSessionCookie(w, res.Token, time.Time{})
+	s.setFlash(w, "success", "Your password is changed and you're signed in. Any other devices were signed out.")
+	next := "/app"
+	if res.Principal.IsPlatformAdmin() {
+		next = "/app/platform"
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
 // resetExpired shows the request form again in place of a dead link.

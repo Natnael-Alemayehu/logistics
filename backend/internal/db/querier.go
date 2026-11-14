@@ -52,7 +52,7 @@ type Querier interface {
 	// be reclaimed if this process dies before recording the outcome.
 	ClaimQueuedSMS(ctx context.Context, limit int32) ([]SmsMessage, error)
 	ClearVehicleFromDrivers(ctx context.Context, arg ClearVehicleFromDriversParams) error
-	ConsumeVerificationCode(ctx context.Context, id pgtype.UUID) error
+	ConsumeVerificationCode(ctx context.Context, id pgtype.UUID) (int64, error)
 	CountActiveDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountActiveShipmentsByDriver(ctx context.Context, arg CountActiveShipmentsByDriverParams) (int64, error)
 	CountAlerts(ctx context.Context, arg CountAlertsParams) (int64, error)
@@ -71,6 +71,8 @@ type Querier interface {
 	CountTrackingEventsByShipment(ctx context.Context, arg CountTrackingEventsByShipmentParams) (int64, error)
 	CountUnreadAlerts(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
+	// Counts a try at a code, unless it has had all its tries: then no row.
+	CountVerificationAttempt(ctx context.Context, arg CountVerificationAttemptParams) (int32, error)
 	CountVerificationCodesSince(ctx context.Context, arg CountVerificationCodesSinceParams) (int64, error)
 	CountWaitingTickets(ctx context.Context) (int64, error)
 	// An open alert for the same subject and type already covers this one, and
@@ -186,7 +188,6 @@ type Querier interface {
 	GetUserByPhone(ctx context.Context, phone *string) (User, error)
 	GetVehicleByID(ctx context.Context, arg GetVehicleByIDParams) (Vehicle, error)
 	IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error)
-	IncrementVerificationAttempts(ctx context.Context, id pgtype.UUID) error
 	IsPhoneOptedOut(ctx context.Context, phone string) (bool, error)
 	ListActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error)
 	ListActiveShipmentsByDriver(ctx context.Context, arg ListActiveShipmentsByDriverParams) ([]Shipment, error)
@@ -315,7 +316,12 @@ type Querier interface {
 	// A provider's notification carries only our reference. References are
 	// random and unique, so this finds one company's payment.
 	LockPaymentByReference(ctx context.Context, reference string) (Payment, error)
+	// Locking clears the count: when the lock expires the account starts again
+	// from zero, instead of one mistype locking it at once.
 	LockUserAccount(ctx context.Context, arg LockUserAccountParams) error
+	// Held until the transaction ends: requests for one number and purpose
+	// take turns.
+	LockVerificationSubject(ctx context.Context, subject string) error
 	MarkAlertRead(ctx context.Context, arg MarkAlertReadParams) error
 	MarkAllAlertsRead(ctx context.Context, tenantID pgtype.UUID) error
 	MarkEmailFailed(ctx context.Context, arg MarkEmailFailedParams) error

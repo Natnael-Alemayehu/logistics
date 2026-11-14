@@ -113,16 +113,9 @@ func (s *TenantService) StartSignup(ctx context.Context, in SignupInput) (token 
 	if err != nil {
 		return "", err
 	}
-	if _, err := s.q.GetUserByEmail(ctx, *c.admin.email); err == nil {
-		return "", invalid("email", "Someone is already registered with this email address. Sign in, or reset your password from the sign-in page.")
-	} else if !isNoRows(err) {
-		return "", err
-	}
-	if _, err := s.q.GetUserByPhone(ctx, c.admin.phone); err == nil {
-		return "", invalid("phone", "Someone is already registered with this phone number.")
-	} else if !isNoRows(err) {
-		return "", err
-	}
+	// Whether the email or phone is already registered is told only once
+	// the code comes back (CompleteSignup), to someone who holds the phone:
+	// telling it here would let anyone check who has an account.
 	if err := s.issueCode(ctx, pgtype.UUID{}, *c.admin.phone, codePurposeSignup, s.signupText); err != nil {
 		return "", err
 	}
@@ -183,7 +176,17 @@ func (s *TenantService) CompleteSignup(ctx context.Context, token, code string, 
 		if err != nil {
 			return err
 		}
-		if err := s.checkCode(ctx, ps.Phone, codePurposeSignup, strings.TrimSpace(code)); err != nil {
+		// The try is counted whatever happens next, but the code is used
+		// up only with the company: if creating it fails, the same code
+		// can be entered again.
+		codeID, err := s.verifyCode(ctx, ps.Phone, codePurposeSignup, strings.TrimSpace(code))
+		if err != nil {
+			return err
+		}
+		if err := consumeCode(ctx, q, codeID); err != nil {
+			return err
+		}
+		if err := signupClash(ctx, q, ps.Email, ps.Phone); err != nil {
 			return err
 		}
 		admin, err = s.createCompany(ctx, q, newCompany{
@@ -243,6 +246,24 @@ func (s *TenantService) CreateCompany(ctx context.Context, in SignupInput, ci Cl
 	return s.auth.startSession(ctx, admin, SessionWeb, false, ci)
 }
 
+// signupClash refuses a sign-up whose email or phone already has an
+// account. Told only after the code is checked, to the holder of the phone,
+// on a page without those fields: so the error names no field.
+func signupClash(ctx context.Context, q *db.Queries, email, phone string) error {
+	if _, err := q.GetUserByEmail(ctx, email); err == nil {
+		return &Error{Kind: KindInvalid, Message: "Someone is already registered with this email address. Sign in, or reset your password from the sign-in page. " +
+			"To register another company, start again with a different address."}
+	} else if !isNoRows(err) {
+		return err
+	}
+	if _, err := q.GetUserByPhone(ctx, &phone); err == nil {
+		return &Error{Kind: KindInvalid, Message: "Someone is already registered with this phone number. Sign in, or start again with a different number."}
+	} else if !isNoRows(err) {
+		return err
+	}
+	return nil
+}
+
 // createCompany creates a company on a free trial and its first admin.
 func (s *TenantService) createCompany(ctx context.Context, q *db.Queries, c newCompany, ci ClientInfo) (db.User, error) {
 	trial, _ := model.PlanByCode(model.PlanTrial)
@@ -272,7 +293,7 @@ func (s *TenantService) createCompany(ctx context.Context, q *db.Queries, c newC
 		Phone: c.admin.phone, Email: c.admin.email, PasswordHash: &c.passwordHash,
 	})
 	if err != nil {
-		return admin, duplicateUser(err)
+		return admin, s.duplicateUser(ctx, tenant.ID, c.admin, err)
 	}
 	s.audit(ctx, q, userActor(admin, ci), "company_signup", "tenant", tenant.ID, nil, map[string]any{"name": c.name})
 	return admin, nil

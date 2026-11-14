@@ -277,8 +277,9 @@ func (s *ShipmentService) CustomerRespond(ctx context.Context, token string, ok 
 // the shipments were booked under.
 // ---------------------------------------------------------------------------
 
-// RequestLookupCode texts a code to a phone that has shipments. It returns
-// nil whether or not any exist, so the form reveals nothing about a number.
+// RequestLookupCode texts a code to a phone that has shipments. It answers
+// the same whether or not any exist, limit included, so the form reveals
+// nothing about a number.
 func (s *ShipmentService) RequestLookupCode(ctx context.Context, rawPhone string) (string, error) {
 	p, err := phone.Normalize(rawPhone)
 	if err != nil {
@@ -288,13 +289,15 @@ func (s *ShipmentService) RequestLookupCode(ctx context.Context, rawPhone string
 	if err != nil {
 		return "", err
 	}
-	if len(rows) == 0 {
-		return p, nil
+	// A number without shipments gets no text, but its code is recorded all
+	// the same, so it reaches the hourly limit like any other number.
+	var text func(string) string
+	if len(rows) > 0 {
+		text = func(code string) string {
+			return fmt.Sprintf("%s: your code to see your shipments is %s. It expires in 10 minutes.", s.cfg.AppName, code)
+		}
 	}
-	err = s.issueCode(ctx, toUUID(""), p, codePurposeTrackLookup, func(code string) string {
-		return fmt.Sprintf("%s: your code to see your shipments is %s. It expires in 10 minutes.", s.cfg.AppName, code)
-	})
-	return p, err
+	return p, s.issueCode(ctx, toUUID(""), p, codePurposeTrackLookup, text)
 }
 
 // VerifyLookupCode checks the code and returns a token proving the phone was

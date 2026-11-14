@@ -110,9 +110,15 @@ func TestSignupConfirmsPhoneAndEmail(t *testing.T) {
 		t.Errorf("the link opened again: status %d, location %q", p.Status, p.Location)
 	}
 
-	// The address and the phone are taken now.
+	// The address is taken now. That is said only once the code comes
+	// back, to whoever holds the phone, so the form can't be used to find
+	// out who has an account.
+	again := e.browser()
 	form.Set("phone", phoneNumber())
-	if p := e.browser().post("/signup", form); p.Status != http.StatusBadRequest || !strings.Contains(p.Body, "already registered") {
+	if p := again.mustPost("/signup", form); p.Location != "/signup/verify" {
+		t.Fatalf("signing up again with the same email redirected to %q", p.Location)
+	}
+	if p := again.post("/signup/verify", url.Values{"code": {e.code(form.Get("phone"))}}); p.Status != http.StatusBadRequest || !strings.Contains(p.Body, "already registered") {
 		t.Errorf("signing up again with the same email: status %d", p.Status)
 	}
 }
@@ -124,6 +130,17 @@ func TestPasswordReset(t *testing.T) {
 	e := newEnv(t)
 	office := e.company("Forgetful Freight")
 	unknown := fmt.Sprintf("nobody%d@example.et", rand.IntN(1e9))
+
+	// An address not yet confirmed gets no link: it may be mistyped, and
+	// belong to someone else (audit R5).
+	if p := e.browser().post("/forgot", url.Values{"email": {office.email}}); p.Status != http.StatusOK || !strings.Contains(p.Body, "Check your email") {
+		t.Fatalf("forgot, unconfirmed: status %d", p.Status)
+	}
+	if n := scalar[int64](t, `SELECT COUNT(*) FROM emails WHERE to_address = $1 AND purpose = 'password_reset'`, office.email); n != 0 {
+		t.Fatalf("%d reset links queued for an unconfirmed address", n)
+	}
+	office.confirmEmail()
+
 	for _, addr := range []string{office.email, unknown} {
 		if p := e.browser().post("/forgot", url.Values{"email": {addr}}); p.Status != http.StatusOK || !strings.Contains(p.Body, "Check your email") {
 			t.Fatalf("forgot %s: status %d\n%s", addr, p.Status, errorText(p.Body))

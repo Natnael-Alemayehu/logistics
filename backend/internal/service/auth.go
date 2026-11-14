@@ -45,9 +45,27 @@ var (
 	errWeakPass    = &Error{Kind: KindInvalid, Field: "new_password", Message: "Use at least 8 characters."}
 )
 
-// A bcrypt hash of nothing in particular, compared against when the account
-// does not exist so that response time does not reveal which accounts do.
-var dummyHash, _ = hash.Password("timing-equaliser")
+// Bcrypt hashes of nothing in particular, compared against when the account
+// does not exist (or has no credential of that kind) so that response time
+// does not reveal which accounts do. One per cost, as PINs are hashed more
+// cheaply than passwords.
+var (
+	dummyHash, _    = hash.Password("timing-equaliser")
+	dummyPINHash, _ = hash.PIN("timing-equaliser")
+)
+
+// credential is one way of proving who you are: a driver's PIN or a staff
+// password.
+type credential struct {
+	stored *string
+	check  func(candidate, hashed string) bool
+	dummy  string
+}
+
+func pinOf(u db.User) credential      { return credential{u.PinHash, hash.CheckPIN, dummyPINHash} }
+func passwordOf(u db.User) credential { return credential{u.PasswordHash, hash.CheckPassword, dummyHash} }
+
+var errOfficeAccount = &Error{Kind: KindUnauthorized, Message: "This number belongs to an office account. Sign in to the dashboard instead."}
 
 // AuthService signs people in and keeps track of their sessions.
 type AuthService struct{ *core }
@@ -80,17 +98,25 @@ func (s *AuthService) DriverLogin(ctx context.Context, rawPhone, pin string, ci 
 	}
 	u, err := s.q.GetUserByPhone(ctx, &p)
 	if isNoRows(err) {
-		hash.CheckPIN(pin, dummyHash)
+		hash.CheckPIN(pin, dummyPINHash)
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {
 		return nil, err
 	}
 	if u.Role != model.RoleDriver {
-		hash.CheckPIN(pin, dummyHash)
-		return nil, &Error{Kind: KindUnauthorized, Message: "This number belongs to an office account. Sign in to the dashboard instead."}
+		// Only the account's own password earns the pointer to the
+		// dashboard: anything else is wrong login details, as for a number
+		// nobody has, so a stranger learns nothing about whose number it is.
+		if err := s.checkCredential(ctx, u, passwordOf(u), pin, ci); err != nil {
+			return nil, err
+		}
+		return nil, errOfficeAccount
 	}
-	if err := s.verify(ctx, u, u.PinHash, pin, hash.CheckPIN, ci); err != nil {
+	if err := s.checkCredential(ctx, u, pinOf(u), pin, ci); err != nil {
+		return nil, err
+	}
+	if err := s.admit(ctx, u, ci); err != nil {
 		return nil, err
 	}
 	res, err := s.startSession(ctx, u, SessionAPI, false, ci)
@@ -125,36 +151,59 @@ func (s *AuthService) StaffLogin(ctx context.Context, identifier, password strin
 		return nil, err
 	}
 	if u.Role == model.RoleDriver {
-		hash.CheckPassword(password, dummyHash)
+		// As in DriverLogin: only the driver's own PIN gets the pointer to
+		// the app.
+		if err := s.checkCredential(ctx, u, pinOf(u), password, ci); err != nil {
+			return nil, err
+		}
 		return nil, ErrWrongApp
 	}
-	if err := s.verify(ctx, u, u.PasswordHash, password, hash.CheckPassword, ci); err != nil {
+	if err := s.checkCredential(ctx, u, passwordOf(u), password, ci); err != nil {
+		return nil, err
+	}
+	if err := s.admit(ctx, u, ci); err != nil {
 		return nil, err
 	}
 	return s.startSession(ctx, u, SessionWeb, remember, ci)
 }
 
-// verify checks a credential, maintaining the failed-attempt lockout.
-func (s *AuthService) verify(ctx context.Context, u db.User, stored *string, candidate string, check func(string, string) bool, ci ClientInfo) error {
+// checkCredential checks a credential, maintaining the failed-attempt
+// lockout. The lock clears the count, so once it has expired the account
+// has its full number of attempts again.
+func (s *AuthService) checkCredential(ctx context.Context, u db.User, c credential, candidate string, ci ClientInfo) error {
 	now := s.now()
-	actor := Actor{UserID: u.ID, TenantID: u.TenantID, Name: u.FullName, Role: u.Role, IP: ci.IP, UserAgent: ci.UserAgent}
 	if u.LockedUntil.Valid && u.LockedUntil.Time.After(now) {
-		check(candidate, dummyHash)
+		c.check(candidate, c.dummy)
 		return ErrAccountLocked
 	}
-	if stored == nil || !check(candidate, *stored) {
-		updated, err := s.q.IncrementFailedLoginAttempts(ctx, u.ID)
-		if err != nil {
+	ok := false
+	if c.stored == nil {
+		c.check(candidate, c.dummy)
+	} else {
+		ok = c.check(candidate, *c.stored)
+	}
+	if ok {
+		return nil
+	}
+	actor := userActor(u, ci)
+	updated, err := s.q.IncrementFailedLoginAttempts(ctx, u.ID)
+	if err != nil {
+		return err
+	}
+	if updated.FailedLoginAttempts >= maxFailedLogins {
+		if err := s.q.LockUserAccount(ctx, db.LockUserAccountParams{ID: u.ID, LockedUntil: toTimestamp(now.Add(lockoutDuration))}); err != nil {
 			return err
 		}
-		if updated.FailedLoginAttempts >= maxFailedLogins {
-			_ = s.q.LockUserAccount(ctx, db.LockUserAccountParams{ID: u.ID, LockedUntil: toTimestamp(now.Add(lockoutDuration))})
-			s.audit(ctx, s.q, actor, "login_locked", "user", u.ID, nil, map[string]any{"attempts": updated.FailedLoginAttempts})
-			return ErrAccountLocked
-		}
-		s.audit(ctx, s.q, actor, "login_failed", "user", u.ID, nil, nil)
-		return ErrInvalidCredentials
+		s.audit(ctx, s.q, actor, "login_locked", "user", u.ID, nil, map[string]any{"attempts": updated.FailedLoginAttempts})
+		return ErrAccountLocked
 	}
+	s.audit(ctx, s.q, actor, "login_failed", "user", u.ID, nil, nil)
+	return ErrInvalidCredentials
+}
+
+// admit lets in someone whose credential was right, if their account and
+// company are active.
+func (s *AuthService) admit(ctx context.Context, u db.User, ci ClientInfo) error {
 	if !u.IsActive {
 		return ErrAccountInactive
 	}
@@ -170,7 +219,7 @@ func (s *AuthService) verify(ctx context.Context, u db.User, stored *string, can
 	if err := s.q.RecordSuccessfulLogin(ctx, u.ID); err != nil {
 		return err
 	}
-	s.audit(ctx, s.q, actor, "login", "user", u.ID, nil, nil)
+	s.audit(ctx, s.q, userActor(u, ci), "login", "user", u.ID, nil, nil)
 	return nil
 }
 
@@ -353,15 +402,21 @@ func (s *AuthService) ChangePIN(ctx context.Context, p *Principal, current, next
 }
 
 // RequestPINReset texts a reset code to a driver who forgot their PIN. It
-// says nothing about whether the number belongs to a driver.
+// says nothing about whether the number belongs to a driver, even once the
+// hourly limit is reached.
 func (s *AuthService) RequestPINReset(ctx context.Context, rawPhone string) error {
 	p, err := phone.Normalize(rawPhone)
 	if err != nil {
 		return invalid("phone", err.Error())
 	}
 	u, err := s.q.GetUserByPhone(ctx, &p)
+	if err != nil && !isNoRows(err) {
+		return err
+	}
 	if err != nil || u.Role != model.RoleDriver || !u.IsActive {
-		return nil
+		// Recorded, not sent: the hourly limit then applies to every
+		// number alike, and doesn't single out drivers' numbers.
+		return s.issueCode(ctx, pgtype.UUID{}, p, codePurposePINReset, nil)
 	}
 	return s.issueCode(ctx, u.TenantID, p, codePurposePINReset, func(code string) string {
 		return fmt.Sprintf("%s: your PIN reset code is %s. It expires in 10 minutes. Never share it.", s.cfg.AppName, code)

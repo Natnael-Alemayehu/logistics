@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/natnael-alemayehu/logistics/internal/db"
@@ -61,14 +62,32 @@ func validatePerson(in PersonInput, phoneRequired bool) (validPerson, error) {
 }
 
 // duplicateUser turns a unique-index failure into a message about the field.
-func duplicateUser(err error) error {
-	if c, ok := isUniqueViolation(err); ok {
-		if strings.Contains(c, "email") {
-			return invalid("email", "Someone is already registered with this email address.")
-		}
-		return invalid("phone", "Someone is already registered with this phone number.")
+// Phone numbers and email addresses are unique across companies, so when
+// the clash is with an account at another company the message says so
+// (without naming it): searching this company's own list would never find
+// it. The lookup runs outside the caller's transaction, which the failure
+// has aborted.
+func (c *core) duplicateUser(ctx context.Context, tenantID pgtype.UUID, v validPerson, err error) error {
+	con, ok := isUniqueViolation(err)
+	if !ok {
+		return err
 	}
-	return err
+	field, what := "phone", "phone number"
+	var holder db.User
+	var lerr error = pgx.ErrNoRows
+	if strings.Contains(con, "email") {
+		field, what = "email", "email address"
+		if v.email != nil {
+			holder, lerr = c.q.GetUserByEmail(ctx, *v.email)
+		}
+	} else if v.phone != nil {
+		holder, lerr = c.q.GetUserByPhone(ctx, v.phone)
+	}
+	if lerr == nil && holder.TenantID != tenantID {
+		return invalid(field, fmt.Sprintf("This %s is already used by an account at another company on %s. "+
+			"A %s can belong to only one account, so use a different one.", what, c.cfg.AppName, what))
+	}
+	return invalid(field, "Someone is already registered with this "+what+".")
 }
 
 // Get loads a user of a tenant.
@@ -140,7 +159,7 @@ func (s *UserService) CreateDriver(ctx context.Context, p *Principal, in PersonI
 			PinHash: &h, PasswordResetRequired: true, VehicleID: vehicle,
 		})
 		if err != nil {
-			return duplicateUser(err)
+			return s.duplicateUser(ctx, p.TenantID, v, err)
 		}
 		out.User, out.Credential = u, pin
 		s.enqueueSMS(ctx, q, after, outboundSMS{
@@ -183,7 +202,7 @@ func (s *UserService) UpdateDriver(ctx context.Context, p *Principal, id pgtype.
 		}
 		out, err = q.UpdateUserProfile(ctx, db.UpdateUserProfileParams{ID: id, TenantID: p.TenantID, FullName: v.name, Phone: v.phone, Email: v.email})
 		if err != nil {
-			return duplicateUser(err)
+			return s.duplicateUser(ctx, p.TenantID, v, err)
 		}
 		if emailChanged(cur, out) {
 			if err := s.sendEmailVerification(ctx, q, after, out, "Your "+s.cfg.AppName+" account at "+p.TenantName+" now uses this email address."); err != nil {
@@ -262,7 +281,7 @@ func (s *UserService) CreateStaff(ctx context.Context, p *Principal, in PersonIn
 			PasswordHash: &h, PasswordResetRequired: true,
 		})
 		if err != nil {
-			return duplicateUser(err)
+			return s.duplicateUser(ctx, p.TenantID, v, err)
 		}
 		out.User, out.Credential = u, pw
 		if v.phone != nil {
@@ -319,7 +338,7 @@ func (s *UserService) UpdateStaff(ctx context.Context, p *Principal, id pgtype.U
 		}
 		out, err = q.UpdateUserProfile(ctx, db.UpdateUserProfileParams{ID: id, TenantID: p.TenantID, FullName: v.name, Phone: v.phone, Email: v.email})
 		if err != nil {
-			return duplicateUser(err)
+			return s.duplicateUser(ctx, p.TenantID, v, err)
 		}
 		if emailChanged(cur, out) {
 			if err := s.sendEmailVerification(ctx, q, after, out, "Your "+s.cfg.AppName+" account at "+p.TenantName+" now uses this email address."); err != nil {

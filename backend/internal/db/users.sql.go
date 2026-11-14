@@ -459,7 +459,7 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 
 const lockUserAccount = `-- name: LockUserAccount :exec
 UPDATE users
-SET locked_until = $2
+SET locked_until = $2, failed_login_attempts = 0
 WHERE id = $1
 `
 
@@ -468,6 +468,8 @@ type LockUserAccountParams struct {
 	LockedUntil pgtype.Timestamptz `db:"locked_until" json:"locked_until"`
 }
 
+// Locking clears the count: when the lock expires the account starts again
+// from zero, instead of one mistype locking it at once.
 func (q *Queries) LockUserAccount(ctx context.Context, arg LockUserAccountParams) error {
 	_, err := q.db.Exec(ctx, lockUserAccount, arg.ID, arg.LockedUntil)
 	return err
