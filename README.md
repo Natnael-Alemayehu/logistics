@@ -403,3 +403,4 @@ Then:
 - [`functional_requirements.md`](functional_requirements.md): the original requirements; Appendix D lists where the product deliberately differs
 - [`logistics.md`](logistics.md): background on the problem
 - [`E2E_TEST_GUIDE.md`](E2E_TEST_GUIDE.md): a manual walkthrough of every flow
+- [`ROADMAP.md`](ROADMAP.md): what comes next, in order

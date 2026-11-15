@@ -10,6 +10,7 @@ trucking companies. See `README.md` for what it does and how it fits together.
   deliberately differs; add to it when you depart from a requirement.
 - `logistics.md`: background on the problem
 - `E2E_TEST_GUIDE.md`: manual walkthrough of every flow
+- `ROADMAP.md`: what comes next, in order. Delete a section once it is done.
 
 ## Architecture
 
