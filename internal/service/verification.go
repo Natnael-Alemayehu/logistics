@@ -41,7 +41,7 @@ var (
 // so a leaked table of six-digit codes cannot be reversed by brute force.
 func (c *core) hashCode(phone, purpose, code string) string {
 	m := hmac.New(sha256.New, c.cfg.Secret)
-	fmt.Fprintf(m, "%s|%s|%s", purpose, phone, code)
+	m.Write(fmt.Appendf(nil, "%s|%s|%s", purpose, phone, code))
 	return hex.EncodeToString(m.Sum(nil))
 }
 

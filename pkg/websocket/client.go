@@ -49,10 +49,11 @@ func (c *Client) ReadPump() {
 	}()
 
 	c.Conn.SetReadLimit(maxMessageSize)
-	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	if err := c.Conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		return
+	}
 	c.Conn.SetPongHandler(func(string) error {
-		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
+		return c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 
 	for {
@@ -79,12 +80,14 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case <-c.ctx.Done():
-			c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+			c.goodbye()
 			return
 		case message, ok := <-c.Send:
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.goodbye()
+				return
+			}
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 				return
 			}
 
@@ -94,12 +97,20 @@ func (c *Client) WritePump() {
 				return
 			}
 		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.Conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				return
+			}
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		}
 	}
+}
+
+// goodbye tells the browser the connection is closing. It is a courtesy:
+// the connection closes whether it arrives or not.
+func (c *Client) goodbye() {
+	_ = c.Conn.WriteControl(websocket.CloseMessage, nil, time.Now().Add(writeWait))
 }
 
 func (c *Client) Disconnect() {

@@ -78,7 +78,7 @@ func startChrome(t *testing.T) *chrome {
 	}
 	exited := make(chan struct{})
 	go func() {
-		cmd.Wait()
+		_ = cmd.Wait() // how Chrome ends doesn't matter, only that it has
 		close(exited)
 	}()
 	var port string
@@ -90,7 +90,7 @@ func startChrome(t *testing.T) *chrome {
 		case <-exited:
 		case <-time.After(10 * time.Second):
 		}
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) // gone already, if it closed when asked
 		<-exited
 		for range 50 {
 			if os.RemoveAll(profile) == nil {
@@ -161,10 +161,12 @@ func closeChrome(port string) {
 		return
 	}
 	defer conn.Close()
-	conn.WriteJSON(map[string]any{"id": 1, "method": "Browser.close"})
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if conn.WriteJSON(map[string]any{"id": 1, "method": "Browser.close"}) != nil || conn.SetReadDeadline(time.Now().Add(5*time.Second)) != nil {
+		return
+	}
+	// An answer, or the connection closing: either way Chrome is closing.
 	var answer json.RawMessage
-	conn.ReadJSON(&answer)
+	_ = conn.ReadJSON(&answer)
 }
 
 func chromeTargets(port string) []chromeTarget {
@@ -174,7 +176,9 @@ func chromeTargets(port string) []chromeTarget {
 	}
 	defer res.Body.Close()
 	var targets []chromeTarget
-	json.NewDecoder(res.Body).Decode(&targets)
+	if json.NewDecoder(res.Body).Decode(&targets) != nil {
+		return nil
+	}
 	return targets
 }
 
@@ -196,7 +200,9 @@ func (c *chrome) callOn(conn *websocket.Conn, method string, params any) json.Ra
 	if err := conn.WriteJSON(map[string]any{"id": id, "method": method, "params": params}); err != nil {
 		c.t.Fatalf("%s: %v", method, err)
 	}
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	if err := conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		c.t.Fatalf("%s: %v", method, err)
+	}
 	for {
 		var m struct {
 			ID     int             `json:"id"`
@@ -374,7 +380,10 @@ func (c *chrome) offline(off bool) {
 				Value string `json:"value"`
 			} `json:"result"`
 		}
-		if json.Unmarshal(raw, &r); r.Result.Value != "unreachable" {
+		if err := json.Unmarshal(raw, &r); err != nil {
+			c.t.Fatalf("the service worker %s: %v", target.URL, err)
+		}
+		if r.Result.Value != "unreachable" {
 			c.t.Fatalf("the service worker %s still reaches the server (%q)", target.URL, r.Result.Value)
 		}
 	}

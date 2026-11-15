@@ -46,7 +46,7 @@ func (m *Mock) Start(_ context.Context, c Charge) (Checkout, error) {
 // Sign returns the signature a notification with these values carries.
 func (m *Mock) Sign(n Notification) string {
 	h := hmac.New(sha256.New, m.secret)
-	fmt.Fprintf(h, "%s|%s|%s|%d", n.Reference, n.ProviderRef, n.Status, n.Amount)
+	h.Write(fmt.Appendf(nil, "%s|%s|%s|%d", n.Reference, n.ProviderRef, n.Status, n.Amount))
 	return hex.EncodeToString(h.Sum(nil))
 }
 

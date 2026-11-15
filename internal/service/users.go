@@ -75,7 +75,7 @@ func (c *core) duplicateUser(ctx context.Context, tenantID pgtype.UUID, v validP
 	}
 	field, what := "phone", "phone number"
 	var holder db.User
-	var lerr error = pgx.ErrNoRows
+	lerr := pgx.ErrNoRows
 	if strings.Contains(con, "email") {
 		field, what = "email", "email address"
 		if v.email != nil {
