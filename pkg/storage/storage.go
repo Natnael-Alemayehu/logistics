@@ -10,7 +10,6 @@ import (
 var (
 	ErrFileNotFound  = errors.New("file not found")
 	ErrInvalidPath   = errors.New("invalid file path")
-	ErrStorageFailed = errors.New("storage operation failed")
 	ErrInvalidConfig = errors.New("invalid storage configuration")
 )
 

@@ -24,6 +24,16 @@ What changed in each release, newest first.
   the manual test guide and the audit, which is now
   `docs/audit-2026-11.md`.
 
+### Removed
+
+- **The Twilio SMS adapter**, with `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
+  and `TWILIO_FROM_NUMBER`. Nothing used it and the provider sandbox never
+  covered it. `SMS_PROVIDER` is `mock` or `ethiotelecom`; with `twilio` the
+  app now refuses to start.
+- Code nothing called: the live feed's per-driver and per-shipment rooms
+  and its message types (the dashboard only ever had one feed for each
+  company), and a handful of unused helpers.
+
 ### Fixed
 
 - **Maps work in every build.** The map library (Leaflet 1.9.4) had never
