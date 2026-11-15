@@ -3,7 +3,7 @@
 # signatures and photos stored on disk, and the app secret). Keeps two weeks
 # of backups.
 #
-#   scripts/backup.sh                       # from backend/, e.g. nightly from cron
+#   scripts/backup.sh                       # e.g. nightly from cron
 #   BACKUP_DIR=/mnt/backups scripts/backup.sh
 #
 # It runs against deployments/docker-compose.prod.yml with .env. COMPOSE_FILE

@@ -16,10 +16,6 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-defaults:
-  run:
-    working-directory: backend
-
 env:
   # The Dockerfile's Go release: the two move together.
   GO_VERSION: "1.27"
@@ -37,7 +33,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: backend/go.sum
       - run: make vet
       - run: make test
       - name: gofmt
@@ -58,7 +53,6 @@ jobs:
       - name: Shell scripts
         run: docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 scripts/*.sh
       - name: The product's former name stays out
-        working-directory: .
         run: |
           # Only the changelog may say what Kiflet used to be called. The
           # brackets keep this step from finding itself.
@@ -93,7 +87,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: backend/go.sum
       # Each run makes its own database on this server; the S3 tests start
       # their store with testcontainers.
       - run: make test-integration
@@ -111,7 +104,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: backend/go.sum
       - run: make staging-up
       - run: make test-e2e
       - name: Staging's logs

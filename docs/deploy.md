@@ -4,7 +4,6 @@ One machine with Docker runs it: the app, PostGIS, and Caddy, which gets a
 TLS certificate for `DOMAIN` and serves HTTP/2 and HTTP/3.
 
 ```bash
-cd backend
 cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_* and SMTP_* settings, BILLING_BANK_DETAILS
 docker compose -f deployments/docker-compose.prod.yml --env-file .env up -d --build --wait
 ```
@@ -51,7 +50,7 @@ Health checks: `/healthz` (process up) and `/readyz` (database reachable).
 ## Backups
 
 ```bash
-scripts/backup.sh                                   # from backend/
+scripts/backup.sh
 scripts/restore.sh <kiflet_….dump> [<kiflet_…_files.tar.gz>]
 ```
 
@@ -62,7 +61,7 @@ and deletes those older than two weeks (`KEEP_DAYS`). Run it nightly and copy
 the backups off the machine:
 
 ```
-15 2 * * *  cd /srv/kiflet/backend && scripts/backup.sh >>/var/log/kiflet-backup.log 2>&1
+15 2 * * *  cd /srv/kiflet && scripts/backup.sh >>/var/log/kiflet-backup.log 2>&1
 ```
 
 Photos kept in S3 aren't included: use the store's versioning or
@@ -80,7 +79,7 @@ back over HTTPS through Caddy), Mailpit for SMTP, SeaweedFS for S3, and
 Caddy's own certificate authority. Prometheus and Grafana are on.
 
 ```bash
-make staging-up     # from backend/: build, start, and copy Caddy's root certificate to tmp/staging-ca.crt
+make staging-up     # build, start, and copy Caddy's root certificate to tmp/staging-ca.crt
 make test-e2e       # the end-to-end tests, against staging
 make staging-down   # remove staging and its data
 ```

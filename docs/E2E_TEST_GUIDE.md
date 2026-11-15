@@ -214,7 +214,7 @@ origin**, **Cargo lost or damaged**. Reports count cancellations by reason.
 ## 6. Drivers without a smartphone
 
 Settings → Text messages → **Try a driver's SMS report**, from a driver's
-number, or from a second terminal (from `backend/`):
+number, or from a second terminal:
 `go run ./cmd/server sms-in 0912345601 "ET 7K3M 1"`.
 
 | Text | Effect |
@@ -397,7 +397,7 @@ As the company's admin, open **Billing**. It shows the trial's days left, the
 plans, this month's usage (drivers and texts against the plan, shipments,
 deliveries) and the invoices.
 
-Some steps need time to pass. Move the clock in the database from `backend/`
+Some steps need time to pass. Move the clock in the database from the repository root
 (replace the company name), and the background jobs, which run every minute,
 do the rest:
 
@@ -539,7 +539,7 @@ company is emailed. (Two checkouts paid for one invoice end the same way.)
 
 The same flows with the app's real SMS, telebirr and CBE Birr adapters,
 against the provider sandbox instead of the stand-ins. Stop `make run`, and
-in two terminals from `backend/`:
+in two terminals:
 
 ```bash
 make sandbox       # http://localhost:8091
@@ -590,14 +590,15 @@ app's terminal.
 Check:
 - **System health** (as the operator) names the providers **Sandbox**.
 - The sandbox's pages work on a phone and in dark mode.
-- `docker compose --profile sandbox up sandbox` runs the sandbox in a
+- `docker compose -f deployments/dev/compose.yml --profile sandbox up sandbox`
+  runs the sandbox in a
   container instead of `make sandbox`, for the app on the host.
 
 ## 13. On staging
 
 The product as production runs it: the production images and compose file,
 behind Caddy over HTTPS, with the provider sandbox, Mailpit and SeaweedFS in
-place of the providers, the mail server and S3. From `backend/`:
+place of the providers, the mail server and S3:
 
 ```bash
 make staging-up   # https://kiflet.localhost:8443

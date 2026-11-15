@@ -9,8 +9,6 @@ version of the same rules.
 You need Go 1.27 and Docker. Query changes also need
 [sqlc](https://sqlc.dev) 1.30, and checking the JavaScript needs Node.
 
-Run every command from `backend/`.
-
 ```bash
 make db      # PostGIS on localhost:5434
 make seed    # migrate and load a demo company

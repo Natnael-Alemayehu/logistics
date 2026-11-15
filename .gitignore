@@ -14,7 +14,7 @@ bin/
 
 # Go's vendor directory. Anchored: a bare vendor/ also matched the map
 # library in internal/web/static/vendor and kept it out of git.
-/backend/vendor/
+/vendor/
 
 # Go workspace file
 go.work
@@ -55,14 +55,14 @@ coverage.out
 uploads/
 
 # The token Prometheus sends to /metrics: the same secret as METRICS_TOKEN
-backend/deployments/prometheus/metrics_token
+deployments/prometheus/metrics_token
 
-# `go build ./cmd/server` run from backend/
-/backend/server
+# `go build ./cmd/server`
+/server
 
 # The provider sandbox's throwaway telebirr keys (make sandbox-keys)
-backend/sandbox-keys/
+/sandbox-keys/
 
 # Provider keys for production, mounted at /run/secrets
-backend/deployments/secrets/*
-!backend/deployments/secrets/README.md
+deployments/secrets/*
+!deployments/secrets/README.md
