@@ -36,6 +36,7 @@ rest of this file assumes. The ones marked were settled on 2026-11-15.
 | Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#5-migrations). |
 | Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#7-commit-attribution). |
 | Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
+| Split the driver app's script into modules | Not before its updates are made all-or-nothing; after the release is fine | A half-finished update would otherwise leave a phone with mixed versions. See [The driver app's one large file](#3-the-driver-apps-one-large-file). |
 
 ## The next release: a clean baseline
 
@@ -136,23 +137,32 @@ What is left:
 - [ ] Retake the two screenshots in `docs/images/` when the overview or the
       driver app's first screen changes.
 
-### 3. Files that are too large to read
+### 3. The driver app's one large file
 
-Split by the sections the files already mark. Moves only, no edits.
+`internal/web/static/driver/app.js` is 1,663 lines in one file, with no
+tests. The large Go files are split; this one is not, because splitting it
+changes how the app reaches a phone.
 
-- [ ] `internal/service/billing.go` (2,124 lines) has eight banner comments.
-      Make each a file: `billing_standing.go`, `billing_plans.go`,
-      `billing_choose.go`, `billing_invoices.go`, `billing_payments.go`,
-      `billing_operator.go`, `billing_job.go`, with the helpers staying in
-      `billing.go`.
-- [ ] `internal/web/app_admin.go` (869 lines) and `app_shipments.go` (824):
-      split along their handler groups the same way.
-- [ ] `internal/web/static/driver/app.js` (1,663 lines, one file, no tests):
-      split into ES modules, which need no build step: `store.js`
-      (IndexedDB), `sync.js` (outbox and sync), `gps.js`, `text.js` (English
-      and Amharic), `signature.js`, and one module per screen. Add the new
-      files to the service worker's `SHELL` list;
-      `TestDriverShellFilesExist` then checks them.
+Today the service worker refreshes each file of the app on its own, whenever
+there is signal. With one script that is safe. With twenty modules, an
+update that half-finishes on a weak signal leaves new and old modules mixed
+in the phone's cache, and the app may not start the next time it is opened
+without signal, which is when a driver needs it.
+
+- [ ] Decide whether to do this before the release or after it.
+- [ ] First make the service worker replace the app as a whole: download
+      every file of a new version, then switch to it, so a phone only ever
+      holds one complete version. This changes when an update reaches a
+      driver, so record it in Appendix D if it departs from a requirement.
+- [ ] Then split into ES modules, which need no build step: `state.js`,
+      `text.js` (English and Amharic), `store.js` (IndexedDB), `api.js`,
+      `sync.js` (outbox and sync), `gps.js`, `signature.js`, and one module
+      per screen. `formOpen` is set by five screens and read by the router,
+      and a module can't assign to another's variable, so it moves into the
+      state object. List the modules in the service worker's `SHELL`
+      (`TestDriverShellFilesExist` then checks them) and name each in a
+      `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
+      requests.
 
 ### 4. Tests named for what they test
 
