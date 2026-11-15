@@ -263,8 +263,11 @@ app in headless Chrome (see [Staging](docs/deploy.md#staging)).
 ### CI
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to main: vet,
-unit tests, gofmt, `sqlc diff`, govulncheck and shellcheck; the integration
-tests against a PostGIS service; and staging, with the end-to-end tests. Go
+unit tests, golangci-lint, `node --check`, a gitleaks scan of the whole
+history, gofmt, `sqlc diff`, govulncheck and shellcheck; the integration
+tests against a PostGIS service, with what they cover of the service and
+web packages in the run's summary; and staging, with the end-to-end tests.
+Dependabot proposes dependency updates weekly. Go
 fixes security issues only in its two newest releases, so CI and the
 Dockerfile stay on the newer one, together.
 
