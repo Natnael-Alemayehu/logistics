@@ -994,7 +994,7 @@ The platform consists of three main components:
 ## Appendix D: Deviations
 
 Where the product differs from this document on purpose. Each entry gives
-the requirement, what Menged does instead, and why.
+the requirement, what Kiflet does instead, and why.
 
 ### Not built
 

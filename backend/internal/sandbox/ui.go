@@ -173,7 +173,7 @@ func (s *Sandbox) renderHome(w http.ResponseWriter, r *http.Request, status int,
 	s.render(w, status, "home", "layout", view{Title: "Phones", Nav: "home", Data: v})
 }
 
-// envFor is the settings Menged needs to reach this sandbox, at the
+// envFor is the settings Kiflet needs to reach this sandbox, at the
 // address the browser reached it by.
 func (s *Sandbox) envFor(r *http.Request) string {
 	base := "http://" + r.Host
@@ -283,7 +283,7 @@ func (s *Sandbox) phoneText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body := strings.TrimSpace(r.PostFormValue("text")); body != "" {
-		s.textMenged(number, body)
+		s.textKiflet(number, body)
 	}
 	http.Redirect(w, r, "/phones/"+number+"#thread", http.StatusSeeOther)
 }
@@ -390,7 +390,7 @@ func (s *Sandbox) controlsPage(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Query().Has("saved"):
 		v.Notice = "Saved."
 	case r.URL.Query().Has("expired"):
-		v.Notice = "Every token is expired: Menged's next call is refused, and it must sign in again."
+		v.Notice = "Every token is expired: Kiflet's next call is refused, and it must sign in again."
 	}
 	s.render(w, http.StatusOK, "controls", "layout", view{Title: "Faults", Nav: "controls", Data: v})
 }

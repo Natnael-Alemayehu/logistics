@@ -1,4 +1,4 @@
-# Menged audit
+# Kiflet audit
 
 Usability and logic audit of the whole product: the dispatcher dashboard and
 public pages (web), the Go backend, and the driver app (mobile).
@@ -190,7 +190,7 @@ Appendix D of `functional_requirements.md`.
 - **Where:** `RequestPasswordReset` in
   `backend/internal/service/accounts.go`.
 - **Observed:** a staff account (admin role) created with an email that was
-  never confirmed. A request to `/forgot` sent "Reset your Menged password"
+  never confirmed. A request to `/forgot` sent "Reset your Kiflet password"
   to that address.
 - **Impact:** an admin who mistypes a new colleague's address hands that
   account, with its role, to whoever owns the mistyped address.

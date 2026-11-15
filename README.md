@@ -1,4 +1,4 @@
-# Menged
+# Kiflet
 
 **Shipment tracking and proof of delivery for Ethiopian trucking companies.**
 መንገድ means "road".
@@ -20,7 +20,7 @@ perfect coverage. Drivers with feature phones report by SMS instead
 
 | For | Where | What they get |
 |---|---|---|
-| Dispatchers, fleet managers, admins | `/app` | A live fleet map (positions come while the driver app is open) with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences; a download of all the company's data; questions to the Menged team on the Help page |
+| Dispatchers, fleet managers, admins | `/app` | A live fleet map (positions come while the driver app is open) with filters, route lines and a satellite view; a shipment board that updates as drivers report, with tabs, filters, saved views, sortable columns and bulk assignment; booking with a town list or a dropped pin; status overrides; messages to one driver or to every driver on the road; alerts (late, not collected, problem reported, driver quiet with cargo, moving away from the destination, delivered) with optional browser notifications and email copies; each trip's GPS history; reports by period, driver and route, with CSV and PDF; printable waybills; team and vehicle management; an audit log; company settings and SMS preferences; a download of all the company's data; questions to the Kiflet team on the Help page |
 | Drivers | `/driver/` | An installable, offline-first web app in English or Amharic: today's loads, one-tap status updates, delay and problem reports with reasons, messages to the office, delivery capture (name, signature, photos, GPS) with a warning away from the drop-off, distance and direction to the drop-off, battery saver, settings that follow the driver to a new phone, and a sync indicator that shows what is still waiting to send and when the signal is weak |
 | Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
 | Customers | `/track`, SMS links | Tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery |
@@ -96,7 +96,7 @@ One Go binary serves everything:
                       │  HTML + WebSocket              │  JSON sync              │  webhook
                       └───────────────┬────────────────┴─────────────┬──────────┘
                                 ┌─────▼──────────────────────────────▼───────┐
-                                │  menged (cmd/server)                       │
+                                │  kiflet (cmd/server)                       │
                                 │  internal/web      routes, templates, API  │
                                 │  internal/service  business rules          │
                                 │  jobs: outboxes, alerts, billing, cleanup  │
@@ -178,9 +178,9 @@ trucks on the road and two alerts:
 
 | Sign in as | At | With |
 |---|---|---|
-| Administrator | `/login` | `demo@menged.et` / `menged-demo` |
-| Dispatcher | `/login` | `dispatch@menged.et` / `menged-demo` |
-| Platform admin | `/login` | `admin@menged.et` / `menged-admin` |
+| Administrator | `/login` | `demo@kiflet.et` / `kiflet-demo` |
+| Dispatcher | `/login` | `dispatch@kiflet.et` / `kiflet-demo` |
+| Platform admin | `/login` | `admin@kiflet.et` / `kiflet-admin` |
 | Driver | `/driver/` | `0912345601` … `0912345605`, PIN `2580` |
 
 SMS, email and payments are simulated by default: codes, links and payment
@@ -289,7 +289,7 @@ background jobs take a Postgres advisory lock, so they never run twice.
 
 Add `--profile monitoring` for Prometheus and Grafana: set `METRICS_TOKEN`, and
 put the same value in `deployments/prometheus/metrics_token`. Grafana listens
-on `127.0.0.1:3000` (reach it over an SSH tunnel) and comes with a **Menged**
+on `127.0.0.1:3000` (reach it over an SSH tunnel) and comes with a **Kiflet**
 dashboard: requests, errors and response times by route, driver sync, texts
 and emails sent and waiting, background jobs, and memory. `/metrics` labels
 requests by route pattern (`/app/shipments/{id}`), never by company or ID.
@@ -309,17 +309,17 @@ Health checks: `/healthz` (process up) and `/readyz` (database reachable).
 
 ```bash
 scripts/backup.sh                                   # from backend/
-scripts/restore.sh <menged_….dump> [<menged_…_files.tar.gz>]
+scripts/restore.sh <kiflet_….dump> [<kiflet_…_files.tar.gz>]
 ```
 
 `backup.sh` writes the database (`pg_dump`) and the app's volume (photos and
 signatures kept on disk, and the app secret that sessions and codes depend
-on) to `/var/backups/menged` (`BACKUP_DIR`), readable by their owner only,
+on) to `/var/backups/kiflet` (`BACKUP_DIR`), readable by their owner only,
 and deletes those older than two weeks (`KEEP_DAYS`). Run it nightly and copy
 the backups off the machine:
 
 ```
-15 2 * * *  cd /srv/menged/backend && scripts/backup.sh >>/var/log/menged-backup.log 2>&1
+15 2 * * *  cd /srv/kiflet/backend && scripts/backup.sh >>/var/log/kiflet-backup.log 2>&1
 ```
 
 Photos kept in S3 aren't included: use the store's versioning or
@@ -344,10 +344,10 @@ make staging-down   # remove staging and its data
 
 | | |
 |---|---|
-| The app | https://menged.localhost:8443 |
-| The sandbox: phones, wallets and faults | https://sandbox.menged.localhost:8443 |
-| Email sent (Mailpit) | https://mail.menged.localhost:8443 |
-| Grafana, as `admin` / `staging-grafana-password` | https://grafana.menged.localhost:8443 |
+| The app | https://kiflet.localhost:8443 |
+| The sandbox: phones, wallets and faults | https://sandbox.kiflet.localhost:8443 |
+| Email sent (Mailpit) | https://mail.kiflet.localhost:8443 |
+| Grafana, as `admin` / `staging-grafana-password` | https://grafana.kiflet.localhost:8443 |
 
 It listens on 127.0.0.1 only, and `*.localhost` names reach this machine
 without DNS. Trust `tmp/staging-ca.crt` in the browser, or give it to curl

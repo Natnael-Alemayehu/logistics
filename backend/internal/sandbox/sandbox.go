@@ -1,12 +1,12 @@
-// Package sandbox plays the services Menged connects to: Ethio telecom's
-// SMS gateway, telebirr and CBE Birr. Menged reaches it over HTTP with its
+// Package sandbox plays the services Kiflet connects to: Ethio telecom's
+// SMS gateway, telebirr and CBE Birr. Kiflet reaches it over HTTP with its
 // real adapters, as it would reach the providers; only the addresses,
 // credentials and keys differ. The sandbox also plays the people on the
 // other side, the phones that receive texts and reply and the payers who
 // pay or give up, and it can be told to misbehave (faults.go).
 //
-// Each provider's side is written from the contract, not from Menged's
-// adapter: the package imports nothing of Menged's but the console, which a
+// Each provider's side is written from the contract, not from Kiflet's
+// adapter: the package imports nothing of Kiflet's but the console, which a
 // test enforces. A mistake on either side then shows up as a refused call
 // instead of two copies agreeing. The contracts are at the top of sms.go,
 // telebirr.go and cbebirr.go.
@@ -30,19 +30,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
 )
 
 // Config is what the sandbox needs to know. The providers' credentials are
-// the ones Menged is given, under the same names (FromEnv), so the two can
+// the ones Kiflet is given, under the same names (FromEnv), so the two can
 // share a file and can't disagree.
 type Config struct {
-	// AppURL is Menged's address, which the providers call.
+	// AppURL is Kiflet's address, which the providers call.
 	AppURL string
 	// AppName is the merchant's name, as payers see it.
 	AppName string
 	// HostAlias replaces localhost in the addresses the sandbox calls, for
-	// a sandbox in a container calling Menged on the host. The addresses
+	// a sandbox in a container calling Kiflet on the host. The addresses
 	// browsers are sent to keep localhost.
 	HostAlias string
 	// PIN unlocks every wallet.
@@ -58,34 +58,34 @@ type Config struct {
 	// Out is the terminal, which shows the texts and lists the calls. nil
 	// shows nothing.
 	Out io.Writer
-	// Client makes the calls to Menged; nil is a client with a 15-second
+	// Client makes the calls to Kiflet; nil is a client with a 15-second
 	// timeout.
 	Client *http.Client
 }
 
-// SMSConfig is Menged's account with the SMS gateway.
+// SMSConfig is Kiflet's account with the SMS gateway.
 type SMSConfig struct {
-	// APIKey signs Menged in, and SenderID is the name its texts come from.
+	// APIKey signs Kiflet in, and SenderID is the name its texts come from.
 	APIKey   string
 	SenderID string
-	// Number is the short code phones text Menged on.
+	// Number is the short code phones text Kiflet on.
 	Number string
-	// Secret goes with every call to Menged's SMS webhooks.
+	// Secret goes with every call to Kiflet's SMS webhooks.
 	Secret string
 }
 
-// TelebirrConfig is Menged's telebirr merchant account.
+// TelebirrConfig is Kiflet's telebirr merchant account.
 type TelebirrConfig struct {
 	FabricAppID   string
 	AppSecret     string
 	MerchantAppID string
 	MerchantCode  string
-	// MerchantKey checks Menged's signatures, and Key makes telebirr's.
+	// MerchantKey checks Kiflet's signatures, and Key makes telebirr's.
 	MerchantKey *rsa.PublicKey
 	Key         *rsa.PrivateKey
 }
 
-// CBEBirrConfig is Menged's CBE Birr merchant account.
+// CBEBirrConfig is Kiflet's CBE Birr merchant account.
 type CBEBirrConfig struct {
 	MerchantID string
 	// Username and Password are the login CBE Birr's calls carry.
@@ -98,13 +98,13 @@ type Timing struct {
 	// Report is how long a text takes to reach its phone, and so when its
 	// delivery report is sent: 2 seconds.
 	Report time.Duration
-	// Retry is the first wait before calling Menged again: 10 seconds,
+	// Retry is the first wait before calling Kiflet again: 10 seconds,
 	// doubled after each failure up to 5 minutes.
 	Retry time.Duration
 	// Delay is how late the late-notification fault is: a minute.
 	Delay time.Duration
 	// Slow is how long the slow gateway takes to answer: 35 seconds, longer
-	// than Menged waits.
+	// than Kiflet waits.
 	Slow time.Duration
 }
 
@@ -121,7 +121,7 @@ func (t Timing) orDefaults() Timing {
 }
 
 // FromEnv reads the configuration from the environment: the providers'
-// credentials from the variables Menged reads, the sandbox's own settings
+// credentials from the variables Kiflet reads, the sandbox's own settings
 // from SANDBOX_ ones, and the keys from SANDBOX_KEYS_DIR.
 func FromEnv(getenv func(string) string) (Config, error) {
 	get := func(key, def string) string {
@@ -132,7 +132,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	}
 	cfg := Config{
 		AppURL:    get("SANDBOX_APP_URL", get("PUBLIC_URL", "http://localhost:"+get("PORT", "8080"))),
-		AppName:   get("APP_NAME", "Menged"),
+		AppName:   get("APP_NAME", "Kiflet"),
 		HostAlias: get("SANDBOX_HOST_ALIAS", ""),
 		PIN:       get("SANDBOX_PIN", "1234"),
 		SMS: SMSConfig{
@@ -179,7 +179,7 @@ func (c Config) missing() []string {
 	return out
 }
 
-// Sandbox is the providers' side of Menged's connections, and the people's.
+// Sandbox is the providers' side of Kiflet's connections, and the people's.
 // Everything it knows is kept in memory, and forgotten when it stops.
 type Sandbox struct {
 	cfg      Config
@@ -220,10 +220,10 @@ func New(cfg Config) (*Sandbox, error) {
 	}
 	cfg.AppURL = strings.TrimRight(cfg.AppURL, "/")
 	if u, err := url.Parse(cfg.AppURL); err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return nil, fmt.Errorf("sandbox: Menged's address %q is not an http or https URL", cfg.AppURL)
+		return nil, fmt.Errorf("sandbox: Kiflet's address %q is not an http or https URL", cfg.AppURL)
 	}
 	if cfg.AppName == "" {
-		cfg.AppName = "Menged"
+		cfg.AppName = "Kiflet"
 	}
 	if cfg.PIN == "" {
 		cfg.PIN = "1234"
@@ -271,7 +271,7 @@ func (s *Sandbox) Close() {
 func (s *Sandbox) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// The providers, as Menged calls them.
+	// The providers, as Kiflet calls them.
 	mux.Handle("POST /ethiotelecom/auth/token", s.provider("SMS", s.smsToken))
 	mux.Handle("POST /ethiotelecom/sms/send", s.provider("SMS", s.smsSend))
 	mux.Handle("POST /telebirr/payment/v1/token", s.provider("telebirr", s.telebirrToken))
@@ -421,7 +421,7 @@ const (
 )
 
 // random is n characters drawn from chars. The sandbox's IDs are random, not
-// counted, so that one restarted doesn't hand Menged an ID it has seen.
+// counted, so that one restarted doesn't hand Kiflet an ID it has seen.
 func random(chars string, n int) string {
 	b := make([]byte, n)
 	for i := range b {

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/sandbox"
+	"github.com/natnael-alemayehu/kiflet/internal/sandbox"
 )
 
 // A stopping app, as on a deploy, sees the text it is sending through and

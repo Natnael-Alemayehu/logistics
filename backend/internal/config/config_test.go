@@ -60,7 +60,7 @@ func TestShortSecretRejected(t *testing.T) {
 func TestProductionRequiresPublicURL(t *testing.T) {
 	t.Setenv("APP_SECRET_FILE", filepath.Join(t.TempDir(), "secret"))
 	t.Setenv("ENVIRONMENT", "production")
-	t.Setenv("BILLING_BANK_DETAILS", "Commercial Bank of Ethiopia, account 1000123456789, Menged PLC")
+	t.Setenv("BILLING_BANK_DETAILS", "Commercial Bank of Ethiopia, account 1000123456789, Kiflet PLC")
 	if _, err := Load(); err == nil {
 		t.Error("production without PUBLIC_URL should fail")
 	}
@@ -96,7 +96,7 @@ func TestProvidersDefaultToMocksInDevelopment(t *testing.T) {
 	if got := c.MockedProviders(); len(got) != 3 {
 		t.Errorf("MockedProviders = %v, want SMS, email and payments", got)
 	}
-	if c.MailFrom != "Menged <no-reply@localhost>" {
+	if c.MailFrom != "Kiflet <no-reply@localhost>" {
 		t.Errorf("MailFrom = %q", c.MailFrom)
 	}
 }
@@ -104,11 +104,11 @@ func TestProvidersDefaultToMocksInDevelopment(t *testing.T) {
 func TestProductionHasNoPaymentStandIn(t *testing.T) {
 	t.Setenv("APP_SECRET_FILE", filepath.Join(t.TempDir(), "secret"))
 	t.Setenv("ENVIRONMENT", "production")
-	t.Setenv("PUBLIC_URL", "https://menged.example.et/")
+	t.Setenv("PUBLIC_URL", "https://kiflet.example.et/")
 	if _, err := Load(); err == nil {
 		t.Error("production with no way to pay should fail")
 	}
-	t.Setenv("BILLING_BANK_DETAILS", "Commercial Bank of Ethiopia, account 1000123456789, Menged PLC")
+	t.Setenv("BILLING_BANK_DETAILS", "Commercial Bank of Ethiopia, account 1000123456789, Kiflet PLC")
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestProductionHasNoPaymentStandIn(t *testing.T) {
 	if c.PaymentProvider != "none" {
 		t.Errorf("PaymentProvider = %q, want none", c.PaymentProvider)
 	}
-	if c.MailFrom != "Menged <no-reply@menged.example.et>" {
+	if c.MailFrom != "Kiflet <no-reply@kiflet.example.et>" {
 		t.Errorf("MailFrom = %q", c.MailFrom)
 	}
 	t.Setenv("PAYMENT_PROVIDER", "paypal")

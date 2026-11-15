@@ -11,7 +11,7 @@
 # Each container runs with the least it needs: no privilege escalation, no
 # Linux capabilities beyond binding ports 80 and 443, and a read-only root
 # filesystem where the program writes only to its volumes. Logs rotate.
-name: menged
+name: kiflet
 
 x-logging: &logging
   driver: json-file
@@ -125,12 +125,12 @@ services:
       GF_SMTP_USER: ${SMTP_USERNAME:-}
       GF_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       GF_SMTP_FROM_ADDRESS: ${GRAFANA_ALERT_FROM:?set GRAFANA_ALERT_FROM}
-      GF_SMTP_FROM_NAME: Menged monitoring
+      GF_SMTP_FROM_NAME: Kiflet monitoring
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      # The Prometheus data source, the Menged dashboard and its alerts.
+      # The Prometheus data source, the Kiflet dashboard and its alerts.
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
     cap_drop: [ALL]

@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// Keys are slow to make, so the tests share two pairs: Menged's and
+// Keys are slow to make, so the tests share two pairs: Kiflet's and
 // telebirr's.
 var (
 	keysOnce           sync.Once
@@ -50,7 +50,7 @@ func pemPublic(k *rsa.PublicKey) []byte {
 }
 
 // fakeTelebirr answers token, preOrder and queryOrder the way the guide
-// describes, and checks what Menged sends.
+// describes, and checks what Kiflet sends.
 type fakeTelebirr struct {
 	t        *testing.T
 	merchant *rsa.PublicKey
@@ -135,9 +135,9 @@ func newTelebirr(t *testing.T, apiURL string) *Telebirr {
 func TestTelebirrSignString(t *testing.T) {
 	got := signString(map[string]string{
 		"timestamp": "1718000000", "nonce_str": "N1", "method": "payment.preorder", "version": "1.0",
-		"title": "Menged invoice", "appid": "A1", "sign": "x", "sign_type": "SHA256WithRSA",
+		"title": "Kiflet invoice", "appid": "A1", "sign": "x", "sign_type": "SHA256WithRSA",
 	})
-	want := "appid=A1&method=payment.preorder&nonce_str=N1&timestamp=1718000000&title=Menged invoice&version=1.0"
+	want := "appid=A1&method=payment.preorder&nonce_str=N1&timestamp=1718000000&title=Kiflet invoice&version=1.0"
 	if got != want {
 		t.Errorf("signString =\n %s\nwant\n %s", got, want)
 	}
@@ -188,8 +188,8 @@ func TestTelebirrStartsAnOrder(t *testing.T) {
 	defer srv.Close()
 	tb := newTelebirr(t, srv.URL)
 	charge := Charge{
-		Reference: "PAY-ABCD2345", Amount: 287500, Description: "Menged invoice INV-2026-00012 for Abay Freight & Co.",
-		NotifyURL: "https://menged.test/api/v1/payments/telebirr/notify", ReturnURL: "https://menged.test/app/billing/payments/1",
+		Reference: "PAY-ABCD2345", Amount: 287500, Description: "Kiflet invoice INV-2026-00012 for Abay Freight & Co.",
+		NotifyURL: "https://kiflet.test/api/v1/payments/telebirr/notify", ReturnURL: "https://kiflet.test/app/billing/payments/1",
 		Timeout: 30 * time.Minute,
 	}
 	co, err := tb.Start(context.Background(), charge)
@@ -199,7 +199,7 @@ func TestTelebirrStartsAnOrder(t *testing.T) {
 	order := fake.orders[0]
 	for k, want := range map[string]string{
 		"merch_order_id": "PAYABCD2345", "total_amount": "2875.00", "trans_currency": "ETB", "timeout_express": "30m",
-		"title": "Menged invoice INV 2026 00012 for Abay Freight Co", "trade_type": "Checkout", "business_type": "BuyGoods",
+		"title": "Kiflet invoice INV 2026 00012 for Abay Freight Co", "trade_type": "Checkout", "business_type": "BuyGoods",
 		"appid": "merchant-app", "merch_code": "100200", "notify_url": charge.NotifyURL, "redirect_url": charge.ReturnURL,
 	} {
 		if order[k] != want {
@@ -275,7 +275,7 @@ func TestTelebirrNotifications(t *testing.T) {
 	tb := newTelebirr(t, "http://unused")
 	notification := func(change map[string]string, key *rsa.PrivateKey) *http.Request {
 		fields := map[string]string{
-			"notify_url": "https://menged.test/api/v1/payments/telebirr/notify", "appid": "merchant-app",
+			"notify_url": "https://kiflet.test/api/v1/payments/telebirr/notify", "appid": "merchant-app",
 			"notify_time": "1670575472482", "merch_code": "100200", "merch_order_id": "PAYABCD2345",
 			"payment_order_id": "00801104C911443200001002", "total_amount": "2875.00", "trans_id": "49485948475845",
 			"trans_currency": "ETB", "trade_status": "Completed", "trans_end_time": "1670575472000",

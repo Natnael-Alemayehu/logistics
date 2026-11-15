@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-// Faults are what the sandbox can be told to get wrong, to see what Menged
+// Faults are what the sandbox can be told to get wrong, to see what Kiflet
 // makes of it. They are set on the controls page, or with PUT or PATCH
 // /api/faults, and last until they are turned off or the sandbox stops.
 type Faults struct {
 	// The SMS gateway answers 503 to every text.
 	SMSDown bool `json:"sms_down"`
-	// It answers after Timing.Slow, longer than Menged waits.
+	// It answers after Timing.Slow, longer than Kiflet waits.
 	SMSSlow bool `json:"sms_slow"`
 	// It refuses every token, new ones too, with 401.
 	SMSRefuseTokens bool `json:"sms_refuse_tokens"`

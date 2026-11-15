@@ -12,7 +12,7 @@ import (
 )
 
 const allowLogRewrite = `-- name: AllowLogRewrite :exec
-SELECT set_config('menged.purge', 'on', true)
+SELECT set_config('kiflet.purge', 'on', true)
 `
 
 // Lets this transaction change the append-only audit log and shipment

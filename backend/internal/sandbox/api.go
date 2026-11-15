@@ -15,7 +15,7 @@ import (
 //	PATCH /api/faults                     set those given
 //	POST  /api/tokens/expire              expire every token issued
 //	GET   /api/phones/{number}            a phone: its texts and wallets
-//	POST  /api/phones/{number}/texts      {"text"}: text Menged from the phone
+//	POST  /api/phones/{number}/texts      {"text"}: text Kiflet from the phone
 //	PUT   /api/phones/{number}/balances   {"telebirr_santim", "cbebirr_santim"}
 //	GET   /api/telebirr/orders            the orders, newest first
 //	POST  /api/telebirr/orders/{prepay}   {"action": "pay" or "cancel", "phone", "pin"}
@@ -106,13 +106,13 @@ func (s *Sandbox) apiText(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "text is empty", nil)
 		return
 	}
-	t, a := s.textMenged(number, strings.TrimSpace(req.Text))
-	out := map[string]any{"text": t, "menged_status": a.Status}
+	t, a := s.textKiflet(number, strings.TrimSpace(req.Text))
+	out := map[string]any{"text": t, "kiflet_status": a.Status}
 	if json.Valid(a.Body) {
-		out["menged_answer"] = json.RawMessage(a.Body)
+		out["kiflet_answer"] = json.RawMessage(a.Body)
 	}
 	if a.Err != nil {
-		apiError(w, http.StatusBadGateway, "Menged didn't answer: "+a.Err.Error(), out)
+		apiError(w, http.StatusBadGateway, "Kiflet didn't answer: "+a.Err.Error(), out)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

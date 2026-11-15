@@ -15,9 +15,9 @@ import (
 
 // EthioTelecomProvider sends through an HTTP SMS gateway: a token from
 // POST /auth/token, then POST /sms/send for each message. Ethio telecom
-// publishes no HTTP API, so these calls are Menged's side of the contract,
+// publishes no HTTP API, so these calls are Kiflet's side of the contract,
 // to be matched to the one signed with the gateway. Delivery reports and
-// texts from phones come back through Menged's webhooks.
+// texts from phones come back through Kiflet's webhooks.
 //
 // Each Send is one attempt, retried once with a new token when the gateway
 // says the token is no longer valid. Other retries are the outbox's.

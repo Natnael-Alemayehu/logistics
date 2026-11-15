@@ -1,6 +1,6 @@
 package sandbox
 
-// telebirr's side of Menged's adapter (pkg/payments/telebirr.go), after
+// telebirr's side of Kiflet's adapter (pkg/payments/telebirr.go), after
 // telebirr's published H5 web checkout integration:
 //
 //	POST /telebirr/payment/v1/token                X-APP-Key, {"appSecret"}
@@ -120,7 +120,7 @@ func (s *Sandbox) telebirrToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// signedRequest reads one of Menged's API calls and checks it: the app key
+// signedRequest reads one of Kiflet's API calls and checks it: the app key
 // and token, then the method, the time, the nonce and the signature. It
 // answers a call that fails a check, and returns biz_content otherwise.
 func (s *Sandbox) signedRequest(w http.ResponseWriter, r *http.Request, method string) (map[string]string, bool) {
@@ -340,7 +340,7 @@ func (s *Sandbox) recentOrders(n int) []order {
 // checkoutFields are what the checkout link's signature covers.
 var checkoutFields = []string{"appid", "merch_code", "nonce_str", "prepay_id", "timestamp"}
 
-// checkout is the page Menged sends the payer to, with the signed order.
+// checkout is the page Kiflet sends the payer to, with the signed order.
 func (s *Sandbox) checkout(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	fields := map[string]string{}
@@ -398,7 +398,7 @@ type payerError string
 func (e payerError) Error() string { return string(e) }
 
 // answerOrder makes the payer's answer to an order: pay from the wallet of
-// the number given, or cancel. Either way Menged is notified.
+// the number given, or cancel. Either way Kiflet is notified.
 func (s *Sandbox) answerOrder(prepayID, action, number, pin string) (order, error) {
 	o, err := s.closeOrder(prepayID, action, number, pin)
 	if err == nil {
@@ -443,7 +443,7 @@ func (s *Sandbox) closeOrder(prepayID, action, number, pin string) (order, error
 	return *o, nil
 }
 
-// notify tells Menged how an order ended, as the faults say: held back,
+// notify tells Kiflet how an order ended, as the faults say: held back,
 // late, twice, signed with the wrong key, or just once.
 func (s *Sandbox) notify(o order) {
 	f := s.currentFaults()
@@ -466,7 +466,7 @@ func (s *Sandbox) notify(o order) {
 	}
 }
 
-// notification is the call telling Menged how an order ended.
+// notification is the call telling Kiflet how an order ended.
 func (s *Sandbox) notification(o order, forged bool) *call {
 	fields := map[string]string{
 		"notify_url": o.NotifyURL, "appid": o.AppID, "notify_time": strconv.FormatInt(time.Now().Unix(), 10),

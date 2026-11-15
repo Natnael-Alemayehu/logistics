@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/natnael-alemayehu/logistics/internal/model"
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 // TestLockoutStartsAgainAfterExpiry (R1): once a lockout has expired, one
@@ -331,7 +331,7 @@ func TestExpiredCodesAreNotSent(t *testing.T) {
 	newEnv(t) // its SMS worker picks the code up
 	phone := phoneNumber()
 	exec(t, `INSERT INTO sms_messages (direction, phone, body, purpose, sensitive, status, created_at)
-		VALUES ('outbound', $1, 'Menged: your code is 123456', 'otp', true, 'queued', NOW() - INTERVAL '11 minutes')`, phone)
+		VALUES ('outbound', $1, 'Kiflet: your code is 123456', 'otp', true, 'queued', NOW() - INTERVAL '11 minutes')`, phone)
 	within(t, 10*time.Second, "the expired code to fail", func() bool {
 		return scalar[string](t, `SELECT status FROM sms_messages WHERE phone = $1`, phone) == "failed"
 	})

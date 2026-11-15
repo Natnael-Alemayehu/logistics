@@ -3,10 +3,10 @@
 # production (ENVIRONMENT=production, its real adapters, behind Caddy over
 # HTTPS), with Mailpit for email, SeaweedFS for S3 and the monitoring.
 #
-#   https://menged.localhost:8443           the app (http://menged.localhost:8088 redirects)
-#   https://sandbox.menged.localhost:8443   the sandbox's phones, checkout and faults
-#   https://mail.menged.localhost:8443      Mailpit: every email sent
-#   https://grafana.menged.localhost:8443   Grafana (admin, staging-grafana-password)
+#   https://kiflet.localhost:8443           the app (http://kiflet.localhost:8088 redirects)
+#   https://sandbox.kiflet.localhost:8443   the sandbox's phones, checkout and faults
+#   https://mail.kiflet.localhost:8443      Mailpit: every email sent
+#   https://grafana.kiflet.localhost:8443   Grafana (admin, staging-grafana-password)
 #
 #   make staging-up      build, start, and wait until it is healthy
 #   make test-e2e        the end-to-end tests against it
@@ -17,7 +17,7 @@
 #
 # This file is laid over deployments/docker-compose.prod.yml, so its
 # relative paths are from deployments/, like that file's.
-name: menged-staging
+name: kiflet-staging
 
 x-logging: &logging
   driver: json-file
@@ -62,10 +62,10 @@ services:
     networks:
       default:
         aliases:
-          - menged.localhost
-          - sandbox.menged.localhost
-          - mail.menged.localhost
-          - grafana.menged.localhost
+          - kiflet.localhost
+          - sandbox.kiflet.localhost
+          - mail.kiflet.localhost
+          - grafana.kiflet.localhost
     healthcheck:
       # Up, with its certificate authority made.
       test: ["CMD-SHELL", "test -f /data/caddy/pki/authorities/local/root.crt && wget -qO /dev/null http://127.0.0.1:2019/config/"]
@@ -77,14 +77,14 @@ services:
     build:
       context: ..
       target: sandbox
-    image: menged-sandbox:staging
+    image: kiflet-sandbox:staging
     restart: unless-stopped
     env_file:
       - staging/staging.env
     environment:
       SANDBOX_ADDR: 0.0.0.0:8091
       SANDBOX_KEYS_DIR: /keys
-      SANDBOX_APP_URL: https://menged.localhost:8443
+      SANDBOX_APP_URL: https://kiflet.localhost:8443
       # The app's certificate is from Caddy's own authority.
       SSL_CERT_FILE: /ca/root.crt
     volumes:
@@ -115,7 +115,7 @@ services:
     build:
       context: ..
       target: sandbox
-    image: menged-sandbox:staging
+    image: kiflet-sandbox:staging
     command: keys
     environment:
       SANDBOX_KEYS_DIR: /keys
@@ -153,8 +153,8 @@ services:
     command:
       - |
         for i in $$(seq 60); do
-          echo 's3.bucket.list' | weed shell -master=s3:9333 2>/dev/null | grep -q '[[:space:]]menged[[:space:]]' && exit 0
-          echo 's3.bucket.create -name menged' | weed shell -master=s3:9333 >/dev/null 2>&1
+          echo 's3.bucket.list' | weed shell -master=s3:9333 2>/dev/null | grep -q '[[:space:]]kiflet[[:space:]]' && exit 0
+          echo 's3.bucket.create -name kiflet' | weed shell -master=s3:9333 >/dev/null 2>&1
           sleep 2
         done
         echo 'no bucket' >&2
@@ -173,7 +173,7 @@ services:
     profiles: !reset []
     ports: !reset []
     environment:
-      GF_SERVER_ROOT_URL: https://grafana.menged.localhost:8443/
+      GF_SERVER_ROOT_URL: https://grafana.kiflet.localhost:8443/
 
 volumes:
   sandbox-keys:

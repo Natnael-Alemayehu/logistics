@@ -107,6 +107,6 @@ jobs:
       - run: make test-e2e
       - name: Staging's logs
         if: failure()
-        run: docker compose -p menged-staging logs --no-color --timestamps
+        run: docker compose -p kiflet-staging logs --no-color --timestamps
       - if: always()
         run: make staging-down

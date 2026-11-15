@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/natnael-alemayehu/logistics/pkg/storage"
+	"github.com/natnael-alemayehu/kiflet/pkg/storage"
 )
 
 // MediaService stores proof-of-delivery images. Files are addressed by a

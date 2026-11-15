@@ -53,12 +53,12 @@ func TestCBEBirrCallsMustLogIn(t *testing.T) {
 }
 
 func TestCBEBirrQuery(t *testing.T) {
-	l := &ledger{bills: map[string]Bill{"202600012": {InvoiceNumber: "INV-2026-00012", Amount: 287500, Customer: "Abay Freight", Description: "Menged invoice INV-2026-00012"}}}
+	l := &ledger{bills: map[string]Bill{"202600012": {InvoiceNumber: "INV-2026-00012", Amount: 287500, Customer: "Abay Freight", Description: "Kiflet invoice INV-2026-00012"}}}
 	h := cbeHandler(t, l)
 	var bill CBEBirrBill
 	if cbeCall(t, h, "/query", CBEBirrQuery{BillRefNumber: "202600012", BusinessShortCode: "100100", MSISDN: "251911223344"}, &bill, "cbe", "secret"); bill !=
 		(CBEBirrBill{ResultCode: "0", ResultDesc: "Success", BillRefNumber: "202600012", Amount: "2875.00", Currency: "ETB",
-			CustomerName: "Abay Freight", Description: "Menged invoice INV-2026-00012"}) {
+			CustomerName: "Abay Freight", Description: "Kiflet invoice INV-2026-00012"}) {
 		t.Errorf("bill = %+v", bill)
 	}
 	for name, c := range map[string]struct {

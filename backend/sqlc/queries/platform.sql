@@ -1,4 +1,4 @@
--- The people running Menged: every company's audit log, support tickets
+-- The people running Kiflet: every company's audit log, support tickets
 -- and the background jobs (FR-042 AC-042.7, FR-049).
 
 -- name: ListPlatformAudit :many

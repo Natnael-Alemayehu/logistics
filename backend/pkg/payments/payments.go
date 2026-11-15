@@ -2,12 +2,12 @@
 //
 // Providers work one of two ways:
 //
-//   - Checkout (telebirr): Menged starts a payment with the provider and
+//   - Checkout (telebirr): Kiflet starts a payment with the provider and
 //     sends the payer to the provider's page to approve it. The provider
 //     reports the outcome to a notification URL, and can be asked about it
 //     when that report never arrives.
 //   - Reference (CBE Birr): the payer pays from the provider's own app,
-//     quoting the invoice's reference. The provider asks Menged what the
+//     quoting the invoice's reference. The provider asks Kiflet what the
 //     reference owes before taking the money and tells it once taken.
 //
 // The stand-in (Mock) imitates the checkout flow with a page of this app.
@@ -40,7 +40,7 @@ var (
 type Flow int
 
 const (
-	// FlowCheckout providers are started by Menged, which sends the payer to
+	// FlowCheckout providers are started by Kiflet, which sends the payer to
 	// the provider's page.
 	FlowCheckout Flow = iota
 	// FlowReference providers are paid from the provider's app, quoting a
@@ -89,7 +89,7 @@ type Provider interface {
 	Flow() Flow
 }
 
-// Starter is a provider whose payments Menged starts (FlowCheckout).
+// Starter is a provider whose payments Kiflet starts (FlowCheckout).
 type Starter interface {
 	Provider
 	Start(ctx context.Context, c Charge) (Checkout, error)
@@ -108,7 +108,7 @@ type Querier interface {
 // Referenced is a provider paid from its own app (FlowReference).
 type Referenced interface {
 	Provider
-	// MerchantID is what the payer enters to pay Menged.
+	// MerchantID is what the payer enters to pay Kiflet.
 	MerchantID() string
 }
 
@@ -143,9 +143,9 @@ var (
 	ErrWrongAmount = errors.New("the amount is not what the invoice asks for")
 )
 
-// Ledger is what providers' calls look up and record: Menged's billing.
+// Ledger is what providers' calls look up and record: Kiflet's billing.
 type Ledger interface {
-	// Settle applies the outcome of a payment Menged started.
+	// Settle applies the outcome of a payment Kiflet started.
 	Settle(ctx context.Context, provider string, n Notification) error
 	// Bill says what a reference owes: ErrUnknownBill, ErrBillPaid or
 	// ErrBillClosed when it can't be paid.
@@ -157,7 +157,7 @@ type Ledger interface {
 // ErrorWriter answers a provider's call that failed.
 type ErrorWriter func(w http.ResponseWriter, r *http.Request, err error)
 
-// Callbacks is a provider whose servers call Menged. Its handler is served
+// Callbacks is a provider whose servers call Kiflet. Its handler is served
 // under /api/v1/payments/{code}, with that prefix removed.
 type Callbacks interface {
 	Handler(l Ledger, fail ErrorWriter) http.Handler

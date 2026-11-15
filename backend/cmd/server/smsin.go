@@ -11,18 +11,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/config"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
 )
 
 // smsIn hands the running server a text message as if a phone had sent it
 // to the SMS number, to try the driver SMS commands from a terminal:
 //
-//	menged sms-in 0912345601 "1 4F2K"
+//	kiflet sms-in 0912345601 "1 4F2K"
 //
 // It goes through the inbound webhook, the way the provider delivers texts.
 func smsIn(ctx context.Context, cfg *config.Config, args []string) error {
 	if len(args) < 2 {
-		return errors.New(`usage: menged sms-in <phone> <text>, for example: menged sms-in 0912345601 "1 4F2K"`)
+		return errors.New(`usage: kiflet sms-in <phone> <text>, for example: kiflet sms-in 0912345601 "1 4F2K"`)
 	}
 	payload, _ := json.Marshal(map[string]string{"from": args[0], "body": strings.Join(args[1:], " ")})
 	url := "http://localhost:" + cfg.Port + "/api/v1/sms/inbound"

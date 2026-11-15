@@ -16,9 +16,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/natnael-alemayehu/logistics/internal/model"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/payments"
 )
 
 // ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ func (s *Server) paymentFail(w http.ResponseWriter, r *http.Request, err error) 
 }
 
 // devPaymentPage stands in for a checkout provider's payment page while
-// payments are simulated. Pay sends Menged its signed notification.
+// payments are simulated. Pay sends Kiflet its signed notification.
 func (s *Server) devPaymentPage(w http.ResponseWriter, r *http.Request) {
 	pay, prov, err := s.svc.Billing.PaymentPrompt(r.Context(), chi.URLParam(r, "reference"))
 	if err != nil {
