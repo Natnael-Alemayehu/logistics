@@ -4,6 +4,19 @@ What changed in each release, newest first.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.9.0 (2026-11-15)
+
+The first tagged release. Kiflet isn't live yet: `1.0.0` comes with the
+first paying customer.
+
+**History was rewritten before the tag.** Every commit now carries the
+right author name and a no-reply address, and the co-author lines are
+gone. The files are exactly as they were, but every commit has a new hash,
+so a clone made earlier has to be made again. The audit quotes the new
+hashes.
+
 ### Added
 
 - **A licence.** `LICENSE` says all rights are reserved: the code may be

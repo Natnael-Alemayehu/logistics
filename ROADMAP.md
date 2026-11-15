@@ -4,10 +4,11 @@ What to do next, in order. Written on 2026-11-14 from a survey of the
 repository at `f540720`. Tick the boxes as work lands, and delete a section
 once it is done: this file should only ever hold what is still ahead.
 
-1. [The next release](#the-next-release-a-clean-baseline): a settled name,
-   a codebase anyone can open and follow, and commit attribution corrected.
-2. [After the release](#after-the-release-toward-the-first-paying-customer):
-   toward the first paying customer.
+1. [Left from v0.9.0](#left-from-v090): two checks after the history
+   rewrite.
+2. [Finish the rename](#finish-the-rename): the checks and registrations
+   that make the name final.
+3. [Toward the first paying customer](#toward-the-first-paying-customer).
 
 ## Where things stand
 
@@ -23,25 +24,27 @@ once it is done: this file should only ever hold what is still ahead.
 - The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O1, O3,
   O4 and O6.
 - The repository is public and all rights are reserved (`LICENSE`), with
-  private vulnerability reporting on and topics set. It has no releases or
-  tags, and nine old branches on GitHub, all merged into `main`, which go
-  with the history rewrite.
+  private vulnerability reporting on and `main` protected so CI must pass.
+  The first release is `v0.9.0`, of 2026-11-15. History was rewritten that
+  day: every commit has the right author name and GitHub's no-reply
+  address, and no co-author lines.
 - The product and the repository were renamed Kiflet on 2026-11-15. The
   checks and registrations that make the name final are still open: see
-  [Finish the rename](#1-finish-the-rename).
+  [Finish the rename](#finish-the-rename).
 
-## The next release: a clean baseline
+## Left from v0.9.0
 
-No new features, and nothing that changes behaviour. The rename is in, and
-part 1 holds what is left of it: checks and registrations outside the
-repository, which needn't hold up the rest. The history rewrite comes last
-before the tag.
+- [ ] On 2026-11-16 or later, check that GitHub's contributor list no
+      longer shows Claude. GitHub caches the list.
+- [ ] Once the new history has been looked over, delete the mirror backup
+      taken before the rewrite.
 
-### 1. Finish the rename
+## Finish the rename
 
 The product was renamed Kiflet on 2026-11-15: the code, the documents and
 the repository. `CHANGELOG.md` lists what moved. The name was taken "for
-now", so this part is what makes it final, or replaces it.
+now", so this section is what makes it final, or replaces it. It is work
+outside the repository.
 
 **Kiflet (ቅፍለት)** is a caravan: loaded animals and their drivers
 travelling together, the way goods crossed the country before trucks did.
@@ -76,10 +79,9 @@ Once those pass:
 
 Left over from the old name:
 
-- [ ] In any other clone:
-      `git remote set-url origin https://github.com/Natnael-Alemayehu/kiflet.git`.
-      Its Docker volumes and images still carry the old project's name;
-      remove them.
+- [ ] Any other clone: clone again, since history was rewritten on
+      2026-11-15. Its Docker volumes and images still carry the old
+      project's name; remove them.
 
 If Kiflet fails a check, the next choices:
 
@@ -117,81 +119,7 @@ The three things that hold state are the reason to settle this before the
 first customer: the purge setting in the database, the volumes Compose
 names after the project, and the database on each driver's phone.
 
-### 2. Commit attribution
-
-GitHub lists Claude as a contributor because 28 commits on `main` end
-with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
-it from the list means removing those lines, which means rewriting history
-and replacing `main` on GitHub. Do it once, as the last step before the tag,
-when no pull request is open.
-
-Where Claude appears today:
-
-| Where | What |
-|---|---|
-| 28 commit messages | The co-author line: 14 on the fixes of 23 August, 14 on the audit fixes |
-| 5 commit messages | "the Fable audit" and `fable-audit.md` |
-| Pull request #2 | "Generated with Claude Code" at the end of its description |
-
-No file names Claude any more: the audit is `docs/audit-2026-11.md`.
-
-Steps:
-
-- [ ] **Stop new ones.** In Claude Code's user settings, not in a file in
-      this repository, set `"attribution": {"commit": "", "pr": ""}`
-      (older versions: `"includeCoAuthoredBy": false`).
-- [ ] **Back up.** `git clone --mirror` the repository somewhere safe, and
-      keep it until everything below is verified.
-- [ ] **Rewrite**, in a fresh clone, with `git filter-repo`
-      (`sudo dnf install git-filter-repo`):
-
-  ```bash
-  git filter-repo --message-callback '
-  import re
-  message = re.sub(rb"(?im)^co-authored-by: claude[^\n]*\n?", b"", message)
-  message = message.replace(b"the Fable audit", b"the audit")
-  message = message.replace(b"fable-audit.md", b"docs/audit-2026-11.md")
-  return message.rstrip() + b"\n"
-  '
-  ```
-
-  To correct the author name and email in the same pass, add
-  `--mailmap <file>` with one line per old identity, mapping it to the
-  right name and GitHub's `…@users.noreply.github.com` address.
-- [ ] **Verify.** `git log --format=%B | grep -ciwE "claude|fable"` prints
-      0, and `git rev-parse HEAD^{tree}` equals the old `main`'s tree: the
-      files are identical, only messages changed.
-- [ ] **Fix the audit's hashes.** It quotes 12 commit hashes. Map them with
-      `.git/filter-repo/commit-map`, and check each new one is an ancestor
-      of `main`.
-- [ ] **Publish.** `git push --force origin main`, then delete the merged
-      branches on GitHub; `product-consolidation` still holds the old
-      commits. Then protect `main` so CI must pass, which also stops any
-      later force-push.
-- [ ] **Dependabot's pull requests.** Comment `@dependabot recreate` on
-      each open one, so it is rebuilt on the new history.
-- [ ] **Pull request #2.** Edit its description to drop the last line.
-- [ ] **Check GitHub a day later.** The contributor list is cached.
-
-What it costs:
-
-- Without the mailmap, the 44 commits before 23 August keep their hashes
-  and every later one changes. With it, they all change.
-- Three commits made on GitHub (two README edits and the merge of pull
-  request #2) lose their "Verified" badge; with the mailmap, the merge of
-  pull request #1 does too.
-- Every other clone has to be cloned again. Today there are no forks and no
-  other collaborators, which is why this belongs in this release and not a
-  later one.
-- The old commits stay reachable through pull request #2's page. Only
-  GitHub Support can remove them, and the contributor list doesn't need it.
-
-### 3. Tag it
-
-- [ ] `CHANGELOG.md` entry, tag `v0.9.0` on the rewritten `main`, and a
-      GitHub release. Tag after the rewrite, never before.
-
-## After the release: toward the first paying customer
+## Toward the first paying customer
 
 In order. The first three can run side by side.
 
@@ -247,18 +175,16 @@ In order. The first three can run side by side.
 
 ## Decided, and when to revisit
 
-- **The rewrite also corrects the author name and email** (2026-11-15).
-  57 commits carry a misspelled name and all carry a personal email
-  address in a public repository; since history is being rewritten
-  anyway, every commit gets the right name and GitHub's no-reply address.
-- **`v0.9.0` now, `v1.0.0` with the first paying customer** (2026-11-15).
-  The product isn't live yet.
-- **The driver app stays one file through the release** (2026-11-15).
-  Splitting it is after-the-release item 4, and waits for the service
-  worker to update the app all-or-nothing. Revisit if the file gets in the
-  way of a fix the Android session or the pilot asks for.
+- **`v1.0.0` with the first paying customer** (2026-11-15). Until then
+  releases are `0.x`; `v0.9.0` is the first.
+- **The driver app stays one file for now** (2026-11-15). Splitting it is
+  item 4 of [Toward the first paying customer](#toward-the-first-paying-customer),
+  and waits for the service worker to update the app all-or-nothing.
+  Revisit if the file gets in the way of a fix the Android session or the
+  pilot asks for.
 - **The name Kiflet, for now** (2026-11-15). Revisit if one of the checks
-  in part 1 fails. Part 1 has the fallbacks and what a second rename takes.
+  in [Finish the rename](#finish-the-rename) fails. That section has the
+  fallbacks and what a second rename takes.
 - **No GitHub organization yet** (2026-11-15). The repository is `kiflet`
   under the personal account. Revisit when someone joins, or before the
   name is used in public: the organization name `kiflet` was free on
@@ -275,6 +201,7 @@ In order. The first three can run side by side.
 
 - **Moving `pkg/` under `internal/`.** Nothing outside this module imports
   it, but the move touches every file for no change a reader would feel.
-- **Rewriting old commit messages** beyond the lines in part 2. The early
+- **Rewriting old commit messages** beyond the co-author lines and audit
+  references the rewrite of 2026-11-15 removed. The early
   history is rough, and it is still the history. That includes the
   product's first name: old commits keep it.
