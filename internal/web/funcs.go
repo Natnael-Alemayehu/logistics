@@ -357,7 +357,7 @@ func (s *Server) funcs() template.FuncMap {
 			return def
 		},
 		"checked": func(form url.Values, name string, def bool) bool {
-			if form != nil && len(form) > 0 {
+			if len(form) > 0 {
 				return form.Get(name) != ""
 			}
 			return def

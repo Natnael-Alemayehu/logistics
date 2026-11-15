@@ -30,7 +30,7 @@ const (
 
 	retainTracking = 90 * 24 * time.Hour
 	retainAlerts   = 90 * 24 * time.Hour
-	retainSMS      = 180 * 24 * time.Hour
+	retainSMS      = 180 * 24 * time.Hour //nolint:staticcheck // SMS, not milliseconds
 	retainEmail    = 180 * 24 * time.Hour
 	retainLinks    = 30 * 24 * time.Hour
 
