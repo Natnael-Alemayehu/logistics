@@ -625,18 +625,32 @@ email in Mailpit (https://mail.kiflet.localhost:8443).
 5. **Monitoring.** Grafana (https://grafana.kiflet.localhost:8443, `admin` /
    `staging-grafana-password`) shows the Kiflet dashboard with the requests,
    texts and emails from the steps above.
-6. **Backup and restore**, as on a production machine:
+6. **Backup and restore**, as on a production machine, with staging's
+   `backup.env`: encrypted with a key of your own and copied to a second
+   bucket in SeaweedFS. It needs age.
 
    ```bash
+   age-keygen -o tmp/backup.key
    export COMPOSE_FILE=deployments/docker-compose.prod.yml:deployments/staging/compose.yml
    export ENV_FILE=deployments/staging/staging.env
-   BACKUP_DIR=tmp/backups scripts/backup.sh
+   export BACKUP_ENV_FILE=deployments/staging/backup.env
+   BACKUP_AGE_RECIPIENTS=$(age-keygen -y tmp/backup.key) BACKUP_DIR=tmp/backups scripts/backup.sh
    ```
 
-   Sign up another company, then run the `scripts/restore.sh` command the
-   backup printed and type `kiflet-staging`. The second company is gone, and
-   the first is still signed in. Unset `COMPOSE_FILE` and `ENV_FILE`
-   afterwards, or the next `docker compose` goes to staging too.
+   It prints three files ending in `.age` and `Off-site: kiflet-backups`.
+   Sign up another company, then fetch the backup into another folder, as a
+   new machine would, and restore it with the key:
+
+   ```bash
+   BACKUP_DIR=tmp/fetched scripts/fetch-backup.sh
+   AGE_IDENTITY=tmp/backup.key scripts/restore.sh tmp/fetched/kiflet_<time>.dump.age tmp/fetched/kiflet_<time>_files.tar.gz.age
+   ```
+
+   Type `kiflet-staging`. The second company is gone, and the first is
+   still signed in. With another key, `restore.sh` says it can't decrypt
+   and changes nothing. Unset `COMPOSE_FILE`, `ENV_FILE` and
+   `BACKUP_ENV_FILE` afterwards, or the next `docker compose` goes to
+   staging too.
 
 Check:
 - http://kiflet.localhost:8088 redirects to HTTPS, port included.

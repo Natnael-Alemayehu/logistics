@@ -51,24 +51,89 @@ Health checks: `/healthz` (process up) and `/readyz` (database reachable).
 
 ```bash
 scripts/backup.sh
-scripts/restore.sh <kiflet_….dump> [<kiflet_…_files.tar.gz>]
+scripts/fetch-backup.sh [<time>]
+scripts/restore.sh <kiflet_….dump[.age]> [<kiflet_…_files.tar.gz[.age]>]
 ```
 
-`backup.sh` writes the database (`pg_dump`) and the app's volume (photos and
-signatures kept on disk, and the app secret that sessions and codes depend
-on) to `/var/backups/kiflet` (`BACKUP_DIR`), readable by their owner only,
-and deletes those older than two weeks (`KEEP_DAYS`). Run it nightly and copy
-the backups off the machine:
+`backup.sh` writes three files to `/var/backups/kiflet` (`BACKUP_DIR`),
+readable by their owner only:
+
+- the database (`pg_dump`);
+- the app's volume: photos and signatures kept on disk, and the app secret
+  that sessions and codes depend on;
+- the machine's settings: `.env`, `backup.env` and `deployments/secrets/`.
+
+It deletes those older than two weeks (`KEEP_DAYS`). Run it nightly:
 
 ```
+MAILTO=you@example.et
 15 2 * * *  cd /srv/kiflet && scripts/backup.sh >>/var/log/kiflet-backup.log 2>&1
 ```
 
-Photos kept in S3 aren't included: use the store's versioning or
-replication. `restore.sh` asks for the stack's name, then stops the app,
-replaces the database (and the files, if given) with the backup's, and starts
-it again. `make test-e2e` backs up staging and restores it, so both scripts
-are tested.
+It exits with an error when any step fails, the copy off the machine
+included, and cron emails `MAILTO` when it does. Photos kept in S3 aren't
+included: use the store's versioning or replication.
+
+### Off the machine, encrypted
+
+A backup on the machine it protects is lost with it. With `backup.env`,
+each backup is encrypted with [age](https://age-encryption.org) as it is
+written and copied to an S3-compatible bucket:
+
+1. Install age on the server: `apt install age`.
+2. On your own computer, not the server, make a key pair with
+   `age-keygen -o kiflet-backup.key`. It prints the public key (`age1…`).
+   Keep the private key where a lost server can't take it: in a password
+   manager, and on a USB stick in a safe. Make a second pair for a second
+   person, so that one lost key loses nothing.
+3. Make a private bucket with a provider other than the server's (Backblaze
+   B2, Cloudflare R2, Wasabi and AWS all work), with versioning or object
+   lock if it offers them, and keys that can list, read and write it.
+4. Copy `backup.env.example` to `backup.env`, beside `.env`, and fill in the
+   public keys, the bucket and its keys. It is kept out of `.env` so the app
+   never sees them.
+
+Nothing leaves the machine unencrypted: with a bucket and no key,
+`backup.sh` stops before it starts. The server holds only the public keys,
+so neither the bucket's provider nor anyone with the bucket's keys can read
+a backup. Without a private key nobody can, you included: keep the keys as
+carefully as the data. The bucket keeps backups 90 days
+(`BACKUP_S3_KEEP_DAYS`; 0 leaves it to the bucket's own rules). The copying
+is rclone in a container (`deployments/docker-compose.backup.yml`), so the
+server needs only Docker and age.
+
+### Restoring
+
+`restore.sh` asks for the stack's name, then stops the app, replaces the
+database (and the files, if given) with the backup's, and starts it again.
+An encrypted backup needs `AGE_IDENTITY`, the private key's file. Each file
+is decrypted first, so the wrong key or a damaged copy changes nothing.
+
+On a new machine, the old one gone:
+
+1. Install Docker and age, clone the repository at the release that was
+   running (or a newer one: the app brings an older database up to date),
+   and copy a private key onto the machine.
+2. Write `backup.env` with the bucket's settings, and fetch the newest
+   backup with `scripts/fetch-backup.sh`. `scripts/fetch-backup.sh
+   20261104_021500` fetches an older one. It doesn't need `.env`, which is
+   in the backup.
+3. Unpack the settings into the checkout:
+   `age -d -i kiflet-backup.key /var/backups/kiflet/kiflet_<time>_settings.tar.gz.age | tar -xzf -`
+4. Start the stack with the `docker compose` command at the top of this
+   page, then restore:
+   `AGE_IDENTITY=kiflet-backup.key scripts/restore.sh` with the `.dump.age`
+   and `_files.tar.gz.age` files that `fetch-backup.sh` printed.
+5. Point the domain at the new machine, and delete the private key from it.
+
+### The drill
+
+A backup nobody has restored may not restore. Once a quarter, and whenever
+`backup.env` changes, follow the steps above on a spare machine, with a
+private key from where it is kept, and check that the newest data is there.
+`make test-e2e` runs the same round trip on staging for every change: an
+encrypted backup copied to a bucket, the copies on the machine lost, and
+the backup fetched and restored.
 
 ## Staging
 

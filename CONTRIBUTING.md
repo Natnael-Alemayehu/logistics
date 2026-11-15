@@ -8,8 +8,8 @@ version of the same rules.
 
 You need Go 1.27 and Docker. Query changes also need
 [sqlc](https://sqlc.dev) 1.30, `make lint` needs Node to check the
-JavaScript, and the end-to-end test of the driver app needs Chrome or
-Chromium.
+JavaScript, and the end-to-end tests need [age](https://age-encryption.org)
+for the backups and Chrome or Chromium for the driver app.
 
 ```bash
 make db      # PostGIS on localhost:5434

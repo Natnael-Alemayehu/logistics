@@ -21,8 +21,8 @@ once it is done: this file should only ever hold what is still ahead.
   shellcheck, `node --check`, a secret scan of the whole history, the
   integration tests and the end-to-end tests against staging. Dependabot
   proposes updates weekly.
-- The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O1, O3,
-  O4 and O6.
+- The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O3, O4
+  and O6.
 - The repository is public and all rights are reserved (`LICENSE`), with
   private vulnerability reporting on and `main` protected so CI must pass.
   The first release is `v0.9.0`, of 2026-11-15. History was rewritten that
@@ -121,7 +121,7 @@ names after the project, and the database on each driver's phone.
 
 ## Toward the first paying customer
 
-In order. The first three can run side by side.
+In order. The first two can run side by side.
 
 1. **Start provider onboarding as soon as the name is settled** (audit O6).
    telebirr, CBE Birr and Ethio telecom each need a contract, and the wait
@@ -133,10 +133,7 @@ In order. The first three can run side by side.
    app on a real device. Deliver a load with the camera, on weak signal,
    with the phone locked in between. Fix what it shows before anything
    else in the driver app.
-3. **Backups that survive the machine** (O1). Encrypt them, copy them off
-   the server, and restore one as a drill. Small, and the one way a pilot
-   could lose a customer's data.
-4. **The driver app in modules.** `internal/web/static/driver/app.js` is
+3. **The driver app in modules.** `internal/web/static/driver/app.js` is
    1,663 lines in one file, and splitting it changes how the app reaches a
    phone. The service worker refreshes each file on its own whenever there
    is signal: safe for one script, but with twenty modules an update that
@@ -156,29 +153,33 @@ In order. The first three can run side by side.
      `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
      requests. `TestDriverAppInABrowser` then shows the app still signs
      in, works offline and keeps its drafts.
-5. **Amharic for customers, then for the office** (W1). First the tracking
+4. **Amharic for customers, then for the office** (W1). First the tracking
    page, the confirmation page and the texts customers get; then the
    dashboard. It needs a native speaker, who should also review the
    driver app's newest strings.
-6. **A pilot with one trucking company**, paying by bank transfer. Everything
-   after this point should be reordered by what the pilot shows.
-7. **Shipper and consignee as separate people** (W4). A schema change, and
+5. **A pilot with one trucking company**, paying by bank transfer. Before
+   it starts, production's backups go off the machine: choose the bucket's
+   provider, make two age keys held by two people, fill in `backup.env`,
+   and run the drill in `docs/deploy.md` once. Everything after this point
+   should be reordered by what the pilot shows.
+6. **Shipper and consignee as separate people** (W4). A schema change, and
    the most likely first request from a real customer: today the tracking
    texts, the confirmation link and the driver's Call button all go to one
    phone.
-8. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
+7. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-9. **Later:** CSV import of shipments (FR-013), a last-position table for
+8. **Later:** CSV import of shipments (FR-013), a last-position table for
    the live map (O3), a second app instance (O4), a public API and webhooks
-   (FR-046, FR-047).
+   (FR-046, FR-047), and point-in-time recovery (WAL archiving, the rest of
+   O1) if a pilot can't afford to lose a day.
 
 ## Decided, and when to revisit
 
 - **`v1.0.0` with the first paying customer** (2026-11-15). Until then
   releases are `0.x`; `v0.9.0` is the first.
 - **The driver app stays one file for now** (2026-11-15). Splitting it is
-  item 4 of [Toward the first paying customer](#toward-the-first-paying-customer),
+  item 3 of [Toward the first paying customer](#toward-the-first-paying-customer),
   and waits for the service worker to update the app all-or-nothing.
   Revisit if the file gets in the way of a fix the Android session or the
   pilot asks for.

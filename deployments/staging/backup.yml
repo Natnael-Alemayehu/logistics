@@ -1,0 +1,11 @@
+# Laid over deployments/docker-compose.backup.yml for staging: the copying
+# container joins staging's network, where its bucket is SeaweedFS
+# (http://s3:8333, deployments/staging/backup.env).
+services:
+  offsite:
+    networks: [staging]
+
+networks:
+  staging:
+    name: kiflet-staging_default
+    external: true

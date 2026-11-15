@@ -4,7 +4,21 @@ What changed in each release, newest first.
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- **Backups leave the machine, encrypted** (audit O1). With `backup.env`
+  (`backup.env.example` is the template), `scripts/backup.sh` encrypts each
+  backup with age, to public keys whose private keys are kept off the
+  server, and copies it to an S3-compatible bucket, which keeps it 90 days.
+  It won't copy a backup that isn't encrypted. `scripts/fetch-backup.sh`
+  brings one back from the bucket with neither `.env` nor a running stack,
+  and `scripts/restore.sh` restores an encrypted one with `AGE_IDENTITY`,
+  decrypting it before anything is replaced. `docs/deploy.md` has the
+  set-up, restoring on a new machine, and the drill, which `make test-e2e`
+  runs on staging. It now needs age.
+- **A backup holds the machine's settings too**: `.env`, `backup.env` and
+  `deployments/secrets/`, in a third file, `kiflet_<time>_settings.tar.gz`,
+  so a new machine can be set up from the backup alone.
 
 ## 0.9.0 (2026-11-15)
 
