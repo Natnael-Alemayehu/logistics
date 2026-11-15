@@ -20,6 +20,11 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **One migration instead of 21.** `migrations/20261115000100_baseline.up.sql`
+  holds the whole schema, and `git log -- migrations/` shows the migrations
+  that built it. A database they built keeps its data and takes the
+  baseline as done, since every statement in it can run again; a new one
+  gets the same schema, line for line.
 - **Everything moved out of `backend/`** to the repository root, which is
   now where `go.mod`, the `Makefile` and `.env` live and where every command
   runs. The development compose file and the sandbox's settings are in
