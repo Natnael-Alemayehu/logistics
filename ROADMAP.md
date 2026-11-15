@@ -7,8 +7,8 @@ once it is done: this file should only ever hold what is still ahead.
 1. [Fix first](#fix-first-the-map-library-is-not-in-the-repository): the map
    library is missing from git.
 2. [Decisions](#decisions-to-make-first) that shape the release.
-3. [The next release](#the-next-release-a-clean-baseline): a new name, a
-   codebase anyone can open and follow, and commit attribution corrected.
+3. [The next release](#the-next-release-a-clean-baseline): a settled name,
+   a codebase anyone can open and follow, and commit attribution corrected.
 4. [After the release](#after-the-release-toward-the-first-paying-customer):
    toward the first paying customer.
 
@@ -23,9 +23,9 @@ once it is done: this file should only ever hold what is still ahead.
   O6.
 - The repository is public, with no licence, no releases or tags, and ten
   branches on GitHub that are all merged into `main`.
-- The product is called Menged and the repository `logistics`. Another
-  transport app in Ethiopia already uses the name, so both are changing:
-  see [Rename the product](#1-rename-the-product).
+- The product and the repository were renamed Kiflet on 2026-11-15. The
+  checks and registrations that make the name final are still open: see
+  [Finish the rename](#1-finish-the-rename).
 
 ## Fix first: the map library is not in the repository
 
@@ -56,11 +56,9 @@ rest of this file assumes.
 
 | Decision | Recommendation | Why |
 |---|---|---|
-| The product's new name | **Kiflet** (ቅፍለት, a caravan) | Nothing else found uses it, and its domains and GitHub name are free. The shortlist and what was checked are under [Rename the product](#1-rename-the-product). Decide this first: provider contracts, the SMS sender ID and the domain are all registered under it. |
-| The repository's new name and owner | `kiflet`, in a GitHub organization also named `kiflet` | The rename changes the module path in every import anyway, so moving to an organization now costs nothing extra, holds the name on GitHub, and takes a personal account out of the import paths. If it stays on the personal account, the steps are the same with that owner. |
 | Licence | Add a `LICENSE` saying all rights are reserved, or make the repository private | Public with no licence is the least clear state: nobody may use the code, and nothing says so. Open-sourcing can come later; it can't be undone. |
 | Move everything out of `backend/` to the repository root | Yes | There is no frontend or mobile directory beside it any more, and the module path in `go.mod` has never included `backend`. |
-| Replace the 20 migrations with one baseline schema | Only if no database holds data that must be kept | See [Migrations](#7-migrations). |
+| Replace the 21 migrations with one baseline schema | Only if no database holds data that must be kept | See [Migrations](#7-migrations). |
 | Twilio SMS adapter | Remove | Nothing uses it and the provider sandbox doesn't cover it. It comes back from git history if needed. |
 | Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#9-commit-attribution). |
 | Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
@@ -68,25 +66,21 @@ rest of this file assumes.
 ## The next release: a clean baseline
 
 No new features. Each numbered part is its own pull request, changes no
-behaviour, and must pass CI. Do them in this order. The rename comes first,
-so that everything written after it is written once, under the right name.
-The later parts are easier once the earlier ones are in, and the history
-rewrite has to be last.
+behaviour, and must pass CI. Do them in this order. The rename is in, and
+part 1 holds what is left of it. The later parts are easier once the
+earlier ones are in, and the history rewrite has to be last.
 
-### 1. Rename the product
+### 1. Finish the rename
 
-"Menged" (መንገድ, road) is taken. An app for Addis Ababa's buses already has
-the name, and a bus-booking app is called Mengedegna. A trucking product
-can't share a name with a transport app people already know, least of all
-in the places that are registered once and are hard to change: the SMS
-sender ID, the merchant name a customer sees when paying, the domain, a
-store listing. None of those exist yet. Rename before they do.
+The product was renamed Kiflet on 2026-11-15: the code, the documents and
+the repository. `CHANGELOG.md` lists what moved. The name was taken "for
+now", so this part is what makes it final, or replaces it.
 
-**The name: Kiflet (ቅፍለት).** A *kiflet* is a caravan: loaded animals and
-their drivers travelling together, the way goods crossed the country before
-trucks did. It is what a trucking company runs today. The Latin spelling
-has "fleet" nearly hidden in it, and at six letters it fits an SMS sender
-ID, which allows eleven.
+**Kiflet (ቅፍለት)** is a caravan: loaded animals and their drivers
+travelling together, the way goods crossed the country before trucks did.
+It is what a trucking company runs today. The Latin spelling has "fleet"
+nearly hidden in it, and at six letters it fits an SMS sender ID, which
+allows eleven.
 
 Checked on 2026-11-14:
 
@@ -96,15 +90,32 @@ Checked on 2026-11-14:
   `.com.et`, `.app` and `.africa` have no DNS entry.
 - No GitHub account or organization is named `kiflet`.
 
-Not checked. Do these before registering anything under the name:
+Still to check, before anything is registered under the name:
 
 - [ ] Say it to a few people in the trade. Does ቅፍለት mean to them what it
       should, and is it easy to say and to type? "Kiflet" writes ቅ with a
       K, as most people would; "Qiflet" is the stricter spelling.
 - [ ] Search the trademark register (EIPA) and the trade name register.
 - [ ] Search the Play Store and the App Store.
-- [ ] Then take the names: the domains (`kiflet.et` and `kiflet.com` at
-      least) and the GitHub organization.
+
+Once those pass:
+
+- [ ] Take the names: the domains (`kiflet.et` and `kiflet.com` at least)
+      and the GitHub organization `kiflet`. Creating the organization holds
+      the name even while the repository stays where it is.
+- [ ] Ask Ethio telecom for the sender ID `Kiflet`, give telebirr and CBE
+      Birr the merchant name, and set up `support@` and `no-reply@` on the
+      domain.
+
+Left over from the old name:
+
+- [ ] On each development machine, `docker volume ls` and `docker images`
+      still show the old project's database volume and images. Remove them
+      once nothing in the old database is needed.
+- [ ] In any other clone:
+      `git remote set-url origin https://github.com/Natnael-Alemayehu/kiflet.git`.
+- [ ] A server that already runs the product moves its data as
+      `CHANGELOG.md` describes. It must not be renamed in place.
 
 If Kiflet fails a check, the next choices:
 
@@ -121,103 +132,26 @@ supply-chain software), Adera (every domain is taken, `adera.et` included),
 Mahtem (`mahtem.et` is in use), Feleg (a given name, and its `.com` and
 `.app` are taken), and Chinet, Tolo, Garri and Woye (freight apps).
 
-The steps below use `kiflet` and the organization. With another name or
-owner they are the same.
+Renaming again costs little while nobody is live. The first rename was
+these commands and no edits by hand, 604 lines in 126 files:
 
-#### What the rename touches
+```bash
+git grep -lzi kiflet -- . ':!backend/internal/db' ':!CHANGELOG.md' ':!ROADMAP.md' |
+  xargs -0 sed -i 's/Kiflet/Newname/g; s/kiflet/newname/g; s/KIFLET/NEWNAME/g'
+cd backend
+git mv deployments/grafana/dashboards/kiflet.json \
+       deployments/grafana/dashboards/newname.json
+git mv deployments/grafana/provisioning/dashboards/kiflet.yml \
+       deployments/grafana/provisioning/dashboards/newname.yml
+make sqlc
+```
 
-The name is on 427 lines in 80 files, and the module path on 177 more in
-68. It is one pull request.
-
-| What | Where | Becomes |
-|---|---|---|
-| The name people see | `APP_NAME`'s default in `internal/config`; the driver app's `index.html`, `manifest.webmanifest` and one fallback in `app.js` | Kiflet, Kiflet Driver. The 22 places templates show the name read it from `APP_NAME` and don't change. |
-| Metrics | 15 names in `pkg/metrics`; the Grafana dashboard, its two file names, the six alert rules and their folder and contact point | `kiflet_*`, `kiflet.json`, `kiflet-job-failing` |
-| The purge setting | The `append_only()` trigger and `purgeTx` | `kiflet.purge` |
-| Compose projects and images | `name:` in the three compose files, the sandbox image, one line in CI | `kiflet`, `kiflet-dev`, `kiflet-staging`, `kiflet-sandbox` |
-| Binaries and paths | `Makefile`, `Dockerfile`, `scripts/backup.sh`, `scripts/restore.sh`, the cron line in `README.md` | `bin/kiflet`, `/var/backups/kiflet`, `kiflet_<time>.dump` |
-| Staging's hosts | `deployments/staging`, `tests/e2e` | `kiflet.localhost` and its three subdomains |
-| Demo logins | The seed, `README.md`, `E2E_TEST_GUIDE.md`, the tests | `demo@kiflet.et`, password `kiflet-demo` |
-| The provider sandbox | `internal/sandbox` (132 lines), `pkg/payments`, and the `menged_status` field three tests read | `kiflet_status`. The sandbox and the adapters change together, as always. |
-| Names in the browser | The dashboard's `app.js` and `map.js`, the driver app's `app.js` and `sw.js` | The driver app's database and cache, two saved settings, the notification tag, one event, one global |
-| SMS sender ID and email addresses | `staging.env`, `.env.example`, the config and mail tests | `KIFLET`, `support@kiflet.…` |
-| The Go module | `go.mod` and every import | `github.com/kiflet/kiflet` |
-| Documents | `README.md`, `AGENTS.md`, the test guide, the requirements, the audit | |
-
-The logo is a route between two points and has no letter in it. It stays.
-
-Three of these hold state, so they need more than a search and replace:
-
-- **The purge setting.** The replace changes it in `sqlc/queries/data.sql`
-  and in the migration that creates `append_only()`, which is right for a
-  new database. A database that already exists keeps the old function and
-  would refuse every purge. It fails closed: nothing is deleted that
-  shouldn't be, but company deletion and retention stop working. So add a
-  migration that recreates the function with the new name.
-- **Compose volumes.** Compose names volumes after the project, so a
-  renamed project starts with empty ones. For development that is what you
-  want: stop the old project first, since it holds port 5434, then
-  `make db && make seed`. A server that already runs the product must not
-  be renamed in place: back it up with `scripts/backup.sh`, start the new
-  project, and restore with `scripts/restore.sh`.
-- **The driver app's database.** Its name is where a phone keeps deliveries
-  it hasn't sent yet. A phone with unsent work loses it when the name
-  changes, so sync every test phone first. This is the reason to rename
-  now: after the first customer is live, this name can't change without a
-  migration in the app. The old cache needs nothing, because the service
-  worker deletes every cache but its own. Dispatchers' column choices and
-  their notification setting reset once.
-
-#### Steps
-
-- [ ] Stop the old development database, from `backend/`:
-      `docker compose down --volumes`.
-- [ ] Replace the name, rename the two Grafana files, change the module
-      path, and regenerate `internal/db` instead of editing it:
-
-  ```bash
-  git grep -lzi menged -- . ':!backend/internal/db' ':!ROADMAP.md' |
-    xargs -0 sed -i 's/Menged/Kiflet/g; s/menged/kiflet/g; s/MENGED/KIFLET/g'
-  cd backend
-  git mv deployments/grafana/dashboards/menged.json \
-         deployments/grafana/dashboards/kiflet.json
-  git mv deployments/grafana/provisioning/dashboards/menged.yml \
-         deployments/grafana/provisioning/dashboards/kiflet.yml
-  go mod edit -module github.com/kiflet/kiflet
-  git grep -lz natnael-alemayehu/logistics -- '*.go' |
-    xargs -0 sed -i 's#github.com/natnael-alemayehu/logistics#github.com/kiflet/kiflet#g'
-  make sqlc
-  ```
-
-  Tried on a copy of `7320639`: it changes 604 lines in 126 files, leaves
-  no trace of the old name or path, and needs no `gofmt` fixes, since both
-  names have six letters. The result passes vet, the unit tests and the
-  integration tests. The end-to-end tests on staging were not run on it.
-- [ ] Add the migration that recreates `append_only()`.
-- [ ] Read the whole diff. The replace is blunt; the documents and the
-      landing page deserve a human eye.
-- [ ] `make vet`, `make test`, `make test-integration`, then
-      `make staging-up && make test-e2e`, and `node --check` on the four
-      JavaScript files.
-- [ ] Keep it out: add a step to CI's checks job that fails if the old name
-      comes back, `! git grep -qi menged -- . ':!CHANGELOG.md'`. In the
-      same pull request, delete this section and the line about the name
-      under "Where things stand", or the step fails on them.
-- [ ] On GitHub: create the organization, transfer the repository to it
-      (Settings, General, Transfer ownership), rename it `kiflet`, and
-      rewrite its description. GitHub forwards the old address, for the
-      website and for git, until another repository takes the old name. So
-      never create a new `logistics` under the old account.
-- [ ] In every clone:
-      `git remote set-url origin https://github.com/kiflet/kiflet.git`.
-      Renaming the local folder is optional. Editors and assistants that
-      keep settings per folder lose them unless those are moved as well.
-- [ ] Outside the code, once the checks above have passed: ask Ethio
-      telecom for the sender ID `Kiflet`, give telebirr and CBE Birr the
-      merchant name, and set up `support@` and `no-reply@` on the new
-      domain.
-- [ ] When part 2 writes `CHANGELOG.md`, its first entry says the product
-      was called Menged until this release.
+Then: a migration like `20261115000000_purge_setting`, so that a database
+made under the old name can still purge; `gofmt -w .` if the new name isn't
+six letters long; a `CHANGELOG.md` entry; and every test, staging included.
+The three things that hold state are the reason to settle this before the
+first customer: the purge setting in the database, the volumes Compose
+names after the project, and the database on each driver's phone.
 
 ### 2. The front door
 
@@ -229,7 +163,8 @@ What someone sees before reading any code.
 - [ ] `CONTRIBUTING.md`: how to run it, the test commands, and the rules now
       in `AGENTS.md`. Keep `AGENTS.md` as the short version of the same
       rules.
-- [ ] `CHANGELOG.md`, starting with this release.
+- [ ] `CHANGELOG.md` exists and records the rename. Add the rest of this
+      release to it as each part lands.
 - [ ] Move the long documents into `docs/`: `functional_requirements.md`,
       `logistics.md`, `E2E_TEST_GUIDE.md` and the audit. Leave `README.md`,
       `AGENTS.md`, `ROADMAP.md` and the files above at the root. Fix the
@@ -238,8 +173,8 @@ What someone sees before reading any code.
 - [ ] `README.md`: add two screenshots (dispatcher overview, driver app) and
       move the deployment detail (backups, staging, connecting providers,
       about 90 lines) to `docs/deploy.md`, leaving a short Deploy section.
-- [ ] On GitHub: fix the description's double space, add topics, delete the
-      ten merged branches, and protect `main` so CI must pass.
+- [ ] On GitHub: add topics, delete the merged branches, and protect
+      `main` so CI must pass.
 
 ### 3. Layout
 
@@ -314,7 +249,7 @@ Split by the sections the files already mark. Moves only, no edits.
 
 ### 7. Migrations
 
-There are 20 migration files. They tell the story of how the schema got
+There are 21 migration files. They tell the story of how the schema got
 here, including a table that was created and later dropped
 (`device_tokens`), and names like `logic_fixes` and `product_core` that
 mean nothing to a new reader.
@@ -343,8 +278,8 @@ mean nothing to a new reader.
 
 ### 9. Commit attribution
 
-GitHub lists Claude as a contributor because 28 of the 92 commits on `main`
-end with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
+GitHub lists Claude as a contributor because 28 commits on `main` end
+with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
 it from the list means removing those lines, which means rewriting history
 and replacing `main` on GitHub. Do it once, as the last step before the tag,
 when no pull request is open.
@@ -400,7 +335,7 @@ Steps:
 What it costs:
 
 - Without the mailmap, the 44 commits before 23 August keep their hashes
-  and the 48 after change. With it, all 92 change.
+  and every later one changes. With it, they all change.
 - Three commits made on GitHub (two README edits and the merge of pull
   request #2) lose their "Verified" badge; with the mailmap, the merge of
   pull request #1 does too.
@@ -451,6 +386,13 @@ In order. The first three can run side by side.
 
 ## Decided, and when to revisit
 
+- **The name Kiflet, for now** (2026-11-15). Revisit if one of the checks
+  in part 1 fails. Part 1 has the fallbacks and what a second rename takes.
+- **No GitHub organization yet** (2026-11-15). The repository is `kiflet`
+  under the personal account. Revisit when someone joins, or before the
+  name is used in public: the organization name `kiflet` was free on
+  2026-11-14 and nothing holds it. Moving there changes the module path
+  once more, which is one `go mod edit` and one `sed` over the imports.
 - **One codebase** (2026-11-14). Splitting into separate backend, web and
   mobile repositories was considered and set aside: about 96 routes render
   pages and 8 return JSON, so a separate web app means rebuilding the

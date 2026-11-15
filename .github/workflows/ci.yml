@@ -57,6 +57,15 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Shell scripts
         run: docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 scripts/*.sh
+      - name: The product's former name stays out
+        working-directory: .
+        run: |
+          # Only the changelog may say what Kiflet used to be called. The
+          # brackets keep this step from finding itself.
+          if git grep -nIi 'meng[e]d' -- . ':!CHANGELOG.md'; then
+            echo "Kiflet's former name is in the files above."
+            exit 1
+          fi
 
   integration:
     name: Integration tests

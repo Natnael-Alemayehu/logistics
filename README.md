@@ -404,3 +404,4 @@ Then:
 - [`logistics.md`](logistics.md): background on the problem
 - [`E2E_TEST_GUIDE.md`](E2E_TEST_GUIDE.md): a manual walkthrough of every flow
 - [`ROADMAP.md`](ROADMAP.md): what comes next, in order
+- [`CHANGELOG.md`](CHANGELOG.md): what changed in each release
