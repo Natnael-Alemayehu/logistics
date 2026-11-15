@@ -30,11 +30,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # All of it, for the secret scan.
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: make vet
       - run: make test
+      - name: golangci-lint, the JavaScript parsed, and a secret scan of the history
+        run: make lint
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)
@@ -89,9 +93,15 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       # Each run makes its own database on this server; the S3 tests start
       # their store with testcontainers.
-      - run: make test-integration
+      - run: make test-integration-cover
         env:
           TEST_DATABASE_URL: postgres://logistics:logistics@localhost:5432/postgres?sslmode=disable
+      - name: What they cover, in the run's summary
+        run: |
+          {
+            echo "### What the integration tests cover"
+            scripts/coverage-summary.sh coverage.out
+          } >> "$GITHUB_STEP_SUMMARY"
 
   e2e:
     name: Staging, end to end
