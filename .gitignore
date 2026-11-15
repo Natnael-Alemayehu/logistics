@@ -12,8 +12,9 @@ bin/
 # Output of the go coverage tool
 *.out
 
-# Dependency directories
-vendor/
+# Go's vendor directory. Anchored: a bare vendor/ also matched the map
+# library in internal/web/static/vendor and kept it out of git.
+/backend/vendor/
 
 # Go workspace file
 go.work
