@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -388,27 +387,6 @@ func (s *Server) staticFiles() http.Handler {
 		}
 		files.ServeHTTP(w, r)
 	})
-}
-
-// driverApp serves the driver PWA. Everything is revalidated on each load so
-// a deploy reaches drivers the next time they are online; the service worker
-// keeps the app usable when they are not.
-func (s *Server) driverApp(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/driver")
-	name = strings.TrimPrefix(name, "/")
-	if name == "" {
-		name = "index.html"
-	}
-	f := "driver/" + name
-	if _, err := fs.Stat(s.assets, f); err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-cache")
-	if name == "sw.js" {
-		w.Header().Set("Service-Worker-Allowed", "/driver/")
-	}
-	http.ServeFileFS(w, r, s.assets, f)
 }
 
 // assetVersion fingerprints the static files so their URLs change on deploy.

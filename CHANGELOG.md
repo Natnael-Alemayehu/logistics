@@ -4,6 +4,19 @@ What changed in each release, newest first.
 
 ## Unreleased
 
+### Changed
+
+- **The driver app updates as a whole.** Its service worker used to fetch
+  each file afresh whenever there was signal, so an update cut short on a
+  weak signal could leave old and new files mixed. Now the server lists
+  every file of the app with its SHA-256 in `/driver/build.json`. When the
+  app starts, and hourly while it runs, the worker downloads a new version
+  beside the old one and keeps it only once every file matches. The new
+  version takes over the next time the app starts, or sooner when the
+  driver comes back to the app with no form open. The app now starts from
+  the cache at once, signal or not, where before it waited up to three
+  seconds for the network.
+
 ### Added
 
 - **Backups leave the machine, encrypted** (audit O1). With `backup.env`

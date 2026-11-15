@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestDriverAppInABrowser: the driver app itself, in a browser the size of
@@ -58,6 +59,7 @@ func TestDriverAppInABrowser(t *testing.T) {
 
 	// No signal from here. The service worker holds the app by now.
 	c.waitFor("the service worker to take the page", `navigator.serviceWorker.controller`)
+	c.waitFor("the app to be installed whole, in the version staging serves", installed)
 	c.waitFor("the trip to be sent", outbox+` === 0`)
 	c.offline(true)
 	if c.is(`fetch("/healthz", { cache: "no-store" }).then(() => true, () => false)`) {
@@ -100,6 +102,29 @@ func TestDriverAppInABrowser(t *testing.T) {
 	if p := office.get("/app/shipments/" + shipmentID + "/media/0"); p.Status != http.StatusOK || !strings.HasPrefix(p.Body, "\x89PNG") {
 		t.Errorf("the signature drawn on the phone: status %d", p.Status)
 	}
+
+	// An update. Staging's files don't change, so the phone is made to hold
+	// an older version: a copy of its files, marked, in use. Started again,
+	// the app runs it and the worker downloads the version staging serves.
+	c.js(older, nil)
+	c.reload()
+	c.waitFor("the app to run the older version", `document.body && document.body.hasAttribute("data-older")`)
+	c.waitFor("the version staging serves to be downloaded and ready", `caches.open("kiflet-driver-state").then((s) => s.match("ready")).then((r) => !!r)`)
+	// It doesn't take over while a form is open, the driver coming back to
+	// the app or not.
+	c.js(`location.hash = "#/pin"`, nil)
+	c.waitFor("the form to change the PIN", `document.querySelectorAll('form input[type="password"]').length === 3`)
+	c.js(`document.dispatchEvent(new Event("visibilitychange"))`, nil)
+	time.Sleep(time.Second)
+	if !c.is(`document.body.hasAttribute("data-older")`) {
+		t.Fatal("the new version took over while a form was open")
+	}
+	// With none open, it does, and the app loads again in it.
+	c.js(`location.hash = "#/menu"`, nil)
+	c.waitFor("the menu", `!document.querySelector("form")`)
+	c.js(`document.dispatchEvent(new Event("visibilitychange"))`, nil)
+	c.waitFor("the new version to take over", `document.body && !document.body.hasAttribute("data-older") && document.readyState === "complete"`)
+	c.waitFor("only the new version to be kept", installed)
 }
 
 // What the app keeps on the phone, read from its database as promises: how
@@ -113,6 +138,38 @@ const outbox = `(await new Promise((done, fail) => {
 		count.onsuccess = () => { open.result.close(); done(count.result); };
 	};
 }))`
+
+// installed holds when the service worker keeps one version of the app,
+// the one the server serves now, with every file of it, and has it in use.
+const installed = `(async () => {
+	const build = await (await fetch("/driver/build.json", { cache: "no-store" })).json();
+	const state = await caches.open("kiflet-driver-state");
+	const current = await state.match("current").then((r) => r && r.text());
+	const versions = (await caches.keys()).filter((k) => k.startsWith("kiflet-driver-") && k !== "kiflet-driver-state");
+	if (current !== build.version || (await state.match("ready")) || versions.join() !== "kiflet-driver-" + build.version) return false;
+	const cache = await caches.open(versions[0]);
+	for (const path of Object.keys(build.files)) if (!(await cache.match(path))) return false;
+	return true;
+})()`
+
+// older makes the phone hold an older version of the app, in use in place
+// of the one it has: the same files, with the page marked data-older.
+const older = `(async () => {
+	const state = await caches.open("kiflet-driver-state");
+	const current = await state.match("current").then((r) => r.text());
+	const from = await caches.open("kiflet-driver-" + current);
+	const to = await caches.open("kiflet-driver-older");
+	for (const req of await from.keys()) {
+		const res = await from.match(req);
+		let body = await res.arrayBuffer();
+		if (new URL(req.url).pathname === "/driver/") {
+			body = new TextEncoder().encode(new TextDecoder().decode(body).replace("<body>", "<body data-older>"));
+		}
+		await to.put(req, new Response(body, { headers: res.headers }));
+	}
+	await state.put("current", new Response("older"));
+	await caches.delete("kiflet-driver-" + current);
+})()`
 
 // settled waits for what the app has already asked of its key-value store:
 // a transaction that writes to the store starts only once those before it
