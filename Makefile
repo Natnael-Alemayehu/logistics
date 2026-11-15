@@ -1,4 +1,5 @@
-.PHONY: help db db-stop run dev build migrate seed test test-integration test-e2e vet sqlc docker-build clean sandbox sandbox-keys run-sandbox \
+.PHONY: help db db-stop run dev build migrate seed test test-integration test-integration-cover test-e2e vet lint sqlc docker-build clean \
+	sandbox sandbox-keys run-sandbox \
 	staging-up staging-down staging-ca staging-logs
 
 DB_PORT ?= 5434
@@ -15,6 +16,9 @@ WITH_SANDBOX_ENV = set -a && . deployments/dev/sandbox.env && set +a &&
 STAGING = docker compose -f deployments/docker-compose.prod.yml -f deployments/staging/compose.yml \
 	--env-file deployments/staging/staging.env
 STAGING_CA = tmp/staging-ca.crt
+# The linters `make lint` runs. Dependabot doesn't see these.
+GOLANGCI_LINT_VERSION = v2.15.0
+GITLEAKS_VERSION = v8.30.1
 
 help:
 	@echo "Kiflet"
@@ -26,11 +30,14 @@ help:
 	@echo "  make run-sandbox        run the app with its providers pointed at the sandbox"
 	@echo "  make test               unit tests"
 	@echo "  make test-integration   end-to-end tests against the database"
+	@echo "  make test-integration-cover   the same, with what they cover of the service and web packages"
 	@echo "  make staging-up         run staging at https://kiflet.localhost:8443"
 	@echo "  make test-e2e           end-to-end tests against staging"
 	@echo "  make staging-down       remove staging and its data"
 	@echo "  make build              build bin/kiflet and bin/kiflet-sandbox"
 	@echo "  make migrate            apply migrations"
+	@echo "  make vet                go vet, the tests included"
+	@echo "  make lint               golangci-lint, the JavaScript parsed, and a secret scan of the history"
 	@echo "  make sqlc               regenerate internal/db from sqlc/queries"
 	@echo "  make docker-build       build the production image and the sandbox's"
 
@@ -74,6 +81,13 @@ test:
 test-integration:
 	TEST_DATABASE_URL=$(TEST_DATABASE_URL) go test -tags integration -count=1 ./tests/integration/
 
+# The same, measuring what they cover of internal/service and internal/web,
+# whose tests they are: coverage.out, and a line per package. CI runs this.
+test-integration-cover:
+	TEST_DATABASE_URL=$(TEST_DATABASE_URL) go test -tags integration -count=1 \
+		-coverpkg=./internal/service,./internal/web -coverprofile=coverage.out ./tests/integration/
+	@scripts/coverage-summary.sh coverage.out
+
 # Against staging (make staging-up), through Caddy as a browser and the
 # providers reach it.
 test-e2e:
@@ -100,6 +114,14 @@ vet:
 	go vet ./...
 	go vet -tags integration ./tests/...
 	go vet -tags e2e ./tests/...
+
+# golangci-lint over the Go (.golangci.yml); Node parsing each script of our
+# own, which browsers run as written, with no build step to catch a slip; and
+# gitleaks over the whole history (.gitleaks.toml).
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run
+	@for f in $$(git ls-files '*.js' ':!:*/vendor/*'); do node --check "$$f" || exit 1; done
+	go run github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION) git --redact --no-banner .
 
 sqlc:
 	sqlc generate -f sqlc/sqlc.yaml
