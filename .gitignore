@@ -15,8 +15,10 @@ coverage.html
 # Go's vendor directory
 /vendor/
 
-# Settings with secrets in them. .env.example is the template.
+# Settings with secrets in them. .env.example and backup.env.example are
+# the templates.
 .env
+/backup.env
 
 # Keys: the app's own secret (APP_SECRET_FILE), the sandbox's throwaway
 # telebirr pairs (`make sandbox-keys`), and the providers' for production,

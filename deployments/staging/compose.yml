@@ -146,20 +146,28 @@ services:
       timeout: 5s
       retries: 30
 
-  # Makes the app's bucket, once the filer has joined. Each call is given
-  # five seconds: a shell that reaches the master before the filer has
-  # joined can wait for ever, and the app waits for this to finish.
+  # Makes the buckets, the app's and the backups' (backup.env), once the
+  # filer has joined. Each call is given five seconds: a shell that reaches
+  # the master before the filer has joined can wait for ever, and the app
+  # waits for this to finish.
   s3-bucket:
     image: chrislusf/seaweedfs:3.97
     entrypoint: ["sh", "-c"]
     command:
       - |
         for i in $$(seq 30); do
-          echo 's3.bucket.list' | timeout 5 weed shell -master=s3:9333 2>/dev/null | grep -q '[[:space:]]kiflet[[:space:]]' && exit 0
-          echo 's3.bucket.create -name kiflet' | timeout 5 weed shell -master=s3:9333 >/dev/null 2>&1
+          have=$$(echo 's3.bucket.list' | timeout 5 weed shell -master=s3:9333 2>/dev/null)
+          missing=
+          for b in kiflet kiflet-backups; do
+            echo "$$have" | grep -q "[[:space:]]$$b[[:space:]]" || missing="$$missing $$b"
+          done
+          [ -z "$$missing" ] && exit 0
+          for b in $$missing; do
+            echo "s3.bucket.create -name $$b" | timeout 5 weed shell -master=s3:9333 >/dev/null 2>&1
+          done
           sleep 2
         done
-        echo 'no bucket' >&2
+        echo "no bucket:$$missing" >&2
         exit 1
     logging: *logging
     depends_on:

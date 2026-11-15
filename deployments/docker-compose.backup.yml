@@ -1,0 +1,32 @@
+# The container that copies backups to and from the bucket named in
+# backup.env: rclone, run by scripts/backup.sh and scripts/fetch-backup.sh.
+# It has a file of its own so that it runs without .env or the rest of the
+# stack, as on a new machine before anything is restored.
+#
+# The settings come from the scripts' environment, which they read from
+# backup.env, so the app never sees the bucket's keys.
+name: kiflet-backup
+
+services:
+  offsite:
+    image: rclone/rclone:1.75.2
+    environment:
+      # Settings from the environment only: no rclone.conf.
+      RCLONE_CONFIG: ""
+      RCLONE_CONFIG_OFFSITE_TYPE: s3
+      RCLONE_CONFIG_OFFSITE_PROVIDER: Other
+      RCLONE_CONFIG_OFFSITE_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      RCLONE_CONFIG_OFFSITE_REGION: ${BACKUP_S3_REGION:-}
+      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY:-}
+      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_KEY:-}
+      # The bucket is made with the provider's tools, so the keys need no
+      # right to make one.
+      RCLONE_CONFIG_OFFSITE_NO_CHECK_BUCKET: "true"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
