@@ -213,7 +213,7 @@ func (s *SupportService) tellPlatform(ctx context.Context, q *db.Queries, after 
 				fmt.Sprintf("%s of %s %s ticket #%d:", p.Name, p.TenantName, what, number),
 				quote(body),
 				"Answer it at "+s.cfg.BaseURL+"/app/platform/support/"+id.String()),
-			Purpose: "support",
+			Purpose: EmailSupport,
 		})
 	}
 	return nil
@@ -244,7 +244,7 @@ func (s *SupportService) tellCompany(ctx context.Context, q *db.Queries, after *
 				fmt.Sprintf("%s support answered ticket #%d:", s.cfg.AppName, t.Number),
 				quote(body),
 				"Reply at "+s.cfg.BaseURL+"/app/help/"+t.ID.String()),
-			Purpose: "support",
+			Purpose: EmailSupport,
 		})
 	}
 	return nil

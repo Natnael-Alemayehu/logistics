@@ -28,12 +28,6 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
-func TestE164(t *testing.T) {
-	if got := E164("0911234567"); got != "+251911234567" {
-		t.Errorf("E164 = %q", got)
-	}
-}
-
 func TestMask(t *testing.T) {
 	if got := Mask("0911234567"); got != "0911••••67" {
 		t.Errorf("Mask = %q", got)

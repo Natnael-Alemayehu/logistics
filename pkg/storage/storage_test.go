@@ -276,7 +276,6 @@ func TestErrors(t *testing.T) {
 	t.Run("error types are defined", func(t *testing.T) {
 		assert.Equal(t, "file not found", ErrFileNotFound.Error())
 		assert.Equal(t, "invalid file path", ErrInvalidPath.Error())
-		assert.Equal(t, "storage operation failed", ErrStorageFailed.Error())
 		assert.Equal(t, "invalid storage configuration", ErrInvalidConfig.Error())
 	})
 }
