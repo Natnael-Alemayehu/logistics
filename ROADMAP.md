@@ -4,18 +4,16 @@ What to do next, in order. Written on 2026-11-14 from a survey of the
 repository at `7320639`. Tick the boxes as work lands, and delete a section
 once it is done: this file should only ever hold what is still ahead.
 
-1. [Fix first](#fix-first-the-map-library-is-not-in-the-repository): the map
-   library is missing from git.
-2. [Decisions](#decisions-to-make-first) that shape the release.
-3. [The next release](#the-next-release-a-clean-baseline): a settled name,
+1. [Decisions](#decisions-to-make-first) that shape the release.
+2. [The next release](#the-next-release-a-clean-baseline): a settled name,
    a codebase anyone can open and follow, and commit attribution corrected.
-4. [After the release](#after-the-release-toward-the-first-paying-customer):
+3. [After the release](#after-the-release-toward-the-first-paying-customer):
    toward the first paying customer.
 
 ## Where things stand
 
 - One Go application in `backend/`: about 25,400 lines of Go and 12,900
-  lines of tests (209 unit tests, 95 integration tests, 8 end-to-end tests),
+  lines of tests (210 unit tests, 95 integration tests, 8 end-to-end tests),
   plus 53 templates and a 1,663-line driver app in plain JavaScript.
 - CI runs vet, unit tests, gofmt, `sqlc diff`, govulncheck, shellcheck, the
   integration tests and the end-to-end tests against staging.
@@ -27,38 +25,16 @@ once it is done: this file should only ever hold what is still ahead.
   checks and registrations that make the name final are still open: see
   [Finish the rename](#1-finish-the-rename).
 
-## Fix first: the map library is not in the repository
-
-**Maps are broken for everyone but the machine this was developed on.**
-Leaflet lives in `backend/internal/web/static/vendor/leaflet/`, but
-`.gitignore` has a `vendor/` rule, meant for Go's vendor directory, that
-also matches it. Leaflet has never been committed. A fresh clone has no
-`static/vendor/` at all, so CI, staging and any production image built from
-a clone serve a 404 for `leaflet.js`.
-
-Five pages load it (`dashboard`, `driver`, `shipment`, `shipment_form`,
-`track`), and so does the driver app's map. No test notices, because nothing
-requests the file.
-
-- [ ] Narrow the rule in `.gitignore` to `/backend/vendor/`.
-- [ ] Commit `static/vendor/leaflet/` (Leaflet 1.9.4 with its `LICENSE`,
-      188 KB).
-- [ ] Extend `TestDriverShellFilesExist` in `internal/web`: every path a
-      template passes to `asset`, and every `/static/…` path in the driver
-      app and its service worker, must exist in the embedded files.
-- [ ] Add a request for `leaflet.js` to the end-to-end tests, so staging
-      proves the built image has it.
-
 ## Decisions to make first
 
 Each of these changes what the release does. The recommendation is what the
-rest of this file assumes.
+rest of this file assumes. Two were settled on 2026-11-15 and are marked.
 
 | Decision | Recommendation | Why |
 |---|---|---|
-| Licence | Add a `LICENSE` saying all rights are reserved, or make the repository private | Public with no licence is the least clear state: nobody may use the code, and nothing says so. Open-sourcing can come later; it can't be undone. |
+| Licence | **Decided:** a `LICENSE` saying all rights are reserved; the repository stays public | Public with no licence is the least clear state: nobody may use the code, and nothing says so. Open-sourcing can come later; it can't be undone. |
 | Move everything out of `backend/` to the repository root | Yes | There is no frontend or mobile directory beside it any more, and the module path in `go.mod` has never included `backend`. |
-| Replace the 21 migrations with one baseline schema | Only if no database holds data that must be kept | See [Migrations](#7-migrations). |
+| Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#7-migrations). |
 | Twilio SMS adapter | Remove | Nothing uses it and the provider sandbox doesn't cover it. It comes back from git history if needed. |
 | Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#9-commit-attribution). |
 | Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
@@ -225,8 +201,8 @@ Split by the sections the files already mark. Moves only, no edits.
       split into ES modules, which need no build step: `store.js`
       (IndexedDB), `sync.js` (outbox and sync), `gps.js`, `text.js` (English
       and Amharic), `signature.js`, and one module per screen. Add the new
-      files to the service worker's `SHELL` list; the test from "Fix first"
-      then checks them.
+      files to the service worker's `SHELL` list;
+      `TestDriverShellFilesExist` then checks them.
 
 ### 6. Tests named for what they test
 

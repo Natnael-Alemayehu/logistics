@@ -139,6 +139,17 @@ func TestDriverApp(t *testing.T) {
 	if p := b.get("/api/v1/driver/config"); p.Status != http.StatusOK || json.Unmarshal([]byte(p.Body), &config) != nil {
 		t.Errorf("the driver app's configuration: status %d", p.Status)
 	}
+	// The map library is in the image. An ignore rule once kept it out of
+	// git, and every image built from a clone served a 404 for it.
+	for path, kind := range map[string]string{
+		"/static/vendor/leaflet/leaflet.js":             "javascript",
+		"/static/vendor/leaflet/leaflet.css":            "css",
+		"/static/vendor/leaflet/images/marker-icon.png": "png",
+	} {
+		if p := b.get(path); p.Status != http.StatusOK || !strings.Contains(p.Header.Get("Content-Type"), kind) {
+			t.Errorf("%s: status %d, type %q", path, p.Status, p.Header.Get("Content-Type"))
+		}
+	}
 }
 
 var (
