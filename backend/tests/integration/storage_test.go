@@ -20,9 +20,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/natnael-alemayehu/logistics/internal/geo"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/storage"
+	"github.com/natnael-alemayehu/kiflet/internal/geo"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/storage"
 )
 
 // seaweedfsImage is the version deployments/staging runs.
@@ -51,8 +51,8 @@ func objectStoreFor(t *testing.T) objectStore {
 
 func startObjectStore() (objectStore, error) {
 	ctx := context.Background()
-	s := objectStore{bucket: "menged", access: "integration-access", secret: "integration-secret-0123456789"}
-	identities := fmt.Sprintf(`{"identities": [{"name": "menged", "actions": ["Admin", "Read", "List", "Tagging", "Write"],
+	s := objectStore{bucket: "kiflet", access: "integration-access", secret: "integration-secret-0123456789"}
+	identities := fmt.Sprintf(`{"identities": [{"name": "kiflet", "actions": ["Admin", "Read", "List", "Tagging", "Write"],
 		"credentials": [{"accessKey": %q, "secretKey": %q}]}]}`, s.access, s.secret)
 	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{

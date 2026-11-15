@@ -12,10 +12,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/model"
-	"github.com/natnael-alemayehu/logistics/internal/phone"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/phone"
+	"github.com/natnael-alemayehu/kiflet/pkg/payments"
 )
 
 // BillingService runs subscriptions (FR-043 to FR-045): choosing and changing
@@ -1075,7 +1075,7 @@ func (s *BillingService) PaymentPrompt(ctx context.Context, reference string) (d
 	return pay, prov, nil
 }
 
-// Settle applies a provider's report on a payment Menged started. Reports
+// Settle applies a provider's report on a payment Kiflet started. Reports
 // repeat and arrive late, so this is idempotent: a payment that ended stays
 // as it is, except that money arriving after the checkout expired still
 // counts. Money for an invoice already paid, or cancelled meanwhile, is

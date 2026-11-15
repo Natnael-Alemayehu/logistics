@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/pkg/metrics"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
+	"github.com/natnael-alemayehu/kiflet/pkg/metrics"
 )
 
 // HealthService reports how the system is running, for the platform admin

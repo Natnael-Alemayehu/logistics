@@ -35,11 +35,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/natnael-alemayehu/logistics/internal/app"
-	"github.com/natnael-alemayehu/logistics/internal/config"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/migrations"
-	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/internal/app"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/migrations"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
 )
 
 var pool *pgxpool.Pool
@@ -75,7 +75,7 @@ func database(ctx context.Context) (string, func(), error) {
 		if err != nil {
 			return "", nil, err
 		}
-		name := fmt.Sprintf("menged_it_%d", time.Now().UnixNano())
+		name := fmt.Sprintf("kiflet_it_%d", time.Now().UnixNano())
 		if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 			admin.Close(ctx)
 			return "", nil, err
@@ -95,7 +95,7 @@ func database(ctx context.Context) (string, func(), error) {
 	}
 
 	c, err := postgres.Run(ctx, "postgis/postgis:15-3.3-alpine",
-		postgres.WithDatabase("menged"), postgres.WithUsername("menged"), postgres.WithPassword("menged"),
+		postgres.WithDatabase("kiflet"), postgres.WithUsername("kiflet"), postgres.WithPassword("kiflet"),
 		testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(2*time.Minute)),
 	)
 	if err != nil {
@@ -160,11 +160,11 @@ func newEnv(t *testing.T, options ...func(*setup)) *env {
 	base := "http://" + ts.Listener.Addr().String()
 	tz, _ := time.LoadLocation("Africa/Addis_Ababa")
 	cfg := &config.Config{
-		Port: "0", PublicURL: base, AppName: "Menged", Timezone: tz, Environment: "test",
+		Port: "0", PublicURL: base, AppName: "Kiflet", Timezone: tz, Environment: "test",
 		Secret: []byte("integration-test-secret-0123456789abcdef"), SMSProvider: "mock", SMSNumber: "6060", MailProvider: "mock",
 		StorageType: "local", StoragePath: t.TempDir(), MetricsToken: metricsToken, PaymentProvider: "mock",
 		CBEBirr:      config.CBEBirrSettings{MerchantID: cbeMerchant, CallbackUsername: cbeUser, CallbackPassword: cbePassword},
-		SupportEmail: "support@menged.test", BankDetails: "Test Bank, account 123",
+		SupportEmail: "support@kiflet.test", BankDetails: "Test Bank, account 123",
 	}
 	s := &setup{base: base, cfg: cfg}
 	for _, o := range options {

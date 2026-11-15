@@ -10,11 +10,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/geo"
-	"github.com/natnael-alemayehu/logistics/internal/model"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/websocket"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/geo"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/websocket"
 )
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {

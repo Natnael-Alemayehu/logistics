@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/config"
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 func testServer(t *testing.T) *Server {

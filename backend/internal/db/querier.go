@@ -260,7 +260,7 @@ type Querier interface {
 	// yet alerted for that pickup time, oldest first.
 	ListPickupOverdue(ctx context.Context, dueBefore pgtype.Timestamptz) ([]ListPickupOverdueRow, error)
 	ListPlatformAdmins(ctx context.Context) ([]ListPlatformAdminsRow, error)
-	// The people running Menged: every company's audit log, support tickets
+	// The people running Kiflet: every company's audit log, support tickets
 	// and the background jobs (FR-042 AC-042.7, FR-049).
 	// A company's own rows and the platform's actions on it.
 	ListPlatformAudit(ctx context.Context, arg ListPlatformAuditParams) ([]ListPlatformAuditRow, error)

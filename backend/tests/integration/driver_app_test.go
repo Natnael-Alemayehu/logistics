@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 // TestDriverSettingsFollowTheDriver: what the driver sets on one phone is

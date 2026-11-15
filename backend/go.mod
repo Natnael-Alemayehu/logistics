@@ -1,4 +1,4 @@
-module github.com/natnael-alemayehu/logistics
+module github.com/natnael-alemayehu/kiflet
 
 go 1.26.0
 

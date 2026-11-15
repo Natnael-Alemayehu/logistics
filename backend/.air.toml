@@ -4,8 +4,8 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = ["serve"]
-  entrypoint = "./tmp/menged"
-  cmd = "go build -o ./tmp/menged ./cmd/server"
+  entrypoint = "./tmp/kiflet"
+  cmd = "go build -o ./tmp/kiflet ./cmd/server"
   delay = 1000
   # Templates and static files are read from disk (DEV_RELOAD), so only Go
   # changes need a rebuild.

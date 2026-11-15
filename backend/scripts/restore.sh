@@ -3,8 +3,8 @@
 # volume when the files archive is given. Both replace what is there now. The
 # app is stopped meanwhile.
 #
-#   scripts/restore.sh /var/backups/menged/menged_20261104_020000.dump \
-#     /var/backups/menged/menged_20261104_020000_files.tar.gz
+#   scripts/restore.sh /var/backups/kiflet/kiflet_20261104_020000.dump \
+#     /var/backups/kiflet/kiflet_20261104_020000_files.tar.gz
 #
 # COMPOSE_FILE and ENV_FILE choose the stack, as for backup.sh. It asks for
 # the stack's name before replacing anything; CONFIRM=yes skips the question.

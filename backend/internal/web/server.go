@@ -19,11 +19,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
-	"github.com/natnael-alemayehu/logistics/internal/config"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/metrics"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
-	"github.com/natnael-alemayehu/logistics/pkg/websocket"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/metrics"
+	"github.com/natnael-alemayehu/kiflet/pkg/payments"
+	"github.com/natnael-alemayehu/kiflet/pkg/websocket"
 )
 
 //go:embed templates static

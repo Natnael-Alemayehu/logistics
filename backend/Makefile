@@ -15,7 +15,7 @@ STAGING = docker compose -f deployments/docker-compose.prod.yml -f deployments/s
 STAGING_CA = tmp/staging-ca.crt
 
 help:
-	@echo "Menged"
+	@echo "Kiflet"
 	@echo "  make db                 start the development database (port $(DB_PORT))"
 	@echo "  make seed               migrate and load the demo company"
 	@echo "  make run                run the app on :8080, templates reloaded from disk"
@@ -24,10 +24,10 @@ help:
 	@echo "  make run-sandbox        run the app with its providers pointed at the sandbox"
 	@echo "  make test               unit tests"
 	@echo "  make test-integration   end-to-end tests against the database"
-	@echo "  make staging-up         run staging at https://menged.localhost:8443"
+	@echo "  make staging-up         run staging at https://kiflet.localhost:8443"
 	@echo "  make test-e2e           end-to-end tests against staging"
 	@echo "  make staging-down       remove staging and its data"
-	@echo "  make build              build bin/menged and bin/menged-sandbox"
+	@echo "  make build              build bin/kiflet and bin/kiflet-sandbox"
 	@echo "  make migrate            apply migrations"
 	@echo "  make sqlc               regenerate internal/db from sqlc/queries"
 	@echo "  make docker-build       build the production image and the sandbox's"
@@ -57,8 +57,8 @@ sandbox-keys:
 	@go run ./cmd/sandbox keys
 
 build:
-	CGO_ENABLED=0 go build -trimpath -o bin/menged ./cmd/server
-	CGO_ENABLED=0 go build -trimpath -o bin/menged-sandbox ./cmd/sandbox
+	CGO_ENABLED=0 go build -trimpath -o bin/kiflet ./cmd/server
+	CGO_ENABLED=0 go build -trimpath -o bin/kiflet-sandbox ./cmd/sandbox
 
 migrate:
 	go run ./cmd/server migrate
@@ -80,8 +80,8 @@ test-e2e:
 staging-up:
 	$(STAGING) up -d --build --wait
 	@$(MAKE) --no-print-directory staging-ca
-	@echo "Staging is up: https://menged.localhost:8443, the sandbox at https://sandbox.menged.localhost:8443"
-	@echo "and email at https://mail.menged.localhost:8443. Caddy's root certificate is $(STAGING_CA)."
+	@echo "Staging is up: https://kiflet.localhost:8443, the sandbox at https://sandbox.kiflet.localhost:8443"
+	@echo "and email at https://mail.kiflet.localhost:8443. Caddy's root certificate is $(STAGING_CA)."
 
 staging-down:
 	$(STAGING) down --volumes --remove-orphans
@@ -103,8 +103,8 @@ sqlc:
 	sqlc generate -f sqlc/sqlc.yaml
 
 docker-build:
-	docker build -t menged:latest .
-	docker build --target sandbox -t menged-sandbox:latest .
+	docker build -t kiflet:latest .
+	docker build --target sandbox -t kiflet-sandbox:latest .
 
 clean:
 	rm -rf bin tmp

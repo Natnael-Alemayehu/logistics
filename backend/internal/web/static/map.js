@@ -1,7 +1,7 @@
 // Maps: the fleet map on the overview, a shipment's route, a driver's last
 // position, the public tracking map and the drop-off pin picker. Data comes
 // from a JSON <script> next to each map; live positions arrive as
-// "menged:live" events from app.js.
+// "kiflet:live" events from app.js.
 (function () {
   "use strict";
   if (!window.L) return;
@@ -84,7 +84,7 @@
   }
 
   function onLive(fn) {
-    window.addEventListener("menged:live", (e) => {
+    window.addEventListener("kiflet:live", (e) => {
       if (e.detail && e.detail.type === "location") fn(e.detail.data);
     });
   }

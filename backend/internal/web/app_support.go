@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 // ---------------------------------------------------------------------------
-// Help: a company's questions to the people running Menged, and the
+// Help: a company's questions to the people running Kiflet, and the
 // platform's inbox for them (AC-049.5)
 // ---------------------------------------------------------------------------
 

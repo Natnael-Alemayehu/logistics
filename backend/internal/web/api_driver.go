@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/model"
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 type codeLabel struct {
