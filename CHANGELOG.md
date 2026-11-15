@@ -17,6 +17,12 @@ What changed in each release, newest first.
   the signal gone, a delivery form that survives a reload and a delivery
   sent once the signal is back. `make test-e2e` needs Chrome or Chromium
   for it, and skips it without one, except in CI.
+- **More checks in CI.** `make lint` runs golangci-lint (errcheck,
+  ineffassign, staticcheck and unused), parses every script with Node, and
+  scans the whole history for secrets with gitleaks; CI runs it on every
+  pull request. The integration job adds to each run's summary how much of
+  `internal/service` and `internal/web` its tests cover. Dependabot
+  proposes updates each week for the Go modules, the Actions and the images.
 
 ### Changed
 
@@ -46,6 +52,10 @@ What changed in each release, newest first.
 
 ### Fixed
 
+- **A photo stored on disk is only kept whole.** Local storage ignored the
+  error from closing a file it had just written, which is where a full disk
+  can show up, and could keep half a photo. It now reports the error and
+  removes the file.
 - **Staging no longer hangs on start.** The job that makes the stand-in S3
   bucket could wait for ever on one call, holding up the app and CI. Each
   call now has five seconds, and `make staging-up` gives up after ten

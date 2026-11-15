@@ -17,8 +17,10 @@ once it is done: this file should only ever hold what is still ahead.
   tests, one of them the driver app in headless Chrome), 53 templates, a
   1,663-line driver app in plain JavaScript, and the schema in one
   migration.
-- CI runs vet, unit tests, gofmt, `sqlc diff`, govulncheck, shellcheck, the
-  integration tests and the end-to-end tests against staging.
+- CI runs vet, golangci-lint, unit tests, gofmt, `sqlc diff`, govulncheck,
+  shellcheck, `node --check`, a secret scan of the whole history, the
+  integration tests and the end-to-end tests against staging. Dependabot
+  proposes updates weekly.
 - The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O1, O3,
   O4 and O6.
 - The repository is public and all rights are reserved (`LICENSE`). It has
@@ -35,7 +37,7 @@ rest of this file assumes; none of them is settled yet.
 
 | Decision | Recommendation | Why |
 |---|---|---|
-| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#5-commit-attribution). |
+| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#4-commit-attribution). |
 | Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
 | Split the driver app's script into modules | Not before its updates are made all-or-nothing; after the release is fine | A half-finished update would otherwise leave a phone with mixed versions. See [The driver app's one large file](#3-the-driver-apps-one-large-file). |
 
@@ -167,24 +169,7 @@ without signal, which is when a driver needs it.
       requests. `TestDriverAppInABrowser` in the end-to-end suite then shows
       the app still signs in, works offline and keeps its drafts.
 
-### 4. Checks that keep it clean
-
-- [ ] golangci-lint in CI with `staticcheck`, `unused`, `errcheck` and
-      `ineffassign`. Fix or explicitly excuse what the first run reports.
-      The dead code already removed was found by searching for names
-      nothing mentions, which misses a name that is used elsewhere for
-      something else, so `unused` will probably find more.
-- [ ] `node --check` on every JavaScript file in CI. It was run by hand for
-      each fix so far.
-- [ ] A secret scan (gitleaks) over the whole history, once now and then in
-      CI. A filename search of the history found only example files, but
-      contents weren't scanned.
-- [ ] Dependabot for Go modules, GitHub Actions and the Docker base images.
-- [ ] Report integration-test coverage of `internal/service` and
-      `internal/web`. Unit coverage shows 5.8% and 4.2% for them only
-      because their tests are the integration tests.
-
-### 5. Commit attribution
+### 4. Commit attribution
 
 GitHub lists Claude as a contributor because 28 commits on `main` end
 with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
@@ -250,7 +235,7 @@ What it costs:
 - The old commits stay reachable through pull request #2's page. Only
   GitHub Support can remove them, and the contributor list doesn't need it.
 
-### 6. Tag it
+### 5. Tag it
 
 - [ ] `CHANGELOG.md` entry, tag `v0.9.0` on the rewritten `main`, and a
       GitHub release. Tag after the rewrite, never before.
@@ -309,6 +294,6 @@ In order. The first three can run side by side.
 
 - **Moving `pkg/` under `internal/`.** Nothing outside this module imports
   it, but the move touches every file for no change a reader would feel.
-- **Rewriting old commit messages** beyond the lines in part 5. The early
+- **Rewriting old commit messages** beyond the lines in part 4. The early
   history is rough, and it is still the history. That includes the
   product's first name: old commits keep it.
