@@ -1,7 +1,11 @@
 # Kiflet
 
 **Shipment tracking and proof of delivery for Ethiopian trucking companies.**
-መንገድ means "road".
+A *kiflet* (ቅፍለት) is a caravan.
+
+| The dispatcher's overview | The driver app |
+|---|---|
+| <img src="docs/images/dashboard.png" alt="The overview: counts of active, delayed and waiting shipments, a live map of the trucks between Addis Ababa and Djibouti, and the alerts that need attention" width="640"> | <img src="docs/images/driver-app.png" alt="The driver app on a phone: two active shipments with their status, route and due time" width="260"> |
 
 A dispatcher books a load and assigns a driver. The driver's phone keeps
 working with no signal: status changes, signatures, photos and GPS positions
@@ -253,7 +257,15 @@ container instead. The S3 tests start a SeaweedFS container.
 
 `make staging-up && make test-e2e` tests the production images and compose
 file over HTTPS, with the providers played by the sandbox (see
-[Staging](#staging)).
+[Staging](docs/deploy.md#staging)).
+
+### CI
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to main: vet,
+unit tests, gofmt, `sqlc diff`, govulncheck and shellcheck; the integration
+tests against a PostGIS service; and staging, with the end-to-end tests. Go
+fixes security issues only in its two newest releases, so CI and the
+Dockerfile stay on the newer one, together.
 
 ## Deploy
 
@@ -266,142 +278,20 @@ cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_* and SMTP_* settings, BI
 docker compose -f deployments/docker-compose.prod.yml --env-file .env up -d --build --wait
 ```
 
-In production the app refuses to start without an `https://` address (the
-compose file sets `PUBLIC_URL` from `DOMAIN`), with a stand-in provider or
-`SANDBOX_URL` unless `ALLOW_MOCK_PROVIDERS=true`, or with a provider whose
-settings or key files are missing, and says which. The database password is
-passed to the app on its own, not in a URL, so it may contain any character.
-Provider keys, such as telebirr's key files, go in `deployments/secrets/`,
-which the app sees at `/run/secrets` (see the README there). Signatures and
-photos go to the `app-data` volume, or to S3 or another S3-compatible store
-with `STORAGE_TYPE=s3`.
-
-Each container has a read-only root filesystem where it can, no Linux
-capabilities beyond what it needs and no privilege escalation, and its logs
-rotate. When the app is stopped or replaced, it stops taking requests and
-gives those in progress, and the text or email being sent, 30 seconds to
-finish. Messages it hadn't started are left for the next start to send at
-once.
-
-Run one app container per database. Live updates (the WebSocket hub) and
-rate limits are kept in memory, so a second instance would split them. The
-background jobs take a Postgres advisory lock, so they never run twice.
-
-Add `--profile monitoring` for Prometheus and Grafana: set `METRICS_TOKEN`, and
-put the same value in `deployments/prometheus/metrics_token`. Grafana listens
-on `127.0.0.1:3000` (reach it over an SSH tunnel) and comes with a **Kiflet**
-dashboard: requests, errors and response times by route, driver sync, texts
-and emails sent and waiting, background jobs, and memory. `/metrics` labels
-requests by route pattern (`/app/shipments/{id}`), never by company or ID.
-
-The maps' satellite view uses Esri World Imagery, which needs an ArcGIS
-licence for commercial use. Point `MAP_SATELLITE_URL` at your own imagery
-provider, or set it to `off`.
-
-Point your SMS provider's webhooks at `https://DOMAIN/api/v1/sms/inbound`
-(texts from phones) and `https://DOMAIN/api/v1/sms/status` (delivery
-reports), with `SMS_INBOUND_SECRET` in an `X-Webhook-Secret` header or a
-`secret` parameter.
-
-Health checks: `/healthz` (process up) and `/readyz` (database reachable).
-
-### Backups
-
-```bash
-scripts/backup.sh                                   # from backend/
-scripts/restore.sh <kiflet_….dump> [<kiflet_…_files.tar.gz>]
-```
-
-`backup.sh` writes the database (`pg_dump`) and the app's volume (photos and
-signatures kept on disk, and the app secret that sessions and codes depend
-on) to `/var/backups/kiflet` (`BACKUP_DIR`), readable by their owner only,
-and deletes those older than two weeks (`KEEP_DAYS`). Run it nightly and copy
-the backups off the machine:
-
-```
-15 2 * * *  cd /srv/kiflet/backend && scripts/backup.sh >>/var/log/kiflet-backup.log 2>&1
-```
-
-Photos kept in S3 aren't included: use the store's versioning or
-replication. `restore.sh` asks for the stack's name, then stops the app,
-replaces the database (and the files, if given) with the backup's, and starts
-it again. `make test-e2e` backs up staging and restores it, so both scripts
-are tested.
-
-### Staging
-
-Production's compose file and images, with `deployments/staging/compose.yml`
-standing in for the outside world: the provider sandbox for Ethio telecom,
-telebirr and CBE Birr (the app runs its real adapters, and the sandbox calls
-back over HTTPS through Caddy), Mailpit for SMTP, SeaweedFS for S3, and
-Caddy's own certificate authority. Prometheus and Grafana are on.
-
-```bash
-make staging-up     # from backend/: build, start, and copy Caddy's root certificate to tmp/staging-ca.crt
-make test-e2e       # the end-to-end tests, against staging
-make staging-down   # remove staging and its data
-```
-
-| | |
-|---|---|
-| The app | https://kiflet.localhost:8443 |
-| The sandbox: phones, wallets and faults | https://sandbox.kiflet.localhost:8443 |
-| Email sent (Mailpit) | https://mail.kiflet.localhost:8443 |
-| Grafana, as `admin` / `staging-grafana-password` | https://grafana.kiflet.localhost:8443 |
-
-It listens on 127.0.0.1 only, and `*.localhost` names reach this machine
-without DNS. Trust `tmp/staging-ca.crt` in the browser, or give it to curl
-with `--cacert`. `make staging-logs` follows the logs.
-
-The end-to-end tests (`tests/e2e/`) reach staging as browsers and the
-providers do. A company signs up with the code from the sandbox's phone and
-the link from Mailpit. A driver works a load in the driver app, with its
-photo stored in S3 and the dashboard told over a WebSocket. Invoices are
-paid with telebirr and CBE Birr. The tests also check the HTTPS edge (the
-redirect, the headers, and that a client can't claim another address) and
-the figures in Prometheus and Grafana, and last, take a backup and restore
-it.
-
-### CI
-
-`.github/workflows/ci.yml` runs on pull requests and pushes to main: vet,
-unit tests, gofmt, `sqlc diff`, govulncheck and shellcheck; the integration
-tests against a PostGIS service; and staging, with the end-to-end tests. Go
-fixes security issues only in its two newest releases, so CI and the
-Dockerfile stay on the newer one, together.
-
-### Connecting the real providers
-
-The adapters follow what each provider publishes, and the sandbox plays the
-same contract. What to settle when the credentials arrive:
-
-| Provider | Contract | Settle at onboarding |
-|---|---|---|
-| telebirr | H5 C2B web checkout as published: token, preOrder, checkout, notify, queryOrder | the signature (RSA-PSS with SHA-256 is assumed, as in the maintained SDKs), the `order_status` values queryOrder returns (one table in `pkg/payments/telebirr.go`), and whether notifications are retried |
-| CBE Birr | none published: pay by reference, with query, validation and confirmation callbacks behind Basic authentication, as in `pkg/payments/cbebirr.go` | the field names, result codes and login, or adapt that file to CBE's |
-| Ethio telecom | none published: token, send, delivery reports and inbound texts, as in `pkg/sms/ethiotelecom.go` | the whole contract |
-
-Then:
-
-1. Set the providers' settings (see `.env.example`): telebirr's API and
-   checkout URLs, app and merchant IDs, app secret and the two key files;
-   CBE Birr's merchant ID and callback login; Ethio telecom's API URL, key
-   and sender ID. Unset `SANDBOX_URL`.
-2. Give the providers the app's addresses: telebirr is sent
-   `https://DOMAIN/api/v1/payments/telebirr/notify` with each order; CBE
-   Birr calls `https://DOMAIN/api/v1/payments/cbebirr/query`, `/validation`
-   and `/confirmation`; Ethio telecom posts to the SMS webhooks above.
-3. Where a provider's contract differs from ours, change the adapter and the
-   sandbox's side (`internal/sandbox/sms.go`, `telebirr.go`, `cbebirr.go`)
-   together, and run `make test-integration`: its sandbox tests run the real
-   adapters against the sandbox.
-4. Pay a small invoice with each provider, and send a text to a driver's
-   phone, before opening sign-ups.
+[`docs/deploy.md`](docs/deploy.md) has the rest: what production refuses to
+start without, monitoring, backups and restoring them, staging, and
+connecting telebirr, CBE Birr and Ethio telecom.
 
 ## Documents
 
-- [`functional_requirements.md`](functional_requirements.md): the original requirements; Appendix D lists where the product deliberately differs
-- [`logistics.md`](logistics.md): background on the problem
-- [`E2E_TEST_GUIDE.md`](E2E_TEST_GUIDE.md): a manual walkthrough of every flow
+- [`docs/deploy.md`](docs/deploy.md): running it in production, backups, staging and connecting the providers
+- [`docs/functional_requirements.md`](docs/functional_requirements.md): the original requirements; Appendix D lists where the product deliberately differs
+- [`docs/logistics.md`](docs/logistics.md): background on the problem
+- [`docs/E2E_TEST_GUIDE.md`](docs/E2E_TEST_GUIDE.md): a manual walkthrough of every flow
+- [`docs/audit-2026-11.md`](docs/audit-2026-11.md): the audit of November 2026, with what was fixed and what is still open
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): how to work on it, and the rules the code follows
+- [`SECURITY.md`](SECURITY.md): how to report a vulnerability
 - [`ROADMAP.md`](ROADMAP.md): what comes next, in order
 - [`CHANGELOG.md`](CHANGELOG.md): what changed in each release
+
+Kiflet is not open source. [`LICENSE`](LICENSE) says what that means.
