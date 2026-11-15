@@ -1,4 +1,4 @@
-// Command server runs Menged: the dispatcher dashboard, public tracking, the
+// Command server runs Kiflet: the dispatcher dashboard, public tracking, the
 // driver app and its API, and the background jobs, in one process.
 //
 //	server                      serve (the default)
@@ -23,9 +23,9 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/rs/zerolog"
 
-	"github.com/natnael-alemayehu/logistics/internal/app"
-	"github.com/natnael-alemayehu/logistics/internal/config"
-	"github.com/natnael-alemayehu/logistics/migrations"
+	"github.com/natnael-alemayehu/kiflet/internal/app"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
+	"github.com/natnael-alemayehu/kiflet/migrations"
 )
 
 func main() {

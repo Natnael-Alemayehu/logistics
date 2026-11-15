@@ -1,7 +1,7 @@
 package sandbox
 
-// Ethio telecom's side of Menged's SMS adapter (pkg/sms/ethiotelecom.go).
-// Ethio telecom publishes no HTTP API, so this is the contract as Menged
+// Ethio telecom's side of Kiflet's SMS adapter (pkg/sms/ethiotelecom.go).
+// Ethio telecom publishes no HTTP API, so this is the contract as Kiflet
 // defines it:
 //
 //	POST /ethiotelecom/auth/token  {"api_key"} → {"token", "expires_in"}
@@ -11,10 +11,10 @@ package sandbox
 //
 // A refused token is answered 401; a text the gateway will never take, 400
 // with status "rejected"; a gateway in trouble, 503. The gateway calls
-// Menged back, with the shared secret in X-Webhook-Secret:
+// Kiflet back, with the shared secret in X-Webhook-Secret:
 //
-//	POST {Menged}/api/v1/sms/status   {"message_id", "status": "delivered" or "undelivered", "error", "done_at"}
-//	POST {Menged}/api/v1/sms/inbound  {"message_id", "from": "+2519…", "to": <short code>, "message", "received_at"}
+//	POST {Kiflet}/api/v1/sms/status   {"message_id", "status": "delivered" or "undelivered", "error", "done_at"}
+//	POST {Kiflet}/api/v1/sms/inbound  {"message_id", "from": "+2519…", "to": <short code>, "message", "received_at"}
 
 import (
 	"encoding/json"
@@ -25,7 +25,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
 )
 
 // phone is a phone the sandbox plays: its texts and its two wallets.
@@ -40,14 +40,14 @@ type phone struct {
 type text struct {
 	ID string    `json:"id"`
 	At time.Time `json:"at"`
-	// From is who sent it: Menged's sender ID, telebirr (127), CBE Birr, or
+	// From is who sent it: Kiflet's sender ID, telebirr (127), CBE Birr, or
 	// this phone. To is the short code a text from this phone went to.
 	From string `json:"from"`
 	To   string `json:"to,omitempty"`
 	Mine bool   `json:"mine"`
 	Body string `json:"body"`
 	// State is what became of it: for a text to the phone, whether it
-	// arrived; for one from it, what Menged answered. Report is what Menged
+	// arrived; for one from it, what Kiflet answered. Report is what Kiflet
 	// made of the delivery report.
 	State  string `json:"state,omitempty"`
 	Report string `json:"report,omitempty"`
@@ -161,7 +161,7 @@ func (s *Sandbox) smsSend(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-t.C:
 		case <-r.Context().Done():
-			note(r, "Menged stopped waiting for the slow gateway (fault): nothing was sent")
+			note(r, "Kiflet stopped waiting for the slow gateway (fault): nothing was sent")
 			return
 		case <-s.ctx.Done():
 			return
@@ -218,7 +218,7 @@ func (s *Sandbox) smsSend(w http.ResponseWriter, r *http.Request) {
 	s.later(s.cfg.Timing.Report, func() { s.deliveryReport(number, id) })
 }
 
-// deliveryReport tells Menged a text arrived, or, when the fault says the
+// deliveryReport tells Kiflet a text arrived, or, when the fault says the
 // phone can't be reached, that it didn't.
 func (s *Sandbox) deliveryReport(number, id string) {
 	f := s.currentFaults()
@@ -245,10 +245,10 @@ func (s *Sandbox) deliveryReport(number, id string) {
 	s.deliver(c)
 }
 
-// textMenged sends a text from a phone to Menged's short code, as the
-// gateway forwards it. It is sent once: Menged acts on every text it is
+// textKiflet sends a text from a phone to Kiflet's short code, as the
+// gateway forwards it. It is sent once: Kiflet acts on every text it is
 // given, so a gateway resending one would repeat what it says.
-func (s *Sandbox) textMenged(number, body string) (text, answer) {
+func (s *Sandbox) textKiflet(number, body string) (text, answer) {
 	id := "MO" + random(upperChars, 14)
 	payload := mustJSON(map[string]string{
 		"message_id": id, "from": e164(number), "to": s.cfg.SMS.Number, "message": body,
@@ -271,7 +271,7 @@ func (s *Sandbox) textMenged(number, body string) (text, answer) {
 	return t, a
 }
 
-// webhookHeader is the header of the gateway's calls to Menged.
+// webhookHeader is the header of the gateway's calls to Kiflet.
 func (s *Sandbox) webhookHeader() http.Header {
 	h := jsonHeader()
 	h.Set("X-Webhook-Secret", s.cfg.SMS.Secret)
@@ -302,7 +302,7 @@ func (s *Sandbox) validToken(tokens map[string]time.Time, token string) bool {
 }
 
 // expireTokens ends every token issued, as a gateway may at any time, so
-// that Menged's next call is refused and it must sign in again.
+// that Kiflet's next call is refused and it must sign in again.
 func (s *Sandbox) expireTokens() {
 	s.mu.Lock()
 	clear(s.smsTokens)

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
 )
 
 // fakeSMTP is just enough of a mail server to receive one message.
@@ -77,20 +77,20 @@ func startFakeSMTP(t *testing.T) *fakeSMTP {
 
 func TestSMTPDeliversUTF8Text(t *testing.T) {
 	srv := startFakeSMTP(t)
-	s, err := New(Config{Provider: "smtp", SMTP: SMTP{Addr: srv.addr, Username: "u", Password: "p", From: "Menged <no-reply@menged.et>"}})
+	s, err := New(Config{Provider: "smtp", SMTP: SMTP{Addr: srv.addr, Username: "u", Password: "p", From: "Kiflet <no-reply@kiflet.et>"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	link := "https://menged.example.et/reset/" + strings.Repeat("A", 80)
+	link := "https://kiflet.example.et/reset/" + strings.Repeat("A", 80)
 	err = s.Send(ctx, Message{To: "Almaz <almaz@example.et>", Subject: "ሰላም: reset your password", Text: "Hello,\nOpen " + link + "\n"})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 
 	r := <-srv.got
-	if r.from != "no-reply@menged.et" || r.to != "almaz@example.et" {
+	if r.from != "no-reply@kiflet.et" || r.to != "almaz@example.et" {
 		t.Errorf("envelope from %q to %q", r.from, r.to)
 	}
 	head, body, _ := strings.Cut(r.data, "\n\n")

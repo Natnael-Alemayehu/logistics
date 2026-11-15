@@ -122,7 +122,7 @@ type TelebirrSettings struct {
 }
 
 // CBEBirrSettings are a CBE Birr merchant's: the ID payers pay to, and the
-// login CBE Birr's servers use when they call Menged about a payment.
+// login CBE Birr's servers use when they call Kiflet about a payment.
 type CBEBirrSettings struct {
 	MerchantID       string
 	CallbackUsername string
@@ -135,7 +135,7 @@ func Load() (*Config, error) {
 		Port:                    getEnv("PORT", "8080"),
 		DatabaseURL:             getEnv("DATABASE_URL", "postgres://logistics:logistics@localhost:5434/logistics?sslmode=disable"),
 		PublicURL:               strings.TrimRight(getEnv("PUBLIC_URL", ""), "/"),
-		AppName:                 getEnv("APP_NAME", "Menged"),
+		AppName:                 getEnv("APP_NAME", "Kiflet"),
 		Environment:             getEnv("ENVIRONMENT", "development"),
 		LogLevel:                getEnv("LOG_LEVEL", "info"),
 		AutoMigrate:             getBoolEnv("AUTO_MIGRATE", true),

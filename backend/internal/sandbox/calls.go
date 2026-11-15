@@ -18,13 +18,13 @@ import (
 	"time"
 )
 
-// Event is one call between Menged and the sandbox, as the log shows it.
+// Event is one call between Kiflet and the sandbox, as the log shows it.
 type Event struct {
 	ID      int       `json:"id"`
 	At      time.Time `json:"at"`
 	Service string    `json:"service"`
-	// Dir is "in" for a call Menged made to a provider, "out" for one a
-	// provider made to Menged, and "held" for one kept back.
+	// Dir is "in" for a call Kiflet made to a provider, "out" for one a
+	// provider made to Kiflet, and "held" for one kept back.
 	Dir    string `json:"dir"`
 	Method string `json:"method"`
 	URL    string `json:"url"`
@@ -139,10 +139,10 @@ func (r *recorder) Write(b []byte) (int, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Calls to Menged
+// Calls to Kiflet
 // ---------------------------------------------------------------------------
 
-// call is a request a provider makes to Menged: a payment notification, a
+// call is a request a provider makes to Kiflet: a payment notification, a
 // delivery report, one of CBE Birr's calls, or a text from a phone.
 type call struct {
 	ID      int    `json:"id"`
@@ -150,7 +150,7 @@ type call struct {
 	What    string `json:"what"`
 	URL     string `json:"url"`
 	// Held is when the call was kept back, and Why says why: a fault, or
-	// Menged not taking it after every try.
+	// Kiflet not taking it after every try.
 	Held time.Time `json:"held,omitzero"`
 	Why  string    `json:"why,omitempty"`
 
@@ -161,7 +161,7 @@ type call struct {
 	done func(a answer, last bool)
 }
 
-// answer is how Menged answered a call.
+// answer is how Kiflet answered a call.
 type answer struct {
 	Status int
 	Body   []byte
@@ -172,7 +172,7 @@ func (a answer) ok() bool { return a.Err == nil && a.Status/100 == 2 }
 
 var errDiscarded = errors.New("discarded")
 
-// describeAnswer says, for the pages, what Menged made of a call.
+// describeAnswer says, for the pages, what Kiflet made of a call.
 func describeAnswer(a answer) string {
 	switch {
 	case errors.Is(a.Err, errDiscarded):
@@ -180,12 +180,12 @@ func describeAnswer(a answer) string {
 	case a.Err != nil:
 		return "No answer: " + a.Err.Error()
 	case a.ok():
-		return "Taken by Menged"
+		return "Taken by Kiflet"
 	}
 	return fmt.Sprintf("Refused: answered %d %s", a.Status, clip(string(a.Body), 120))
 }
 
-// newCall prepares a call to Menged, made up to tries times.
+// newCall prepares a call to Kiflet, made up to tries times.
 func (s *Sandbox) newCall(service, what, target string, header http.Header, body []byte, tries int, done func(answer, bool)) *call {
 	s.mu.Lock()
 	s.callSeq++
@@ -238,11 +238,11 @@ func (s *Sandbox) attempt(ctx context.Context, c *call) answer {
 	return a
 }
 
-// deliver makes a call until Menged takes it, with any 2xx answer, waiting
+// deliver makes a call until Kiflet takes it, with any 2xx answer, waiting
 // Timing.Retry before the second attempt and twice as long before each one
 // after. The first attempt is made before deliver returns, so a payer sent
-// back to Menged right after finds the payment settled; the others are
-// made in the background. A call Menged never takes is kept with the held
+// back to Kiflet right after finds the payment settled; the others are
+// made in the background. A call Kiflet never takes is kept with the held
 // ones, to send again by hand.
 func (s *Sandbox) deliver(c *call) {
 	a := s.attempt(s.ctx, c)
@@ -273,7 +273,7 @@ func (s *Sandbox) deliver(c *call) {
 func (s *Sandbox) finish(c *call, a answer) {
 	c.report(a, true)
 	if !a.ok() && c.tries > 1 && s.ctx.Err() == nil {
-		s.hold(c, fmt.Sprintf("Menged didn't take it in %d tries", c.tries))
+		s.hold(c, fmt.Sprintf("Kiflet didn't take it in %d tries", c.tries))
 	}
 }
 

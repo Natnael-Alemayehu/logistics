@@ -337,7 +337,7 @@ type ListPlatformAuditRow struct {
 	UserName   string             `db:"user_name" json:"user_name"`
 }
 
-// The people running Menged: every company's audit log, support tickets
+// The people running Kiflet: every company's audit log, support tickets
 // and the background jobs (FR-042 AC-042.7, FR-049).
 // A company's own rows and the platform's actions on it.
 func (q *Queries) ListPlatformAudit(ctx context.Context, arg ListPlatformAuditParams) ([]ListPlatformAuditRow, error) {

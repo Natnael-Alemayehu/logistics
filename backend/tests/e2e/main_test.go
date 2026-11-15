@@ -34,18 +34,18 @@ import (
 
 // Where staging is, as deployments/staging/compose.yml serves it.
 var (
-	appURL      = setting("E2E_APP_URL", "https://menged.localhost:8443")
-	plainURL    = setting("E2E_HTTP_URL", "http://menged.localhost:8088")
-	sandboxURL  = setting("E2E_SANDBOX_URL", "https://sandbox.menged.localhost:8443")
-	mailURL     = setting("E2E_MAIL_URL", "https://mail.menged.localhost:8443")
-	grafanaURL  = setting("E2E_GRAFANA_URL", "https://grafana.menged.localhost:8443")
+	appURL      = setting("E2E_APP_URL", "https://kiflet.localhost:8443")
+	plainURL    = setting("E2E_HTTP_URL", "http://kiflet.localhost:8088")
+	sandboxURL  = setting("E2E_SANDBOX_URL", "https://sandbox.kiflet.localhost:8443")
+	mailURL     = setting("E2E_MAIL_URL", "https://mail.kiflet.localhost:8443")
+	grafanaURL  = setting("E2E_GRAFANA_URL", "https://grafana.kiflet.localhost:8443")
 	grafanaUser = setting("E2E_GRAFANA_USER", "admin")
 	grafanaPass = setting("E2E_GRAFANA_PASSWORD", "staging-grafana-password")
 )
 
 const (
 	// smsSender is the sender ID the app's texts arrive from.
-	smsSender = "MENGED"
+	smsSender = "KIFLET"
 	walletPIN = "1234"
 	password  = "correct-horse-1"
 )
@@ -339,12 +339,12 @@ func waitForText(t *testing.T, number, what string) string {
 func text(t *testing.T, from, body string) int {
 	t.Helper()
 	var res struct {
-		MengedStatus int `json:"menged_status"`
+		KifletStatus int `json:"kiflet_status"`
 	}
 	if code := sandbox(t, http.MethodPost, "/api/phones/"+from+"/texts", map[string]string{"text": body}, &res); code != http.StatusOK {
 		t.Fatalf("texting from %s: status %d", from, code)
 	}
-	return res.MengedStatus
+	return res.KifletStatus
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
 )
 
 type MessageType string
@@ -66,7 +66,7 @@ type Config struct {
 }
 
 // NewProvider returns the configured provider. Opt-outs, pacing and retries
-// across restarts are the caller's: Menged's outbox handles them.
+// across restarts are the caller's: Kiflet's outbox handles them.
 func NewProvider(cfg Config, logger Logger) (SMSProvider, error) {
 	switch cfg.Provider {
 	case ProviderTwilio:

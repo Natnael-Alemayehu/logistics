@@ -1,4 +1,4 @@
-// Menged driver app. Offline-first: everything the driver does is written to
+// Kiflet driver app. Offline-first: everything the driver does is written to
 // IndexedDB first and sent to the server by a background sync loop, so the
 // app behaves the same with or without signal.
 (() => {
@@ -138,7 +138,7 @@
   // ---------------------------------------------------------------------------
   // Storage
   // ---------------------------------------------------------------------------
-  const DB_NAME = "menged-driver";
+  const DB_NAME = "kiflet-driver";
   let dbp = null;
   function idb() {
     if (dbp) return dbp;
@@ -896,7 +896,7 @@
         } catch (x) { fail(x); } finally { busy(form, false); }
       } }, field(t("phone"), phone), field(t("pin"), pin), err, h("button", { class: "btn primary big", type: "submit", text: t("signIn") }));
       return [
-        h("div", { class: "brand" }, h("span", { class: "bar-logo big", "aria-hidden": "true" }), h("strong", { text: (S.config && S.config.app_name) || "Menged" })),
+        h("div", { class: "brand" }, h("span", { class: "bar-logo big", "aria-hidden": "true" }), h("strong", { text: (S.config && S.config.app_name) || "Kiflet" })),
         langSwitch(),
         h("p", { class: "muted", text: t("signInHelp") }),
         form,

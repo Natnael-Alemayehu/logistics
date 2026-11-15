@@ -21,9 +21,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/metrics"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/metrics"
+	"github.com/natnael-alemayehu/kiflet/pkg/payments"
 )
 
 type ctxKey int
@@ -103,7 +103,7 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
 		// A WebSocket stays open as long as its page: it is counted in
-		// menged_websocket_connections instead.
+		// kiflet_websocket_connections instead.
 		counted := r.Header.Get("Upgrade") == ""
 		if counted {
 			metrics.HTTPInFlight.Inc()

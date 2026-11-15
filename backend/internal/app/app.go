@@ -1,4 +1,4 @@
-// Package app assembles Menged from its settings: the providers, the business
+// Package app assembles Kiflet from its settings: the providers, the business
 // services, the web server and the background workers. The server command
 // and the integration tests both build it here, so the tests run the wiring
 // that production runs.
@@ -17,15 +17,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
-	"github.com/natnael-alemayehu/logistics/internal/config"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/internal/web"
-	"github.com/natnael-alemayehu/logistics/pkg/console"
-	"github.com/natnael-alemayehu/logistics/pkg/mail"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
-	"github.com/natnael-alemayehu/logistics/pkg/sms"
-	"github.com/natnael-alemayehu/logistics/pkg/storage"
-	"github.com/natnael-alemayehu/logistics/pkg/websocket"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/web"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/pkg/mail"
+	"github.com/natnael-alemayehu/kiflet/pkg/payments"
+	"github.com/natnael-alemayehu/kiflet/pkg/sms"
+	"github.com/natnael-alemayehu/kiflet/pkg/storage"
+	"github.com/natnael-alemayehu/kiflet/pkg/websocket"
 )
 
 // Options change how the app is put together. The zero value is
@@ -39,7 +39,7 @@ type Options struct {
 	NoJobs bool
 }
 
-// App is Menged, assembled.
+// App is Kiflet, assembled.
 type App struct {
 	Services *service.Services
 	web      *web.Server

@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/payments"
 )
 
 // TestTrialEndMakesTheAccountReadOnly: once the free trial is over nothing
@@ -191,9 +191,9 @@ func TestPayingForAPlan(t *testing.T) {
 	}
 }
 
-// TestPayingByReference: with CBE Birr the payer pays Menged's merchant ID
+// TestPayingByReference: with CBE Birr the payer pays Kiflet's merchant ID
 // from their phone, quoting the invoice's reference, and CBE Birr's servers
-// call Menged to look the reference up, check the payment and confirm it.
+// call Kiflet to look the reference up, check the payment and confirm it.
 // The stand-in page plays CBE Birr through the same handler. Money CBE Birr
 // took is never turned away: paid twice or short, it is kept for a refund.
 func TestPayingByReference(t *testing.T) {
@@ -854,7 +854,7 @@ func (e *env) answer(checkout, answer string) string {
 	return p.Location
 }
 
-// cbe makes one of CBE Birr's calls to Menged, logged in as user, decodes
+// cbe makes one of CBE Birr's calls to Kiflet, logged in as user, decodes
 // the answer into out, and returns the status.
 func (e *env) cbe(path string, body, out any, user, pass string) int {
 	e.t.Helper()

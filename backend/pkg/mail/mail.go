@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
 )
 
 // Message is a plain-text email to one recipient.
@@ -55,7 +55,7 @@ type SMTP struct {
 	Addr     string
 	Username string
 	Password string
-	// From is the sender, such as "Menged <no-reply@menged.et>".
+	// From is the sender, such as "Kiflet <no-reply@kiflet.et>".
 	From string
 }
 

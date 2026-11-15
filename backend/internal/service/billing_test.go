@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
 )
 
 func TestStanding(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
 )
 
 func TestParseSMSCommand(t *testing.T) {
@@ -232,7 +232,7 @@ func TestSMSParts(t *testing.T) {
 		{strings.Repeat("a", 307), 3},
 		{strings.Repeat("ሀ", 70), 1},
 		{strings.Repeat("ሀ", 71), 2},
-		{"Menged: ጭነትዎ ተልኳል " + strings.Repeat("x", 60), 2},
+		{"Kiflet: ጭነትዎ ተልኳል " + strings.Repeat("x", 60), 2},
 		{"line one\nline two", 1},
 	}
 	for _, c := range cases {
