@@ -7,7 +7,8 @@ version of the same rules.
 ## Set up
 
 You need Go 1.27 and Docker. Query changes also need
-[sqlc](https://sqlc.dev) 1.30, and checking the JavaScript needs Node.
+[sqlc](https://sqlc.dev) 1.30, checking the JavaScript needs Node, and the
+end-to-end test of the driver app needs Chrome or Chromium.
 
 ```bash
 make db      # PostGIS on localhost:5434
