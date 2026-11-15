@@ -19,7 +19,7 @@ trucking companies. See `README.md` for what it does and how it fits together.
 
 ## Architecture
 
-One Go application in `backend/`. It serves the dispatcher dashboard
+One Go application. It serves the dispatcher dashboard
 (server-rendered `html/template`), the public tracking pages, the driver PWA
 (`internal/web/static/driver`) and its JSON API, and runs the background jobs.
 There is no separate frontend or mobile codebase. The Next.js and Expo apps
@@ -42,7 +42,7 @@ were retired and live only in git history.
 
 ## Working on it
 
-Run commands from `backend/` (the root Makefile only forwards to it).
+Run commands from the repository root.
 
 ```bash
 make db && make seed && make run   # http://localhost:8080, demo logins in README
