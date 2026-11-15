@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/natnael-alemayehu/kiflet/pkg/console"
 )
@@ -21,14 +20,12 @@ const (
 type ProviderType string
 
 const (
-	ProviderTwilio       ProviderType = "twilio"
 	ProviderEthioTelecom ProviderType = "ethiotelecom"
 	ProviderMock         ProviderType = "mock"
 )
 
 var (
-	ErrInvalidPhone        = errors.New("invalid phone number format")
-	ErrProviderUnavailable = errors.New("SMS provider unavailable")
+	ErrInvalidPhone = errors.New("invalid phone number format")
 	// ErrRejected is a message the gateway will never take, such as one to
 	// a number it doesn't serve. Sending it again won't help.
 	ErrRejected = errors.New("the gateway rejected the message")
@@ -41,23 +38,8 @@ type SMSProvider interface {
 	Name() string
 }
 
-type Message struct {
-	ID         string
-	To         string
-	Message    string
-	Type       MessageType
-	Status     string
-	Provider   string
-	SentAt     time.Time
-	Error      string
-	RetryCount int
-}
-
 type Config struct {
 	Provider             ProviderType
-	TwilioAccountSID     string
-	TwilioAuthToken      string
-	TwilioFromNumber     string
 	EthioTelecomAPIURL   string
 	EthioTelecomAPIKey   string
 	EthioTelecomSenderID string
@@ -69,11 +51,6 @@ type Config struct {
 // across restarts are the caller's: Kiflet's outbox handles them.
 func NewProvider(cfg Config, logger Logger) (SMSProvider, error) {
 	switch cfg.Provider {
-	case ProviderTwilio:
-		if cfg.TwilioAccountSID == "" || cfg.TwilioAuthToken == "" || cfg.TwilioFromNumber == "" {
-			return nil, errors.New("missing Twilio configuration")
-		}
-		return NewTwilioProvider(cfg.TwilioAccountSID, cfg.TwilioAuthToken, cfg.TwilioFromNumber, logger), nil
 	case ProviderEthioTelecom:
 		if cfg.EthioTelecomAPIURL == "" || cfg.EthioTelecomAPIKey == "" {
 			return nil, errors.New("missing Ethio Telecom configuration")
