@@ -3,7 +3,7 @@
 package integration
 
 // Regression tests for the findings of the November 2026 audit
-// (fable-audit.md at the repository root). Each test names the finding it
+// (docs/audit-2026-11.md). Each test names the finding it
 // covers.
 
 import (

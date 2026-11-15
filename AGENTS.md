@@ -5,11 +5,14 @@
 Kiflet: offline-first shipment tracking and proof of delivery for Ethiopian
 trucking companies. See `README.md` for what it does and how it fits together.
 
-- `functional_requirements.md`: the original requirements (FR numbers are
-  referenced in code comments). Appendix D records where the product
+- `docs/functional_requirements.md`: the original requirements (FR numbers
+  are referenced in code comments). Appendix D records where the product
   deliberately differs; add to it when you depart from a requirement.
-- `logistics.md`: background on the problem
-- `E2E_TEST_GUIDE.md`: manual walkthrough of every flow
+- `docs/logistics.md`: background on the problem
+- `docs/E2E_TEST_GUIDE.md`: manual walkthrough of every flow
+- `docs/deploy.md`: production, backups, staging, connecting the providers
+- `docs/audit-2026-11.md`: the audit of November 2026 and its fix record
+- `CONTRIBUTING.md`: these rules at full length
 - `ROADMAP.md`: what comes next, in order. Delete a section once it is done.
 - `CHANGELOG.md`: what changed in each release. It is the only file that
   may name what the product was called before; CI checks.
