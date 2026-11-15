@@ -4,6 +4,16 @@ What changed in each release, newest first.
 
 ## Unreleased
 
+### Fixed
+
+- **Maps work in every build.** The map library (Leaflet 1.9.4) had never
+  been committed: an ignore rule meant for Go's `vendor/` directory also
+  matched `static/vendor/`. It was served on the machine the product was
+  developed on and returned a 404 everywhere else, including CI, staging
+  and any production image. It is in the repository now, a unit test fails
+  when a page, script or stylesheet names a static file that isn't
+  embedded, and the end-to-end tests request the library from staging.
+
 ### Renamed
 
 The product is now called **Kiflet** (ቅፍለት, a caravan). Until this release
