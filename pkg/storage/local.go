@@ -50,10 +50,14 @@ func (l *LocalStorage) Upload(ctx context.Context, path string, reader io.Reader
 	if err != nil {
 		return "", fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
-
-	if _, err := io.Copy(file, reader); err != nil {
-		os.Remove(fullPath)
+	// Closing a written file can fail too, when what was buffered can't be
+	// written out: the file is then incomplete.
+	_, err = io.Copy(file, reader)
+	if cerr := file.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(fullPath) // the error above is the one to report
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 

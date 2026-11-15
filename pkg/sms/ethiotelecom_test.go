@@ -32,28 +32,45 @@ func (g *fakeGateway) serve(tb testing.TB) *httptest.Server {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		read := func(v any) bool {
+			if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+				tb.Errorf("the fake gateway reading %s: %v", r.URL.Path, err)
+				w.WriteHeader(http.StatusBadRequest)
+				return false
+			}
+			return true
+		}
+		answer := func(v any) {
+			if err := json.NewEncoder(w).Encode(v); err != nil {
+				tb.Errorf("the fake gateway answering %s: %v", r.URL.Path, err)
+			}
+		}
 		switch r.URL.Path {
 		case "/auth/token":
 			var req ethioTelecomAuthRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			if !read(&req) {
+				return
+			}
 			if req.APIKey != "api-key" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
 			g.logins++
-			json.NewEncoder(w).Encode(map[string]any{"token": fmt.Sprintf("token-%d", g.logins), "expires_in": g.expiresIn})
+			answer(map[string]any{"token": fmt.Sprintf("token-%d", g.logins), "expires_in": g.expiresIn})
 		case "/sms/send":
 			g.sends++
 			g.tokens = append(g.tokens, r.Header.Get("Authorization"))
 			var req ethioTelecomSMSRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			if !read(&req) {
+				return
+			}
 			g.requests = append(g.requests, req)
 			status, body := http.StatusOK, any(map[string]any{"message_id": fmt.Sprintf("MSG%d", g.sends), "status": "accepted"})
 			if g.send != nil {
 				status, body = g.send(g.sends)
 			}
 			w.WriteHeader(status)
-			json.NewEncoder(w).Encode(body)
+			answer(body)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

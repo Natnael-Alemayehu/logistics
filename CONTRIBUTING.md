@@ -7,8 +7,9 @@ version of the same rules.
 ## Set up
 
 You need Go 1.27 and Docker. Query changes also need
-[sqlc](https://sqlc.dev) 1.30, checking the JavaScript needs Node, and the
-end-to-end test of the driver app needs Chrome or Chromium.
+[sqlc](https://sqlc.dev) 1.30, `make lint` needs Node to check the
+JavaScript, and the end-to-end test of the driver app needs Chrome or
+Chromium.
 
 ```bash
 make db      # PostGIS on localhost:5434
@@ -25,15 +26,27 @@ provider adapters against the provider sandbox instead.
 
 ```bash
 make vet
+make lint                          # golangci-lint, the JavaScript parsed, a secret scan
 make test                          # unit tests; also parses every template
 make test-integration              # over HTTP, against PostGIS
 make staging-up && make test-e2e   # production's images and compose file, over HTTPS
 make staging-down
-node --check internal/web/static/app.js   # and any other script you touched
 ```
 
 CI runs all of it on every pull request, with gofmt, `sqlc diff`,
-govulncheck and shellcheck.
+govulncheck and shellcheck, and adds to each run's summary how much of
+`internal/service` and `internal/web` the integration tests cover (`make
+test-integration-cover` shows the same). Those tests are those packages'
+tests, so their unit coverage says little.
+
+`make lint` reports everything it finds, so there is no backlog to hide a
+new finding in. What it should let pass is excused where it is, with the
+reason: in `.golangci.yml` for a kind of finding (closing what was only
+read, for one), with a `//nolint:<linter> // why` comment for a single
+line, and in `.gitleaks.toml` for a line the secret scan mistakes for a
+key. Dependabot proposes updates each week for the Go modules, the
+Actions and the images. The linters' versions, in the `Makefile`, and
+the Go release, in CI and the Dockerfile, move by hand.
 
 ## Send it
 

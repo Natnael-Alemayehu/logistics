@@ -1,0 +1,23 @@
+# gitleaks, run over the whole history in CI: its own rules, less what they
+# mistake for secrets here. Each exception matches the line itself rather
+# than a commit, so it holds when history is rewritten, and a real key on any
+# other line is still found.
+title = "Kiflet"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Values that only look like keys"
+regexTarget = "line"
+regexes = [
+  # The integration tests' object store, a container that lives as long as
+  # the test run.
+  '''secret: "integration-secret-0123456789"''',
+  # The characters generated passwords are made of.
+  '''const passwordAlphabet = "''',
+  # A request ID in a test of the retired API package.
+  '''middleware\.RequestIDKey, "paginated-req-789"''',
+  # Example tokens, cut short, in an old version of the test guide.
+  '''"(access|refresh)_token": "eyJhbGciOiJSUzI1NiIs\.\.\."''',
+]

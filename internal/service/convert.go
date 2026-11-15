@@ -99,10 +99,6 @@ func toInt32Ptr(i int) *int32 {
 	return &v
 }
 
-func toBoolPtr(b bool) *bool {
-	return &b
-}
-
 // numericFloat reads a pgtype.Numeric as a float, with ok false for NULL.
 //
 // The previous helper called Numeric.Scan(&f), which scans *into* the Numeric
@@ -134,14 +130,6 @@ func deref[T any](p *T) T {
 }
 
 func ptr[T any](v T) *T { return &v }
-
-// optFloat returns nil for a zero value, for optional coordinates.
-func optFloat(f float64) *float64 {
-	if f == 0 {
-		return nil
-	}
-	return &f
-}
 
 func timePtr(t pgtype.Timestamptz) *time.Time {
 	if !t.Valid {

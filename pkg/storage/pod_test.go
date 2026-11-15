@@ -50,6 +50,16 @@ func (m *mockStorage) GetURL(ctx context.Context, path string) (string, error) {
 	return "http://localhost/" + path, nil
 }
 
+// pngBytes encodes an image a test made. Encoding into memory fails only
+// for an image PNG can't hold, which none of them is.
+func pngBytes(img image.Image) []byte {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}
+
 func createTestImage() string {
 	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	for y := 0; y < 100; y++ {
@@ -57,9 +67,7 @@ func createTestImage() string {
 			img.Set(x, y, color.RGBA{R: 255, G: 0, B: 0, A: 255})
 		}
 	}
-	var buf bytes.Buffer
-	png.Encode(&buf, img)
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngBytes(img))
 }
 
 // hugePNG is a valid, blank one-bit PNG of the given size, written without
@@ -69,13 +77,13 @@ func hugePNG(t *testing.T, w, h int) string {
 	var out bytes.Buffer
 	out.WriteString("\x89PNG\r\n\x1a\n")
 	chunk := func(kind string, data []byte) {
-		binary.Write(&out, binary.BigEndian, uint32(len(data)))
+		out.Write(binary.BigEndian.AppendUint32(nil, uint32(len(data))))
 		c := crc32.NewIEEE()
 		c.Write([]byte(kind))
 		c.Write(data)
 		out.WriteString(kind)
 		out.Write(data)
-		binary.Write(&out, binary.BigEndian, c.Sum32())
+		out.Write(binary.BigEndian.AppendUint32(nil, c.Sum32()))
 	}
 	ihdr := make([]byte, 13)
 	binary.BigEndian.PutUint32(ihdr[0:], uint32(w))
@@ -103,9 +111,7 @@ func createLargeTestImage() string {
 			img.Set(x, y, color.RGBA{R: uint8(x % 256), G: uint8(y % 256), B: 100, A: 255})
 		}
 	}
-	var buf bytes.Buffer
-	png.Encode(&buf, img)
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngBytes(img))
 }
 
 func TestPODStorage_UploadSignature(t *testing.T) {
@@ -297,9 +303,7 @@ func TestPODStorage_DecodeBase64Image(t *testing.T) {
 
 	t.Run("decodes without data URI prefix", func(t *testing.T) {
 		img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-		var buf bytes.Buffer
-		png.Encode(&buf, img)
-		rawBase64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+		rawBase64 := base64.StdEncoding.EncodeToString(pngBytes(img))
 
 		decoded, err := pod.decodeBase64Image(rawBase64)
 		require.NoError(t, err)
@@ -308,9 +312,7 @@ func TestPODStorage_DecodeBase64Image(t *testing.T) {
 
 	t.Run("handles raw encoding", func(t *testing.T) {
 		img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-		var buf bytes.Buffer
-		png.Encode(&buf, img)
-		rawBase64 := base64.RawStdEncoding.EncodeToString(buf.Bytes())
+		rawBase64 := base64.RawStdEncoding.EncodeToString(pngBytes(img))
 
 		decoded, err := pod.decodeBase64Image(rawBase64)
 		require.NoError(t, err)

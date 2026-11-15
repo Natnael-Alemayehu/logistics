@@ -57,7 +57,7 @@ var sandboxKeys = sync.OnceValues(func() (keyFiles, error) {
 	if err != nil {
 		return k, err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }() // only litter if it can't be removed
 	if _, err := sandbox.WriteKeys(dir); err != nil {
 		return k, err
 	}

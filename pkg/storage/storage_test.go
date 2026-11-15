@@ -356,7 +356,9 @@ func BenchmarkLocalStorage_Upload(b *testing.B) {
 func BenchmarkLocalStorage_Download(b *testing.B) {
 	storage, _ := NewLocalStorage(b.TempDir())
 	ctx := context.Background()
-	storage.Upload(ctx, "bench.txt", bytes.NewReader([]byte("benchmark content")), "text/plain")
+	if _, err := storage.Upload(ctx, "bench.txt", bytes.NewReader([]byte("benchmark content")), "text/plain"); err != nil {
+		b.Fatal(err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

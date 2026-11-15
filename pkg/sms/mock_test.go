@@ -64,8 +64,8 @@ func TestMockProvider_GetMessages(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "+251912345678", "Message 1", MessageTypeNotification)
-	provider.Send(context.Background(), "+251923456789", "Message 2", MessageTypeOTP)
+	send(t, provider, "+251912345678", "Message 1", MessageTypeNotification)
+	send(t, provider, "+251923456789", "Message 2", MessageTypeOTP)
 
 	messages := provider.GetMessages()
 	if len(messages) != 2 {
@@ -80,9 +80,9 @@ func TestMockProvider_GetMessagesByPhone(t *testing.T) {
 	phone1 := "+251912345678"
 	phone2 := "+251923456789"
 
-	provider.Send(context.Background(), phone1, "Message 1", MessageTypeNotification)
-	provider.Send(context.Background(), phone2, "Message 2", MessageTypeOTP)
-	provider.Send(context.Background(), phone1, "Message 3", MessageTypeAlert)
+	send(t, provider, phone1, "Message 1", MessageTypeNotification)
+	send(t, provider, phone2, "Message 2", MessageTypeOTP)
+	send(t, provider, phone1, "Message 3", MessageTypeAlert)
 
 	messages := provider.GetMessagesByPhone(phone1)
 	if len(messages) != 2 {
@@ -100,7 +100,7 @@ func TestMockProvider_GetMessagesByPhone_LocalFormat(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "0912345678", "Test", MessageTypeNotification)
+	send(t, provider, "0912345678", "Test", MessageTypeNotification)
 
 	messages := provider.GetMessagesByPhone("0912345678")
 	if len(messages) != 1 {
@@ -112,7 +112,7 @@ func TestMockProvider_GetMessagesByPhone_InvalidPhone(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "+251912345678", "Test", MessageTypeNotification)
+	send(t, provider, "+251912345678", "Test", MessageTypeNotification)
 
 	messages := provider.GetMessagesByPhone("invalid")
 	if messages != nil {
@@ -124,7 +124,7 @@ func TestMockProvider_GetMessagesByPhone_NoMatch(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "+251912345678", "Test", MessageTypeNotification)
+	send(t, provider, "+251912345678", "Test", MessageTypeNotification)
 
 	messages := provider.GetMessagesByPhone("+251999999999")
 	if len(messages) != 0 {
@@ -136,8 +136,8 @@ func TestMockProvider_GetLastMessage(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "+251912345678", "Message 1", MessageTypeNotification)
-	provider.Send(context.Background(), "+251923456789", "Message 2", MessageTypeOTP)
+	send(t, provider, "+251912345678", "Message 1", MessageTypeNotification)
+	send(t, provider, "+251923456789", "Message 2", MessageTypeOTP)
 
 	lastMsg := provider.GetLastMessage()
 	if lastMsg == nil {
@@ -163,7 +163,7 @@ func TestMockProvider_Clear(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "+251912345678", "Test", MessageTypeNotification)
+	send(t, provider, "+251912345678", "Test", MessageTypeNotification)
 
 	if provider.Count() != 1 {
 		t.Fatal("expected one message before clear")
@@ -184,12 +184,12 @@ func TestMockProvider_Count(t *testing.T) {
 		t.Errorf("Count() = %d, want 0 for new provider", provider.Count())
 	}
 
-	provider.Send(context.Background(), "+251912345678", "Test 1", MessageTypeNotification)
+	send(t, provider, "+251912345678", "Test 1", MessageTypeNotification)
 	if provider.Count() != 1 {
 		t.Errorf("Count() = %d, want 1", provider.Count())
 	}
 
-	provider.Send(context.Background(), "+251923456789", "Test 2", MessageTypeOTP)
+	send(t, provider, "+251923456789", "Test 2", MessageTypeOTP)
 	if provider.Count() != 2 {
 		t.Errorf("Count() = %d, want 2", provider.Count())
 	}
@@ -224,7 +224,7 @@ func TestMockProvider_MessageCreatedAt(t *testing.T) {
 	logger := &mockLogger{}
 	provider := NewMockProvider(logger)
 
-	provider.Send(context.Background(), "+251912345678", "Test", MessageTypeNotification)
+	send(t, provider, "+251912345678", "Test", MessageTypeNotification)
 
 	messages := provider.GetMessages()
 	if len(messages) != 1 {
@@ -252,5 +252,13 @@ func TestMockProvider_KeepsTheMostRecent(t *testing.T) {
 	}
 	if want := "message 5"; messages[0].Message != want {
 		t.Errorf("oldest message %q, want %q", messages[0].Message, want)
+	}
+}
+
+// send sends a text a test relies on, and fails the test if it can't.
+func send(t *testing.T, p *MockProvider, to, body string, kind MessageType) {
+	t.Helper()
+	if _, err := p.Send(context.Background(), to, body, kind); err != nil {
+		t.Fatalf("sending to %s: %v", to, err)
 	}
 }
