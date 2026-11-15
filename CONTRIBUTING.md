@@ -69,7 +69,10 @@ govulncheck and shellcheck.
 - A migration is one goose file, `<timestamp>_<name>.up.sql`, holding both
   the Up and the Down, written so that running it twice does no harm
   (`IF NOT EXISTS`, `IF EXISTS`, `CREATE OR REPLACE`). Migrations are
-  embedded and applied when the app starts.
+  embedded and applied when the app starts. `TestMigrations` runs each a
+  second time, then all of them down and up again, on a scratch database.
+- The schema starts from one migration, `…_baseline.up.sql`. The 21 that
+  came before it are in git history (`git log -- migrations/`).
 - `audit_logs` and `shipment_events` are append-only: a trigger rejects
   UPDATE, DELETE and TRUNCATE. The code that has to remove rows (deleting a
   company, retention) runs inside `purgeTx` in `internal/service/data.go`,
