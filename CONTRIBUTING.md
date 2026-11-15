@@ -60,6 +60,8 @@ the Go release, in CI and the Dockerfile, move by hand.
 - If the change finishes something in `ROADMAP.md`, delete that part of it.
 - If the change departs from `docs/functional_requirements.md`, record it
   in that file's Appendix D.
+- If it changes the overview or the driver app's first screen, retake the
+  README's screenshot of it in `docs/images/`.
 
 ## Rules
 

@@ -4,10 +4,9 @@ What to do next, in order. Written on 2026-11-14 from a survey of the
 repository at `7320639`. Tick the boxes as work lands, and delete a section
 once it is done: this file should only ever hold what is still ahead.
 
-1. [Decisions](#decisions-to-make-first) that shape the release.
-2. [The next release](#the-next-release-a-clean-baseline): a settled name,
+1. [The next release](#the-next-release-a-clean-baseline): a settled name,
    a codebase anyone can open and follow, and commit attribution corrected.
-3. [After the release](#after-the-release-toward-the-first-paying-customer):
+2. [After the release](#after-the-release-toward-the-first-paying-customer):
    toward the first paying customer.
 
 ## Where things stand
@@ -23,30 +22,20 @@ once it is done: this file should only ever hold what is still ahead.
   proposes updates weekly.
 - The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O1, O3,
   O4 and O6.
-- The repository is public and all rights are reserved (`LICENSE`). It has
-  no releases or tags, and ten old branches on GitHub that are all merged
-  into `main`.
+- The repository is public and all rights are reserved (`LICENSE`), with
+  private vulnerability reporting on and topics set. It has no releases or
+  tags, and nine old branches on GitHub, all merged into `main`, which go
+  with the history rewrite.
 - The product and the repository were renamed Kiflet on 2026-11-15. The
   checks and registrations that make the name final are still open: see
   [Finish the rename](#1-finish-the-rename).
 
-## Decisions to make first
-
-Each of these changes what the release does. The recommendation is what the
-rest of this file assumes; none of them is settled yet.
-
-| Decision | Recommendation | Why |
-|---|---|---|
-| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#4-commit-attribution). |
-| Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
-| Split the driver app's script into modules | Not before its updates are made all-or-nothing; after the release is fine | A half-finished update would otherwise leave a phone with mixed versions. See [The driver app's one large file](#3-the-driver-apps-one-large-file). |
-
 ## The next release: a clean baseline
 
-No new features. Each numbered part is its own pull request, changes no
-behaviour, and must pass CI. Do them in this order. The rename is in, and
-part 1 holds what is left of it. The later parts are easier once the
-earlier ones are in, and the history rewrite has to be last.
+No new features, and nothing that changes behaviour. The rename is in, and
+part 1 holds what is left of it: checks and registrations outside the
+repository, which needn't hold up the rest. The history rewrite comes last
+before the tag.
 
 ### 1. Finish the rename
 
@@ -128,48 +117,7 @@ The three things that hold state are the reason to settle this before the
 first customer: the purge setting in the database, the volumes Compose
 names after the project, and the database on each driver's phone.
 
-### 2. The front door
-
-What someone sees before reading any code. The licence, `SECURITY.md`,
-`CONTRIBUTING.md`, the `docs/` folder and the README's screenshots are in.
-What is left:
-
-- [ ] On GitHub: turn on private vulnerability reporting (Settings, Code
-      security), which `SECURITY.md` tells reporters to use; add topics;
-      delete the merged branches; and protect `main` so CI must pass.
-- [ ] `CHANGELOG.md`: add each remaining part of this release as it lands.
-- [ ] Retake the two screenshots in `docs/images/` when the overview or the
-      driver app's first screen changes.
-
-### 3. The driver app's one large file
-
-`internal/web/static/driver/app.js` is 1,663 lines in one file. The large
-Go files are split; this one is not, because splitting it changes how the
-app reaches a phone.
-
-Today the service worker refreshes each file of the app on its own, whenever
-there is signal. With one script that is safe. With twenty modules, an
-update that half-finishes on a weak signal leaves new and old modules mixed
-in the phone's cache, and the app may not start the next time it is opened
-without signal, which is when a driver needs it.
-
-- [ ] Decide whether to do this before the release or after it.
-- [ ] First make the service worker replace the app as a whole: download
-      every file of a new version, then switch to it, so a phone only ever
-      holds one complete version. This changes when an update reaches a
-      driver, so record it in Appendix D if it departs from a requirement.
-- [ ] Then split into ES modules, which need no build step: `state.js`,
-      `text.js` (English and Amharic), `store.js` (IndexedDB), `api.js`,
-      `sync.js` (outbox and sync), `gps.js`, `signature.js`, and one module
-      per screen. `formOpen` is set by five screens and read by the router,
-      and a module can't assign to another's variable, so it moves into the
-      state object. List the modules in the service worker's `SHELL`
-      (`TestDriverShellFilesExist` then checks them) and name each in a
-      `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
-      requests. `TestDriverAppInABrowser` in the end-to-end suite then shows
-      the app still signs in, works offline and keeps its drafts.
-
-### 4. Commit attribution
+### 2. Commit attribution
 
 GitHub lists Claude as a contributor because 28 commits on `main` end
 with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
@@ -218,7 +166,10 @@ Steps:
       of `main`.
 - [ ] **Publish.** `git push --force origin main`, then delete the merged
       branches on GitHub; `product-consolidation` still holds the old
-      commits.
+      commits. Then protect `main` so CI must pass, which also stops any
+      later force-push.
+- [ ] **Dependabot's pull requests.** Comment `@dependabot recreate` on
+      each open one, so it is rebuilt on the new history.
 - [ ] **Pull request #2.** Edit its description to drop the last line.
 - [ ] **Check GitHub a day later.** The contributor list is cached.
 
@@ -235,7 +186,7 @@ What it costs:
 - The old commits stay reachable through pull request #2's page. Only
   GitHub Support can remove them, and the contributor list doesn't need it.
 
-### 5. Tag it
+### 3. Tag it
 
 - [ ] `CHANGELOG.md` entry, tag `v0.9.0` on the rewritten `main`, and a
       GitHub release. Tag after the rewrite, never before.
@@ -257,25 +208,55 @@ In order. The first three can run side by side.
 3. **Backups that survive the machine** (O1). Encrypt them, copy them off
    the server, and restore one as a drill. Small, and the one way a pilot
    could lose a customer's data.
-4. **Amharic for customers, then for the office** (W1). First the tracking
+4. **The driver app in modules.** `internal/web/static/driver/app.js` is
+   1,663 lines in one file, and splitting it changes how the app reaches a
+   phone. The service worker refreshes each file on its own whenever there
+   is signal: safe for one script, but with twenty modules an update that
+   half-finishes on a weak signal leaves new and old mixed in the cache,
+   and the app may not start offline, which is when a driver needs it.
+   - First make the service worker replace the app as a whole: download
+     every file of a new version, then switch to it. This changes when an
+     update reaches a driver; record it in Appendix D if it departs from a
+     requirement.
+   - Then split into ES modules, which need no build step: `state.js`,
+     `text.js` (English and Amharic), `store.js` (IndexedDB), `api.js`,
+     `sync.js` (outbox and sync), `gps.js`, `signature.js`, and one module
+     per screen. `formOpen` is set by five screens and read by the router,
+     and a module can't assign to another's variable, so it moves into the
+     state object. List the modules in the service worker's `SHELL`
+     (`TestDriverShellFilesExist` then checks them) and name each in a
+     `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
+     requests. `TestDriverAppInABrowser` then shows the app still signs
+     in, works offline and keeps its drafts.
+5. **Amharic for customers, then for the office** (W1). First the tracking
    page, the confirmation page and the texts customers get; then the
    dashboard. It needs a native speaker, who should also review the
    driver app's newest strings.
-5. **A pilot with one trucking company**, paying by bank transfer. Everything
+6. **A pilot with one trucking company**, paying by bank transfer. Everything
    after this point should be reordered by what the pilot shows.
-6. **Shipper and consignee as separate people** (W4). A schema change, and
+7. **Shipper and consignee as separate people** (W4). A schema change, and
    the most likely first request from a real customer: today the tracking
    texts, the confirmation link and the driver's Call button all go to one
    phone.
-7. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
+8. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-8. **Later:** CSV import of shipments (FR-013), a last-position table for
+9. **Later:** CSV import of shipments (FR-013), a last-position table for
    the live map (O3), a second app instance (O4), a public API and webhooks
    (FR-046, FR-047).
 
 ## Decided, and when to revisit
 
+- **The rewrite also corrects the author name and email** (2026-11-15).
+  57 commits carry a misspelled name and all carry a personal email
+  address in a public repository; since history is being rewritten
+  anyway, every commit gets the right name and GitHub's no-reply address.
+- **`v0.9.0` now, `v1.0.0` with the first paying customer** (2026-11-15).
+  The product isn't live yet.
+- **The driver app stays one file through the release** (2026-11-15).
+  Splitting it is after-the-release item 4, and waits for the service
+  worker to update the app all-or-nothing. Revisit if the file gets in the
+  way of a fix the Android session or the pilot asks for.
 - **The name Kiflet, for now** (2026-11-15). Revisit if one of the checks
   in part 1 fails. Part 1 has the fallbacks and what a second rename takes.
 - **No GitHub organization yet** (2026-11-15). The repository is `kiflet`
@@ -294,6 +275,6 @@ In order. The first three can run side by side.
 
 - **Moving `pkg/` under `internal/`.** Nothing outside this module imports
   it, but the move touches every file for no change a reader would feel.
-- **Rewriting old commit messages** beyond the lines in part 4. The early
+- **Rewriting old commit messages** beyond the lines in part 2. The early
   history is rough, and it is still the history. That includes the
   product's first name: old commits keep it.
