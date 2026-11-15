@@ -8,29 +8,29 @@ import (
 	"github.com/natnael-alemayehu/kiflet/pkg/metrics"
 )
 
+// Hub sends each company's live updates to that company's open dashboards,
+// and to nobody else's.
 type Hub struct {
-	Clients    map[*Client]bool
 	Register   chan *Client
 	Unregister chan *Client
-	Broadcast  chan *BroadcastMessage
-	Rooms      map[string]*Room
-	mutex      sync.RWMutex
-	logger     zerolog.Logger
+
+	broadcast chan tenantMessage
+	mutex     sync.RWMutex
+	tenants   map[string]map[*Client]bool // each company's clients, by tenant ID
+	logger    zerolog.Logger
 }
 
-type BroadcastMessage struct {
-	RoomID  string
-	Message []byte
-	Exclude *Client
+type tenantMessage struct {
+	tenantID string
+	message  []byte
 }
 
 func NewHub(logger zerolog.Logger) *Hub {
 	return &Hub{
-		Clients:    make(map[*Client]bool),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
-		Broadcast:  make(chan *BroadcastMessage, 512),
-		Rooms:      make(map[string]*Room),
+		broadcast:  make(chan tenantMessage, 512),
+		tenants:    make(map[string]map[*Client]bool),
 		logger:     logger,
 	}
 }
@@ -44,8 +44,8 @@ func (h *Hub) Run() {
 		case client := <-h.Unregister:
 			h.unregisterClient(client)
 
-		case msg := <-h.Broadcast:
-			h.broadcastToRoom(msg)
+		case msg := <-h.broadcast:
+			h.send(msg)
 		}
 	}
 }
@@ -54,16 +54,20 @@ func (h *Hub) registerClient(client *Client) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	h.Clients[client] = true
+	clients := h.tenants[client.TenantID]
+	if clients == nil {
+		clients = make(map[*Client]bool)
+		h.tenants[client.TenantID] = clients
+	}
+	if clients[client] {
+		return
+	}
+	clients[client] = true
 	metrics.WebSocketConnections.Inc()
-	roomID := GetTenantRoomID(client.TenantID)
-	room := h.getOrCreateRoom(roomID)
-	room.Subscribe(client)
 
 	h.logger.Info().
 		Str("user_id", client.UserID).
 		Str("tenant_id", client.TenantID).
-		Str("room", roomID).
 		Msg("WebSocket client connected")
 }
 
@@ -71,51 +75,32 @@ func (h *Hub) unregisterClient(client *Client) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	if _, ok := h.Clients[client]; ok {
-		delete(h.Clients, client)
-		close(client.Send)
-		metrics.WebSocketConnections.Dec()
-
-		for roomID := range client.Rooms {
-			if room, exists := h.Rooms[roomID]; exists {
-				room.Unsubscribe(client)
-				if room.IsEmpty() {
-					delete(h.Rooms, roomID)
-				}
-			}
-		}
-
-		h.logger.Info().
-			Str("user_id", client.UserID).
-			Str("tenant_id", client.TenantID).
-			Msg("WebSocket client disconnected")
+	clients := h.tenants[client.TenantID]
+	if !clients[client] {
+		return
 	}
+	delete(clients, client)
+	if len(clients) == 0 {
+		delete(h.tenants, client.TenantID)
+	}
+	close(client.Send)
+	metrics.WebSocketConnections.Dec()
+
+	h.logger.Info().
+		Str("user_id", client.UserID).
+		Str("tenant_id", client.TenantID).
+		Msg("WebSocket client disconnected")
 }
 
-func (h *Hub) getOrCreateRoom(roomID string) *Room {
-	if room, exists := h.Rooms[roomID]; exists {
-		return room
-	}
-	room := NewRoom(roomID)
-	h.Rooms[roomID] = room
-	return room
-}
-
-func (h *Hub) broadcastToRoom(msg *BroadcastMessage) {
+// send hands a message to every client of one company. A client whose
+// buffer is full misses the message: the hub never waits for a slow browser.
+func (h *Hub) send(msg tenantMessage) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
-	room, exists := h.Rooms[msg.RoomID]
-	if !exists {
-		return
-	}
-
-	for client := range room.Clients {
-		if msg.Exclude != nil && client == msg.Exclude {
-			continue
-		}
+	for client := range h.tenants[msg.tenantID] {
 		select {
-		case client.Send <- msg.Message:
+		case client.Send <- msg.message:
 		default:
 			h.logger.Warn().
 				Str("user_id", client.UserID).
@@ -124,81 +109,19 @@ func (h *Hub) broadcastToRoom(msg *BroadcastMessage) {
 	}
 }
 
+// BroadcastToTenant queues a message for every open dashboard of a company.
 func (h *Hub) BroadcastToTenant(tenantID string, message []byte) {
-	roomID := GetTenantRoomID(tenantID)
-	h.Broadcast <- &BroadcastMessage{
-		RoomID:  roomID,
-		Message: message,
-	}
+	h.broadcast <- tenantMessage{tenantID: tenantID, message: message}
 }
 
-func (h *Hub) BroadcastToDriver(driverID string, message []byte) {
-	roomID := GetDriverRoomID(driverID)
-	h.Broadcast <- &BroadcastMessage{
-		RoomID:  roomID,
-		Message: message,
-	}
-}
-
-func (h *Hub) BroadcastToShipment(shipmentID string, message []byte) {
-	roomID := GetShipmentRoomID(shipmentID)
-	h.Broadcast <- &BroadcastMessage{
-		RoomID:  roomID,
-		Message: message,
-	}
-}
-
-func (h *Hub) BroadcastAll(message []byte) {
-	h.mutex.RLock()
-	defer h.mutex.RUnlock()
-
-	for client := range h.Clients {
-		select {
-		case client.Send <- message:
-		default:
-		}
-	}
-}
-
-func (h *Hub) SubscribeToRoom(client *Client, roomID string) {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
-
-	room := h.getOrCreateRoom(roomID)
-	room.Subscribe(client)
-}
-
-func (h *Hub) UnsubscribeFromRoom(client *Client, roomID string) {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
-
-	if room, exists := h.Rooms[roomID]; exists {
-		room.Unsubscribe(client)
-		if room.IsEmpty() {
-			delete(h.Rooms, roomID)
-		}
-	}
-}
-
+// ClientCount is the number of open connections, across all companies.
 func (h *Hub) ClientCount() int {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
-	return len(h.Clients)
-}
 
-func (h *Hub) RoomCount() int {
-	h.mutex.RLock()
-	defer h.mutex.RUnlock()
-	return len(h.Rooms)
-}
-
-func (h *Hub) TenantClientCount(tenantID string) int {
-	h.mutex.RLock()
-	defer h.mutex.RUnlock()
-
-	roomID := GetTenantRoomID(tenantID)
-	if room, exists := h.Rooms[roomID]; exists {
-		return room.ClientCount()
+	n := 0
+	for _, clients := range h.tenants {
+		n += len(clients)
 	}
-	return 0
+	return n
 }
