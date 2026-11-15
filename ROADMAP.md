@@ -1,7 +1,7 @@
 # Roadmap
 
 What to do next, in order. Written on 2026-11-14 from a survey of the
-repository at `7320639`. Tick the boxes as work lands, and delete a section
+repository at `f540720`. Tick the boxes as work lands, and delete a section
 once it is done: this file should only ever hold what is still ahead.
 
 1. [The next release](#the-next-release-a-clean-baseline): a settled name,
