@@ -3,10 +3,17 @@
 package integration
 
 import (
+	"bytes"
+	"compress/zlib"
+	"encoding/base64"
+	"encoding/binary"
+	"hash/crc32"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
@@ -133,4 +140,224 @@ func TestRecentRecipientsAreSuggested(t *testing.T) {
 			t.Errorf("another company's driver was offered %v", sh.RecentRecipients)
 		}
 	}
+}
+
+// TestDeliveredStraightFromAssigned (L1): a proof of delivery sent before
+// the trip was started still records when the load left.
+func TestDeliveredStraightFromAssigned(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Direct Delivery")
+	driverID, phone, pin := office.addDriver("Bereket Tadesse")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Almaz Desta"}); !r.OK {
+		t.Fatalf("deliver: %+v", r)
+	}
+	if !scalar[bool](t, `SELECT status = 'delivered' AND picked_up_at IS NOT NULL AND picked_up_at <= actual_delivery FROM shipments WHERE id = $1`, shipmentID) {
+		t.Error("a delivery straight from assigned should record a departure no later than the delivery")
+	}
+}
+
+// TestHeldPODAfterReassignment: a driver who delivered while offline, after
+// the office gave the load to someone else, doesn't lose the proof. The
+// office accepts it and the delivery is credited to them.
+func TestHeldPODAfterReassignment(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Handover Haulage")
+	firstID, firstPhone, firstPIN := office.addDriver("Abel Tesfaye")
+	secondID, secondPhone, secondPIN := office.addDriver("Selam Worku")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", firstID)
+	first := e.signIn(firstPhone, firstPIN)
+	second := e.signIn(secondPhone, secondPIN)
+	if r := first.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+	resp, _ := second.sync(service.SyncRequest{})
+	cursor := resp.Cursor
+
+	delivered := time.Now().Add(-30 * time.Minute)
+	office.mustPost("/app/shipments/"+shipmentID+"/assign", url.Values{"driver_id": {secondID}})
+
+	pod := service.SyncPOD{ClientID: clientID(), ShipmentID: shipmentID, RecipientName: "Almaz Desta", RecordedAt: delivered}
+	for i := range 2 { // the second time is a replay
+		r := first.pod(pod)
+		if r.OK || r.Retry || r.Code != "CONFLICT" || !strings.Contains(r.Message, "given to another driver") {
+			t.Fatalf("attempt %d: %+v, want a final conflict about the handover", i+1, r)
+		}
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM proof_of_deliveries WHERE shipment_id = $1`, shipmentID); n != 1 {
+		t.Fatalf("%d proofs stored, want 1", n)
+	}
+	podID := scalar[string](t, `SELECT id::text FROM proof_of_deliveries WHERE shipment_id = $1 AND status = 'held' AND held_reason = 'reassigned'`, shipmentID)
+	if got := scalar[string](t, `SELECT status FROM shipments WHERE id = $1`, shipmentID); got != "in_transit" {
+		t.Errorf("a held proof changed the shipment to %q", got)
+	}
+	scalar[string](t, `SELECT id::text FROM alerts WHERE shipment_id = $1 AND alert_type = 'delivery_held' AND severity = 'critical' AND acknowledged_at IS NULL`, shipmentID)
+
+	page := office.get("/app/shipments/" + shipmentID)
+	if !strings.Contains(page.Body, "Delivery to review") || !strings.Contains(page.Body, "Almaz Desta") {
+		t.Fatal("the shipment page should offer the held proof for review")
+	}
+	if p := office.get("/app/shipments/" + shipmentID + "/pods/" + podID + "/media/0"); p.Status != http.StatusOK || !strings.HasPrefix(p.Body, "\x89PNG") {
+		t.Errorf("held signature: status %d", p.Status)
+	}
+
+	office.mustPost("/app/shipments/"+shipmentID+"/pods/"+podID+"/accept", nil)
+	if got := scalar[string](t, `SELECT status || ' ' || driver_id::text FROM shipments WHERE id = $1`, shipmentID); got != "delivered "+firstID {
+		t.Errorf("after accepting: %q, want delivered by the first driver", got)
+	}
+	if lag := scalar[float64](t, `SELECT abs(extract(epoch FROM actual_delivery - $2::timestamptz)) FROM shipments WHERE id = $1`, shipmentID, delivered); lag > 1 {
+		t.Errorf("delivery time is %.0fs off the proof's time", lag)
+	}
+	if got := scalar[string](t, `SELECT status FROM proof_of_deliveries WHERE id = $1`, podID); got != "accepted" {
+		t.Errorf("proof status %q, want accepted", got)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM alerts WHERE shipment_id = $1 AND alert_type = 'delivery_held' AND acknowledged_at IS NULL`, shipmentID); n != 0 {
+		t.Error("the review alert should close once the proof is accepted")
+	}
+	if p := office.post("/app/shipments/"+shipmentID+"/pods/"+podID+"/accept", nil); p.Status != http.StatusSeeOther {
+		t.Errorf("accepting twice: status %d", p.Status)
+	}
+
+	// The second driver's phone lets go of the shipment.
+	resp, _ = second.sync(service.SyncRequest{Since: &cursor})
+	if len(resp.RemovedShipmentIDs) != 1 || resp.RemovedShipmentIDs[0] != shipmentID {
+		t.Errorf("second driver's removed shipments %v, want the delivered one", resp.RemovedShipmentIDs)
+	}
+}
+
+// TestHeldPODOnCancelledShipment: the office can dismiss a proof recorded
+// on a load it had cancelled; the shipment stays cancelled.
+func TestHeldPODOnCancelledShipment(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Dismissal Cargo")
+	driverID, phone, pin := office.addDriver("Yonas Kebede")
+	shipmentID, _ := office.book("Addis Ababa", "Mekelle", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+	office.mustPost("/app/shipments/"+shipmentID+"/cancel", url.Values{"reason": {"returned_to_origin"}})
+
+	r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Gebre Hailu"})
+	if r.OK || r.Code != "CONFLICT" || !strings.Contains(r.Message, "cancelled") {
+		t.Fatalf("proof on a cancelled shipment: %+v", r)
+	}
+	podID := scalar[string](t, `SELECT id::text FROM proof_of_deliveries WHERE shipment_id = $1 AND status = 'held' AND held_reason = 'cancelled'`, shipmentID)
+	office.mustPost("/app/shipments/"+shipmentID+"/pods/"+podID+"/dismiss", nil)
+
+	if got := scalar[string](t, `SELECT status FROM shipments WHERE id = $1`, shipmentID); got != "cancelled" {
+		t.Errorf("status %q after dismissing, want cancelled", got)
+	}
+	if got := scalar[string](t, `SELECT status FROM proof_of_deliveries WHERE id = $1`, podID); got != "dismissed" {
+		t.Errorf("proof status %q, want dismissed", got)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM alerts WHERE shipment_id = $1 AND alert_type = 'delivery_held' AND acknowledged_at IS NULL`, shipmentID); n != 0 {
+		t.Error("the review alert should close once the proof is dismissed")
+	}
+	if p := office.get("/app/shipments/" + shipmentID); !strings.Contains(p.Body, "Dismissed delivery record") {
+		t.Error("a dismissed proof should stay on the shipment page")
+	}
+}
+
+// TestRefusedPODLeavesNoFiles: images of a proof that is refused are not
+// kept.
+func TestRefusedPODLeavesNoFiles(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Clean Storage")
+	driverID, phone, pin := office.addDriver("Liya Mamo")
+	_, strangerPhone, strangerPIN := office.addDriver("Not Assigned")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", driverID)
+	d := e.signIn(phone, pin)
+	stranger := e.signIn(strangerPhone, strangerPIN)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+
+	for name, try := range map[string]func() service.SyncResult{
+		"no recipient": func() service.SyncResult { return d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: " "}) },
+		"bad phone": func() service.SyncResult {
+			return d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "A", RecipientPhone: "12"})
+		},
+		"bad photo": func() service.SyncResult {
+			return d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "A", Photos: []string{"data:image/jpeg;base64,!!"}})
+		},
+		"never theirs": func() service.SyncResult {
+			return stranger.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "A"})
+		},
+	} {
+		if r := try(); r.OK || r.Retry {
+			t.Errorf("%s: %+v, want a final refusal", name, r)
+		}
+	}
+	if files := storedFiles(t, e.files); len(files) != 0 {
+		t.Errorf("refused proofs left files behind: %v", files)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM proof_of_deliveries WHERE shipment_id = $1`, shipmentID); n != 0 {
+		t.Errorf("%d proofs stored, want 0", n)
+	}
+
+	if r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Meron Abebe"}); !r.OK {
+		t.Fatalf("valid proof: %+v", r)
+	}
+	if files := storedFiles(t, e.files); len(files) != 1 {
+		t.Errorf("stored files %v, want the one signature", files)
+	}
+}
+
+// TestHugePhotoRefused (R6, S4): a delivery photo claiming 8000×8000
+// pixels is refused before it is decoded, for good, and so is an SVG
+// signature.
+func TestHugePhotoRefused(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Big Picture Freight")
+	driverID, phone, pin := office.addDriver("Lulit Kebede")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+
+	r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Almaz Desta", Photos: []string{blankPNG(8000, 8000)}})
+	if r.OK || r.Retry || !strings.Contains(r.Message, "too large") {
+		t.Errorf("huge photo: %+v, want refused for good as too large", r)
+	}
+	svg := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
+	if r := d.pod(service.SyncPOD{ShipmentID: shipmentID, RecipientName: "Almaz Desta", Signature: svg}); r.OK || r.Retry {
+		t.Errorf("SVG signature: %+v, want refused for good", r)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM proof_of_deliveries WHERE shipment_id = $1`, shipmentID); n != 0 {
+		t.Errorf("%d proofs stored, want none", n)
+	}
+}
+
+// blankPNG is a valid, blank one-bit PNG of the given size: a few
+// kilobytes, however large it claims to be.
+func blankPNG(w, h int) string {
+	var out bytes.Buffer
+	out.WriteString("\x89PNG\r\n\x1a\n")
+	chunk := func(kind string, data []byte) {
+		_ = binary.Write(&out, binary.BigEndian, uint32(len(data)))
+		c := crc32.NewIEEE()
+		c.Write([]byte(kind))
+		c.Write(data)
+		out.WriteString(kind)
+		out.Write(data)
+		_ = binary.Write(&out, binary.BigEndian, c.Sum32())
+	}
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], uint32(w))
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(h))
+	ihdr[8] = 1 // one bit, greyscale
+	chunk("IHDR", ihdr)
+	var idat bytes.Buffer
+	z := zlib.NewWriter(&idat)
+	row := make([]byte, 1+(w+7)/8)
+	for range h {
+		_, _ = z.Write(row)
+	}
+	_ = z.Close()
+	chunk("IDAT", idat.Bytes())
+	chunk("IEND", nil)
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(out.Bytes())
 }

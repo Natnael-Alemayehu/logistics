@@ -86,57 +86,6 @@ func TestDeliveryLifecycle(t *testing.T) {
 	}
 }
 
-// TestSyncReplayIsIdempotent: a phone that loses the response resends the
-// same change, which must not be applied twice.
-func TestSyncReplayIsIdempotent(t *testing.T) {
-	e := newEnv(t)
-	office := e.company("Replay Logistics")
-	driverID, phone, pin := office.addDriver("Tigist Haile")
-	shipmentID, _ := office.book("Addis Ababa", "Hawassa", driverID)
-	d := e.signIn(phone, pin)
-
-	id := clientID()
-	for i := range 2 {
-		if r := d.status(id, shipmentID, "in_transit"); !r.OK {
-			t.Fatalf("attempt %d: %+v", i+1, r)
-		}
-	}
-	if n := scalar[int64](t, `SELECT count(*) FROM shipment_events WHERE shipment_id = $1 AND to_status = 'in_transit'`, shipmentID); n != 1 {
-		t.Errorf("in_transit recorded %d times, want 1", n)
-	}
-}
-
-// TestOfficeDecisionWinsOverStaleDriverUpdate: once the office cancels, an
-// update queued on a phone that was offline must not revive the shipment.
-func TestOfficeDecisionWinsOverStaleDriverUpdate(t *testing.T) {
-	e := newEnv(t)
-	office := e.company("Conflict Haulage")
-	driverID, phone, pin := office.addDriver("Mulugeta Alemu")
-	shipmentID, _ := office.book("Addis Ababa", "Dire Dawa", driverID)
-	d := e.signIn(phone, pin)
-
-	tappedOffline := time.Now()
-	time.Sleep(10 * time.Millisecond)
-	office.mustPost("/app/shipments/"+shipmentID+"/cancel", url.Values{"reason": {"customer_request"}})
-
-	// Made before the cancellation, sent after it.
-	r := d.statusAt(clientID(), shipmentID, "in_transit", tappedOffline)
-	if r.OK || r.Retry || r.Code != "STALE" {
-		t.Errorf("queued update: %+v, want a final STALE rejection", r)
-	}
-	if n := scalar[int64](t, `SELECT count(*) FROM shipment_events WHERE shipment_id = $1 AND event_type = 'conflict'`, shipmentID); n != 1 {
-		t.Errorf("%d conflict events recorded, want 1", n)
-	}
-
-	// Made after it: not a move a driver can make on a cancelled shipment.
-	if r := d.status(clientID(), shipmentID, "in_transit"); r.OK || r.Retry {
-		t.Errorf("update after cancellation: %+v, want a final rejection", r)
-	}
-	if got := scalar[string](t, `SELECT status FROM shipments WHERE id = $1`, shipmentID); got != "cancelled" {
-		t.Errorf("status %q, want cancelled", got)
-	}
-}
-
 // TestCompaniesAreIsolated: nothing of one company is reachable from another.
 func TestCompaniesAreIsolated(t *testing.T) {
 	e := newEnv(t)

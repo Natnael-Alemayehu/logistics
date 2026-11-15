@@ -12,6 +12,11 @@ What changed in each release, newest first.
   and `CONTRIBUTING.md`, on running, testing and changing the code.
 - `docs/deploy.md`: production, monitoring, backups, staging and connecting
   the providers, moved out of the README.
+- **The driver app is tested in a browser.** An end-to-end test runs it in
+  headless Chrome against staging: signing in, starting a trip, and with
+  the signal gone, a delivery form that survives a reload and a delivery
+  sent once the signal is back. `make test-e2e` needs Chrome or Chromium
+  for it, and skips it without one, except in CI.
 
 ### Changed
 
@@ -36,6 +41,13 @@ What changed in each release, newest first.
 
 ### Fixed
 
+- **Staging no longer hangs on start.** The job that makes the stand-in S3
+  bucket could wait for ever on one call, holding up the app and CI. Each
+  call now has five seconds, and `make staging-up` gives up after ten
+  minutes.
+- `TestRateLimits` no longer fails on a busy machine. When its requests run
+  into a new clock minute, which resets the limiter's count, it runs again
+  from the start of the next one.
 - **Maps work in every build.** The map library (Leaflet 1.9.4) had never
   been committed: an ignore rule meant for Go's `vendor/` directory also
   matched `static/vendor/`. It was served on the machine the product was

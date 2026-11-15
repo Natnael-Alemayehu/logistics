@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/natnael-alemayehu/kiflet/internal/model"
 	"github.com/natnael-alemayehu/kiflet/internal/service"
 	"github.com/natnael-alemayehu/kiflet/pkg/payments"
 )
@@ -906,4 +907,141 @@ func (e *env) notify(provider string, n payments.Notification, signature string)
 	}
 	res.Body.Close()
 	return res.StatusCode
+}
+
+// TestRenewalKeepsTheBillingDay (L6): a company's billing day is kept and
+// each renewal ends on it, not on whatever day the last period ended.
+func TestRenewalKeepsTheBillingDay(t *testing.T) {
+	e := newEnv(t)
+	office := e.subscribed("Billing Day Haulage", "starter", e.operator())
+	tenant := office.tenant()
+	addis, _ := time.LoadLocation("Africa/Addis_Ababa")
+	if day := scalar[int32](t, `SELECT billing_anchor_day FROM tenants WHERE id = $1`, tenant); day != int32(time.Now().In(addis).Day()) {
+		t.Errorf("billing day %d, want today's", day)
+	}
+
+	// As if the company started on the 31st and this period ended early in
+	// a short month.
+	exec(t, `UPDATE tenants SET billing_anchor_day = 31, period_start = NOW() - INTERVAL '1 month', period_end = NOW() - INTERVAL '1 minute' WHERE id = $1`, tenant)
+	start := scalar[time.Time](t, `SELECT period_end FROM tenants WHERE id = $1`, tenant)
+	if err := e.svc.Billing.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	end := scalar[time.Time](t, `SELECT period_end FROM tenants WHERE id = $1`, tenant)
+	if want := model.PeriodEnd(start.In(addis), model.CycleMonthly, 31); !end.Equal(want) {
+		t.Errorf("renewed to %s, want %s", end.In(addis).Format("2 Jan 2006 15:04"), want.Format("2 Jan 2006 15:04"))
+	}
+	if day := scalar[int32](t, `SELECT billing_anchor_day FROM tenants WHERE id = $1`, tenant); day != 31 {
+		t.Errorf("billing day %d after renewal, want 31", day)
+	}
+}
+
+// TestCancelSubscription (W5): a company admin turns off renewal. The plan
+// runs to the end of the period, isn't renewed, and the account is then
+// read-only until a plan is chosen again. Renewal can be turned back on
+// while the period runs.
+func TestCancelSubscription(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	op := e.operator()
+	office := e.subscribed("Cancelling Haulage", "starter", op)
+	tenant := office.tenant()
+
+	msg, failed := office.result("/app/billing/cancel", nil)
+	if failed || !strings.Contains(msg, "won't renew") {
+		t.Fatalf("cancelling: %q (failed %v)", msg, failed)
+	}
+	e.received("email", office.email, "Your plan won't renew")
+	if !strings.Contains(office.get("/app/billing").Body, "Turn renewal back on") {
+		t.Error("the billing page doesn't offer to turn renewal back on")
+	}
+	if msg, failed := office.result("/app/billing/plan", url.Values{"plan": {"business"}, "cycle": {"monthly"}}); !failed || !strings.Contains(msg, "Turn renewal back on first") {
+		t.Errorf("changing plan with renewal off: %q (failed %v)", msg, failed)
+	}
+	office.book("Addis Ababa", "Adama", "") // the period still runs
+
+	if msg, failed := office.result("/app/billing/resume", nil); failed || !strings.Contains(msg, "renews on") {
+		t.Fatalf("resuming: %q (failed %v)", msg, failed)
+	}
+	if scalar[bool](t, `SELECT renewal_cancelled_at IS NOT NULL FROM tenants WHERE id = $1`, tenant) {
+		t.Fatal("renewal still off after resuming")
+	}
+
+	// Off again, and the period ends: no renewal, and the account is
+	// read-only.
+	if _, failed := office.result("/app/billing/cancel", nil); failed {
+		t.Fatal("cancelling again failed")
+	}
+	exec(t, `UPDATE tenants SET period_end = NOW() - INTERVAL '1 minute' WHERE id = $1`, tenant)
+	if err := e.svc.Billing.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar[int64](t, `SELECT COUNT(*) FROM invoices WHERE tenant_id = $1 AND kind = 'renewal'`, tenant); n != 0 {
+		t.Errorf("%d renewal invoices after renewal was turned off", n)
+	}
+	if !strings.Contains(office.get("/app").Body, "wasn't renewed") {
+		t.Error("the dashboard doesn't say the plan ended")
+	}
+	if p := office.post("/app/shipments", bookingForm()); p.Status != http.StatusPaymentRequired || !strings.Contains(p.Body, "subscription has ended") {
+		t.Errorf("booking after the plan ended: status %d %s", p.Status, errorText(p.Body))
+	}
+	if msg, failed := office.result("/app/billing/resume", nil); !failed || !strings.Contains(msg, "has ended") {
+		t.Errorf("resuming after the end: %q (failed %v)", msg, failed)
+	}
+
+	// Choosing a plan starts a new subscription, renewing again.
+	invoiceID := office.choose("starter", "monthly")
+	if invoiceID == "" {
+		t.Fatal("choosing a plan after the end issued no invoice")
+	}
+	if kind := scalar[string](t, `SELECT kind FROM invoices WHERE id = $1`, invoiceID); kind != "subscription" {
+		t.Errorf("a %s invoice, want a subscription", kind)
+	}
+	op.markPaid(invoiceID, "RESTART1")
+	if scalar[bool](t, `SELECT renewal_cancelled_at IS NOT NULL OR period_end <= NOW() FROM tenants WHERE id = $1`, tenant) {
+		t.Error("the new subscription doesn't renew, or has no period")
+	}
+	office.book("Addis Ababa", "Adama", "")
+}
+
+// TestCancelWithRenewalUnpaid (W5): cancelling while the renewal invoice
+// for a period already begun is unpaid cancels that invoice, and the plan
+// ends with the last period paid for, so nothing is owed.
+func TestCancelWithRenewalUnpaid(t *testing.T) {
+	e := newEnv(t)
+	office := e.subscribed("Lapsed Renewal Haulage", "starter", e.operator())
+	tenant := office.tenant()
+	exec(t, `UPDATE tenants SET period_end = NOW() - INTERVAL '1 minute' WHERE id = $1`, tenant)
+	paidUntil := scalar[time.Time](t, `SELECT period_end FROM tenants WHERE id = $1`, tenant)
+	if err := e.svc.Billing.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	renewal := scalar[string](t, `SELECT number FROM invoices WHERE tenant_id = $1 AND kind = 'renewal' AND status = 'open'`, tenant)
+
+	msg, failed := office.result("/app/billing/cancel", nil)
+	if failed || !strings.Contains(msg, renewal+" is cancelled") {
+		t.Fatalf("cancelling: %q (failed %v)", msg, failed)
+	}
+	if st := scalar[string](t, `SELECT status FROM invoices WHERE number = $1`, renewal); st != "void" {
+		t.Errorf("the unpaid renewal is %s, want void", st)
+	}
+	if end := scalar[time.Time](t, `SELECT period_end FROM tenants WHERE id = $1`, tenant); !end.Equal(paidUntil) {
+		t.Errorf("the plan ends %s, want %s, the end of the last paid period", end, paidUntil)
+	}
+	page := office.get("/app")
+	if !strings.Contains(page.Body, "wasn't renewed") || strings.Contains(page.Body, "is unpaid") || strings.Contains(page.Body, "is overdue") {
+		t.Error("after cancelling, the account should read as ended, with nothing unpaid")
+	}
+	if p := office.post("/app/shipments", bookingForm()); p.Status != http.StatusPaymentRequired {
+		t.Errorf("booking after cancelling: status %d", p.Status)
+	}
+}
+
+func bookingForm() url.Values {
+	return url.Values{
+		"priority": {"normal"}, "origin_city": {"Addis Ababa"}, "origin_address": {"Main depot"},
+		"destination_city": {"Adama"}, "destination_address": {"Customer warehouse"},
+		"customer_name": {"Abyssinia Traders"}, "customer_phone": {phoneNumber()},
+		"cargo_description": {"Cement, 200 bags"}, "cargo_weight": {"10000"},
+	}
 }

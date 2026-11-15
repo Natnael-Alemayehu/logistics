@@ -257,8 +257,8 @@ and drop it afterwards. Without `TEST_DATABASE_URL` they start their own PostGIS
 container instead. The S3 tests start a SeaweedFS container.
 
 `make staging-up && make test-e2e` tests the production images and compose
-file over HTTPS, with the providers played by the sandbox (see
-[Staging](docs/deploy.md#staging)).
+file over HTTPS, with the providers played by the sandbox, and the driver
+app in headless Chrome (see [Staging](docs/deploy.md#staging)).
 
 ### CI
 
