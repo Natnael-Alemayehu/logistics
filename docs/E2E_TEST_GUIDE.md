@@ -590,7 +590,8 @@ app's terminal.
 Check:
 - **System health** (as the operator) names the providers **Sandbox**.
 - The sandbox's pages work on a phone and in dark mode.
-- `docker compose --profile sandbox up sandbox` runs the sandbox in a
+- `docker compose -f deployments/dev/compose.yml --profile sandbox up sandbox`
+  runs the sandbox in a
   container instead of `make sandbox`, for the app on the host.
 
 ## 13. On staging

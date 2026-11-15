@@ -162,7 +162,8 @@ pkg/                 SMS, email and payment providers, terminal stand-ins, stora
                      websocket hub, hashing
 tests/integration/   end-to-end tests over HTTP against PostGIS
 tests/e2e/           tests against staging, through Caddy over HTTPS
-deployments/         production compose file, Caddy, Prometheus, Grafana; staging/
+deployments/         production compose file, Caddy, Prometheus, Grafana; staging/;
+                     dev/, the development database and the sandbox's settings
 scripts/             backup and restore
 ```
 
@@ -210,7 +211,7 @@ make sandbox       # terminal 1: the sandbox on http://localhost:8091
 make run-sandbox   # terminal 2: the app on :8080, its providers pointed at the sandbox
 ```
 
-Give both the same `PORT` to move the app. They read `sandbox.env`,
+Give both the same `PORT` to move the app. They read `deployments/dev/sandbox.env`,
 so they agree on keys and logins, and the first run writes throwaway telebirr
 key pairs to `sandbox-keys/`. Email is still printed in the app's
 terminal. Then:
@@ -227,7 +228,8 @@ terminal. Then:
 - **Log** shows every call in both directions with its headers and bodies,
   secrets masked.
 
-`docker compose --profile sandbox up sandbox` runs the sandbox in a container
+`docker compose -f deployments/dev/compose.yml --profile sandbox up sandbox`
+runs the sandbox in a container
 instead, for an app on the host. Tests and scripts drive it through a JSON
 API (faults, phones, texts, payments, held calls and the log; see
 `internal/sandbox/api.go`).

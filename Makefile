@@ -6,8 +6,10 @@ DATABASE_URL ?= postgres://logistics:logistics@localhost:$(DB_PORT)/logistics?ss
 # Integration tests create (and drop) a scratch database on this server.
 TEST_DATABASE_URL ?= postgres://logistics:logistics@localhost:$(DB_PORT)/postgres?sslmode=disable
 export DATABASE_URL
+# Development: the database, and the sandbox in a container if wanted.
+DEV = docker compose -f deployments/dev/compose.yml
 # Runs a command with sandbox.env's settings, for the app and the sandbox.
-WITH_SANDBOX_ENV = set -a && . ./sandbox.env && set +a &&
+WITH_SANDBOX_ENV = set -a && . deployments/dev/sandbox.env && set +a &&
 # Staging: production's compose file, with the provider sandbox for the
 # providers (deployments/staging/compose.yml).
 STAGING = docker compose -f deployments/docker-compose.prod.yml -f deployments/staging/compose.yml \
@@ -33,10 +35,10 @@ help:
 	@echo "  make docker-build       build the production image and the sandbox's"
 
 db:
-	DB_PORT=$(DB_PORT) docker compose up -d --wait postgres
+	DB_PORT=$(DB_PORT) $(DEV) up -d --wait postgres
 
 db-stop:
-	docker compose down
+	$(DEV) down
 
 run:
 	DEV_RELOAD=true go run ./cmd/server serve

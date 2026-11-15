@@ -15,6 +15,11 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **Everything moved out of `backend/`** to the repository root, which is
+  now where `go.mod`, the `Makefile` and `.env` live and where every command
+  runs. The development compose file and the sandbox's settings are in
+  `deployments/dev/`; `make db`, `make sandbox` and `make run-sandbox` find
+  them.
 - The long documents moved to `docs/`: the requirements, the background,
   the manual test guide and the audit, which is now
   `docs/audit-2026-11.md`.
