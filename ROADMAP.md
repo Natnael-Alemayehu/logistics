@@ -12,9 +12,10 @@ once it is done: this file should only ever hold what is still ahead.
 
 ## Where things stand
 
-- One Go application, at the repository root: about 25,000 lines of Go and 12,000
-  lines of tests (175 unit tests, 95 integration tests, 8 end-to-end tests),
-  plus 53 templates and a 1,663-line driver app in plain JavaScript.
+- One Go application, at the repository root: about 25,000 lines of Go and
+  12,600 lines of tests (175 unit tests, 95 integration tests, 9 end-to-end
+  tests, one of them the driver app in headless Chrome), plus 53 templates
+  and a 1,663-line driver app in plain JavaScript.
 - CI runs vet, unit tests, gofmt, `sqlc diff`, govulncheck, shellcheck, the
   integration tests and the end-to-end tests against staging.
 - The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O1, O3,
@@ -33,8 +34,8 @@ rest of this file assumes. The ones marked were settled on 2026-11-15.
 
 | Decision | Recommendation | Why |
 |---|---|---|
-| Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#5-migrations). |
-| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#7-commit-attribution). |
+| Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#4-migrations). |
+| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#6-commit-attribution). |
 | Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
 | Split the driver app's script into modules | Not before its updates are made all-or-nothing; after the release is fine | A half-finished update would otherwise leave a phone with mixed versions. See [The driver app's one large file](#3-the-driver-apps-one-large-file). |
 
@@ -139,9 +140,9 @@ What is left:
 
 ### 3. The driver app's one large file
 
-`internal/web/static/driver/app.js` is 1,663 lines in one file, with no
-tests. The large Go files are split; this one is not, because splitting it
-changes how the app reaches a phone.
+`internal/web/static/driver/app.js` is 1,663 lines in one file. The large
+Go files are split; this one is not, because splitting it changes how the
+app reaches a phone.
 
 Today the service worker refreshes each file of the app on its own, whenever
 there is signal. With one script that is safe. With twenty modules, an
@@ -162,28 +163,10 @@ without signal, which is when a driver needs it.
       state object. List the modules in the service worker's `SHELL`
       (`TestDriverShellFilesExist` then checks them) and name each in a
       `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
-      requests.
+      requests. `TestDriverAppInABrowser` in the end-to-end suite then shows
+      the app still signs in, works offline and keeps its drafts.
 
-### 4. Tests named for what they test
-
-- [ ] `tests/integration/audit_test.go` holds 27 tests grouped by where the
-      findings came from, not by subject. Move each to the file for its
-      subject (`accounts_test.go`, `billing_test.go`, `dispatch_test.go`,
-      `driver_app_test.go`, and a new `sms_test.go` and `sync_test.go`),
-      keeping the finding's ID in the test's comment.
-- [ ] `tests/integration/logic_test.go` and `internal/service/logic_test.go`
-      are named after a round of fixes. Rename them by subject too.
-- [ ] `TestRateLimits` still fails on a busy machine. Its 31 sign-ins must
-      land inside one clock minute, and it only waits for a fresh minute
-      when under 20 seconds are left; on a loaded machine they took 34.
-      Give the limiter a clock the test can set, or have the test retry
-      once when it crossed a minute.
-- [ ] Driver app: a small set of headless-browser tests run with the
-      end-to-end suite: sign in, receive a load, deliver offline, sync, and
-      restore a delivery draft after a reload. This is the only part of the
-      product with no automated test of its own.
-
-### 5. Migrations
+### 4. Migrations
 
 There are 21 migration files. They tell the story of how the schema got
 here, including a table that was created and later dropped
@@ -198,7 +181,7 @@ mean nothing to a new reader.
 - [ ] If one does: leave the files alone and add `docs/schema.md`, a short
       guide to the tables, instead.
 
-### 6. Checks that keep it clean
+### 5. Checks that keep it clean
 
 - [ ] golangci-lint in CI with `staticcheck`, `unused`, `errcheck` and
       `ineffassign`. Fix or explicitly excuse what the first run reports.
@@ -215,7 +198,7 @@ mean nothing to a new reader.
       `internal/web`. Unit coverage shows 5.8% and 4.2% for them only
       because their tests are the integration tests.
 
-### 7. Commit attribution
+### 6. Commit attribution
 
 GitHub lists Claude as a contributor because 28 commits on `main` end
 with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
@@ -281,7 +264,7 @@ What it costs:
 - The old commits stay reachable through pull request #2's page. Only
   GitHub Support can remove them, and the contributor list doesn't need it.
 
-### 8. Tag it
+### 7. Tag it
 
 - [ ] `CHANGELOG.md` entry, tag `v0.9.0` on the rewritten `main`, and a
       GitHub release. Tag after the rewrite, never before.
@@ -340,6 +323,6 @@ In order. The first three can run side by side.
 
 - **Moving `pkg/` under `internal/`.** Nothing outside this module imports
   it, but the move touches every file for no change a reader would feel.
-- **Rewriting old commit messages** beyond the lines in part 7. The early
+- **Rewriting old commit messages** beyond the lines in part 6. The early
   history is rough, and it is still the history. That includes the
   product's first name: old commits keep it.
