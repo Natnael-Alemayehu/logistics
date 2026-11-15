@@ -6,7 +6,7 @@
 //	sandbox keys   write throwaway telebirr key pairs to SANDBOX_KEYS_DIR
 //
 // The providers' settings are the variables Kiflet reads, so the two share
-// sandbox.env (make sandbox, make run-sandbox). The sandbox's own:
+// deployments/dev/sandbox.env (make sandbox, make run-sandbox). The sandbox's own:
 //
 //	SANDBOX_ADDR        where to listen
 //	SANDBOX_APP_URL     Kiflet, which the providers call (PUBLIC_URL, or http://localhost:$PORT)

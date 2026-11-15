@@ -20,9 +20,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Third-party software
 
-Leaflet is included in backend/internal/web/static/vendor/leaflet and is
+Leaflet is included in internal/web/static/vendor/leaflet and is
 distributed under its own licence, which is in that directory. The Go
-modules named in backend/go.mod are not part of this repository; each is
+modules named in go.mod are not part of this repository; each is
 distributed under its own licence.
 
 To ask for permission, open an issue at

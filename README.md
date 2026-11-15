@@ -146,25 +146,25 @@ with the screen off needs a native wrapper with background location.
 ### Code map
 
 ```
-backend/
-  cmd/server/          main: serve, migrate, seed
-  cmd/sandbox/         the provider sandbox: serve, keys
-  internal/app/        builds the app from its settings: providers, services, web, workers
-  internal/web/        HTTP: routes, middleware, handlers, templates/, static/
-  internal/service/    shipments, status rules, sync, auth, SMS, email, billing, alerts, reports, jobs
-  internal/model/      statuses, transitions, reasons, roles, plans and prices
-  internal/db/         sqlc-generated queries (from sqlc/queries)
-  internal/geo/        Ethiopian towns, distances, transit-time estimates
-  internal/phone/      Ethiopian phone number normalisation
-  internal/sandbox/    the providers' side of the SMS, telebirr and CBE Birr contracts, with
-                       phones, wallets and faults (standard library only)
-  migrations/          goose migrations, embedded
-  pkg/                 SMS, email and payment providers, terminal stand-ins, storage (local or S3),
-                       websocket hub, hashing
-  tests/integration/   end-to-end tests over HTTP against PostGIS
-  tests/e2e/           tests against staging, through Caddy over HTTPS
-  deployments/         production compose file, Caddy, Prometheus, Grafana; staging/
-  scripts/             backup and restore
+cmd/server/          main: serve, migrate, seed
+cmd/sandbox/         the provider sandbox: serve, keys
+internal/app/        builds the app from its settings: providers, services, web, workers
+internal/web/        HTTP: routes, middleware, handlers, templates/, static/
+internal/service/    shipments, status rules, sync, auth, SMS, email, billing, alerts, reports, jobs
+internal/model/      statuses, transitions, reasons, roles, plans and prices
+internal/db/         sqlc-generated queries (from sqlc/queries)
+internal/geo/        Ethiopian towns, distances, transit-time estimates
+internal/phone/      Ethiopian phone number normalisation
+internal/sandbox/    the providers' side of the SMS, telebirr and CBE Birr contracts, with
+                     phones, wallets and faults (standard library only)
+migrations/          goose migrations, embedded
+pkg/                 SMS, email and payment providers, terminal stand-ins, storage (local or S3),
+                     websocket hub, hashing
+tests/integration/   end-to-end tests over HTTP against PostGIS
+tests/e2e/           tests against staging, through Caddy over HTTPS
+deployments/         production compose file, Caddy, Prometheus, Grafana; staging/;
+                     dev/, the development database and the sandbox's settings
+scripts/             backup and restore
 ```
 
 ## Run it locally
@@ -191,7 +191,7 @@ SMS, email and payments are simulated by default: codes, links and payment
 prompts are printed in the terminal running `make run`. To try a
 feature-phone driver, open Settings → Text messages and send
 `ET <last 4 of a tracking number> 3` from a driver's number, or run
-`go run ./cmd/server sms-in 0912345601 "ET 7K3M 3"` from `backend/`.
+`go run ./cmd/server sms-in 0912345601 "ET 7K3M 3"`.
 
 `make dev` rebuilds on Go changes (with [air](https://github.com/air-verse/air)).
 Templates and static files are reloaded from disk on every request either way.
@@ -211,9 +211,9 @@ make sandbox       # terminal 1: the sandbox on http://localhost:8091
 make run-sandbox   # terminal 2: the app on :8080, its providers pointed at the sandbox
 ```
 
-Give both the same `PORT` to move the app. They read `backend/sandbox.env`,
+Give both the same `PORT` to move the app. They read `deployments/dev/sandbox.env`,
 so they agree on keys and logins, and the first run writes throwaway telebirr
-key pairs to `backend/sandbox-keys/`. Email is still printed in the app's
+key pairs to `sandbox-keys/`. Email is still printed in the app's
 terminal. Then:
 
 - Sign up, and read the code on the sandbox's phone page (`/phones/09…`).
@@ -228,7 +228,8 @@ terminal. Then:
 - **Log** shows every call in both directions with its headers and bodies,
   secrets masked.
 
-`docker compose --profile sandbox up sandbox` runs the sandbox in a container
+`docker compose -f deployments/dev/compose.yml --profile sandbox up sandbox`
+runs the sandbox in a container
 instead, for an app on the host. Tests and scripts drive it through a JSON
 API (faults, phones, texts, payments, held calls and the log; see
 `internal/sandbox/api.go`).
@@ -273,7 +274,6 @@ One machine with Docker runs it: the app, PostGIS, and Caddy, which gets a
 TLS certificate for `DOMAIN` and serves HTTP/2 and HTTP/3.
 
 ```bash
-cd backend
 cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_* and SMTP_* settings, BILLING_BANK_DETAILS
 docker compose -f deployments/docker-compose.prod.yml --env-file .env up -d --build --wait
 ```

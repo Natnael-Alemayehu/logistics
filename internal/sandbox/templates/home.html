@@ -96,7 +96,7 @@
 
 <section class="card">
   <h2>Settings for {{.AppName}}</h2>
-  <p class="small">With <code>make run-sandbox</code>, {{.AppName}} reads these from <code>sandbox.env</code>. Run another way, it needs them in its environment:</p>
+  <p class="small">With <code>make run-sandbox</code>, {{.AppName}} reads these from <code>deployments/dev/sandbox.env</code>. Run another way, it needs them in its environment:</p>
   <pre class="env" id="env">{{$d.Env}}</pre>
   <button class="btn small" type="button" data-copy="env">Copy</button>
 </section>
