@@ -171,7 +171,8 @@ In order. The first two can run side by side.
    stays the app.
 8. **Later:** CSV import of shipments (FR-013), a last-position table for
    the live map (O3), a second app instance (O4), a public API and webhooks
-   (FR-046, FR-047).
+   (FR-046, FR-047), and point-in-time recovery (WAL archiving, the rest of
+   O1) if a pilot can't afford to lose a day.
 
 ## Decided, and when to revisit
 
