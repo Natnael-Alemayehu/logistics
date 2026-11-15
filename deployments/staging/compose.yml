@@ -146,15 +146,17 @@ services:
       timeout: 5s
       retries: 30
 
-  # Makes the app's bucket, once the filer has joined.
+  # Makes the app's bucket, once the filer has joined. Each call is given
+  # five seconds: a shell that reaches the master before the filer has
+  # joined can wait for ever, and the app waits for this to finish.
   s3-bucket:
     image: chrislusf/seaweedfs:3.97
     entrypoint: ["sh", "-c"]
     command:
       - |
-        for i in $$(seq 60); do
-          echo 's3.bucket.list' | weed shell -master=s3:9333 2>/dev/null | grep -q '[[:space:]]kiflet[[:space:]]' && exit 0
-          echo 's3.bucket.create -name kiflet' | weed shell -master=s3:9333 >/dev/null 2>&1
+        for i in $$(seq 30); do
+          echo 's3.bucket.list' | timeout 5 weed shell -master=s3:9333 2>/dev/null | grep -q '[[:space:]]kiflet[[:space:]]' && exit 0
+          echo 's3.bucket.create -name kiflet' | timeout 5 weed shell -master=s3:9333 >/dev/null 2>&1
           sleep 2
         done
         echo 'no bucket' >&2

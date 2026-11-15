@@ -444,3 +444,311 @@ func TestSearchByPhoneInAnyForm(t *testing.T) {
 		t.Error("another number found the shipment")
 	}
 }
+
+// TestPlannedPickup: a load booked days ahead is not late before it leaves,
+// its ETA counts from the pickup, and a missed pickup is flagged.
+func TestPlannedPickup(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	office := e.company("Pickup Freight")
+	driverID, phone, pin := office.addDriver("Hana Girma")
+	tz, _ := time.LoadLocation("Africa/Addis_Ababa")
+	pickup := time.Now().In(tz).Add(72 * time.Hour).Truncate(time.Minute)
+	p := office.mustPost("/app/shipments", url.Values{
+		"priority": {"normal"}, "origin_city": {"Addis Ababa"}, "origin_address": {"Main depot"},
+		"destination_city": {"Hawassa"}, "destination_address": {"Customer warehouse"},
+		"customer_name": {"Sidama Coffee"}, "customer_phone": {phoneNumber()}, "driver_id": {driverID},
+		"planned_pickup": {pickup.Format("2006-01-02T15:04")},
+	})
+	shipmentID := strings.TrimPrefix(p.Location, "/app/shipments/")
+
+	if !scalar[bool](t, `SELECT estimated_delivery > planned_pickup_at FROM shipments WHERE id = $1`, shipmentID) {
+		t.Error("the booking ETA should count from the planned pickup")
+	}
+	if err := e.svc.Jobs.CheckPickups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Even with its ETA in the past, a load not yet on the road is not "late".
+	exec(t, `UPDATE shipments SET estimated_delivery = NOW() - INTERVAL '1 hour' WHERE id = $1`, shipmentID)
+	if err := e.svc.Jobs.CheckETAs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM alerts WHERE shipment_id = $1`, shipmentID); n != 0 {
+		t.Fatalf("%d alerts for a load that isn't due yet, want 0", n)
+	}
+
+	exec(t, `UPDATE shipments SET planned_pickup_at = NOW() - INTERVAL '3 hours' WHERE id = $1`, shipmentID)
+	if err := e.svc.Jobs.CheckPickups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	msg := scalar[string](t, `SELECT message FROM alerts WHERE shipment_id = $1 AND alert_type = 'pickup_overdue' AND acknowledged_at IS NULL`, shipmentID)
+	if !strings.Contains(msg, "the driver has not set off") {
+		t.Errorf("pickup alert %q should say the driver hasn't left", msg)
+	}
+
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+	if err := e.svc.Jobs.CheckPickups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM alerts WHERE shipment_id = $1 AND alert_type = 'pickup_overdue' AND acknowledged_at IS NULL`, shipmentID); n != 0 {
+		t.Errorf("pickup alert still open after departure")
+	}
+}
+
+// TestDismissedAlertsStayDismissed: the checks run every minute, so an alert
+// the office dismissed must not come straight back. A new ETA is a new
+// situation and alerts again.
+func TestDismissedAlertsStayDismissed(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	office := e.company("Episode Transport")
+	driverID, phone, pin := office.addDriver("Kebede Alemu")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+
+	exec(t, `UPDATE shipments SET estimated_delivery = NOW() - INTERVAL '1 hour' WHERE id = $1`, shipmentID)
+	if err := e.svc.Jobs.CheckETAs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	alertID := scalar[string](t, `SELECT id::text FROM alerts WHERE shipment_id = $1 AND alert_type = 'eta_exceeded' AND acknowledged_at IS NULL`, shipmentID)
+	office.mustPost("/app/alerts/"+alertID+"/ack", nil)
+
+	for range 3 {
+		if err := e.svc.Jobs.CheckETAs(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM alerts WHERE shipment_id = $1 AND alert_type = 'eta_exceeded'`, shipmentID); n != 1 {
+		t.Errorf("%d ETA alerts after dismissing one, want 1", n)
+	}
+
+	exec(t, `UPDATE shipments SET estimated_delivery = NOW() - INTERVAL '10 minutes' WHERE id = $1`, shipmentID)
+	if err := e.svc.Jobs.CheckETAs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM alerts WHERE shipment_id = $1 AND alert_type = 'eta_exceeded' AND acknowledged_at IS NULL`, shipmentID); n != 1 {
+		t.Errorf("%d open ETA alerts after the ETA moved, want 1", n)
+	}
+
+	// Back on time: the alert closes itself.
+	exec(t, `UPDATE shipments SET estimated_delivery = NOW() + INTERVAL '2 hours' WHERE id = $1`, shipmentID)
+	if err := e.svc.Jobs.CheckETAs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM alerts WHERE shipment_id = $1 AND alert_type = 'eta_exceeded' AND acknowledged_at IS NULL`, shipmentID); n != 0 {
+		t.Errorf("%d open ETA alerts once back on time, want 0", n)
+	}
+}
+
+// TestRepeatDelayIsRecorded: a second delay report with a new cause is news
+// for the office, though the customer isn't texted again.
+func TestRepeatDelayIsRecorded(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Delay Logistics")
+	driverID, phone, pin := office.addDriver("Dawit Bekele")
+	shipmentID, _ := office.book("Addis Ababa", "Bahir Dar", driverID)
+	exec(t, `UPDATE tenants SET sms_on_delayed = true WHERE id = (SELECT tenant_id FROM shipments WHERE id = $1)`, shipmentID)
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+	report := func(id, reason, note string) service.SyncResult {
+		t.Helper()
+		resp, code := d.sync(service.SyncRequest{Statuses: []service.SyncStatus{{
+			ClientID: id, ShipmentID: shipmentID, Status: "delayed", Reason: reason, Note: note, RecordedAt: time.Now(),
+		}}})
+		if code != http.StatusOK || len(resp.Results) != 1 {
+			t.Fatalf("sync: %d %+v", code, resp.Results)
+		}
+		return resp.Results[0]
+	}
+
+	if r := report(clientID(), "traffic", ""); !r.OK {
+		t.Fatalf("first delay: %+v", r)
+	}
+	second := clientID()
+	for range 2 { // the second time is a replay
+		if r := report(second, "mechanical_issue", "Gearbox"); !r.OK {
+			t.Fatalf("second delay: %+v", r)
+		}
+	}
+	if r := report(clientID(), "mechanical_issue", ""); !r.OK {
+		t.Fatalf("same delay again: %+v", r)
+	}
+
+	if n := scalar[int64](t, `SELECT count(*) FROM shipment_events WHERE shipment_id = $1 AND event_type = 'status_updated'`, shipmentID); n != 1 {
+		t.Errorf("%d delay updates recorded, want 1", n)
+	}
+	if got := scalar[string](t, `SELECT status_reason FROM shipments WHERE id = $1`, shipmentID); got != "mechanical_issue" {
+		t.Errorf("status reason %q, want the new cause", got)
+	}
+	open := scalar[string](t, `SELECT message FROM alerts WHERE shipment_id = $1 AND alert_type = 'delay_reported' AND acknowledged_at IS NULL`, shipmentID)
+	if !strings.Contains(open, "updated the delay") || !strings.Contains(open, "Gearbox") {
+		t.Errorf("open delay alert %q should describe the new cause", open)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM sms_messages WHERE shipment_id = $1 AND body LIKE '%is delayed%'`, shipmentID); n != 1 {
+		t.Errorf("customer texted %d times about the delay, want 1", n)
+	}
+	if p := office.get("/app/shipments/" + shipmentID); !strings.Contains(p.Body, "Delay updated") {
+		t.Error("the timeline should show the delay update")
+	}
+}
+
+// TestCancelReasonsFollowTheRoad: a load that has left is cancelled for
+// what happened on the trip, and reports count the reasons.
+func TestCancelReasonsFollowTheRoad(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Refusal Road")
+	driverID, phone, pin := office.addDriver("Fikru Tola")
+	waiting, _ := office.book("Addis Ababa", "Adama", driverID)
+	rolling, _ := office.book("Addis Ababa", "Hawassa", driverID)
+
+	if p := office.post("/app/shipments/"+waiting+"/cancel", url.Values{"reason": {"returned_to_origin"}}); p.Status == http.StatusSeeOther && scalar[string](t, `SELECT status FROM shipments WHERE id = $1`, waiting) == "cancelled" {
+		t.Error("a load that hasn't left can't be returned to origin")
+	}
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), rolling, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+	office.post("/app/shipments/"+rolling+"/cancel", url.Values{"reason": {"duplicate"}})
+	if got := scalar[string](t, `SELECT status FROM shipments WHERE id = $1`, rolling); got == "cancelled" {
+		t.Error("a load on the road can't be cancelled as a duplicate booking")
+	}
+	office.mustPost("/app/shipments/"+rolling+"/cancel", url.Values{"reason": {"recipient_refused"}})
+	office.mustPost("/app/shipments/"+waiting+"/cancel", url.Values{"reason": {"customer_request"}})
+
+	p := office.get("/app/reports")
+	if !strings.Contains(p.Body, "Recipient refused delivery") || !strings.Contains(p.Body, "Customer request") {
+		t.Error("reports should count cancellations by reason")
+	}
+}
+
+// TestAlertBadgeIsPerPerson (W3): one dispatcher opening the alert list
+// clears their own badge, not a colleague's.
+func TestAlertBadgeIsPerPerson(t *testing.T) {
+	e := newEnv(t)
+	admin := e.company("Badge Logistics")
+	email := "dispatch" + phoneNumber() + "@example.et"
+	p := admin.post("/app/team", url.Values{"full_name": {"Dawit Bekele"}, "email": {email}, "phone": {phoneNumber()}, "role": {"dispatcher"}})
+	m := secretRe.FindStringSubmatch(p.Body)
+	if m == nil {
+		t.Fatalf("add dispatcher: status %d %s", p.Status, errorText(p.Body))
+	}
+	disp := e.browser()
+	disp.mustPost("/login", url.Values{"identifier": {email}, "password": {strings.TrimSpace(m[1])}})
+	disp.mustPost("/app/account/password", url.Values{
+		"current_password": {strings.TrimSpace(m[1])}, "new_password": {"dispatch-pass-9"}, "confirm_password": {"dispatch-pass-9"},
+	})
+	badge := func(b *browser) int {
+		t.Helper()
+		var out struct{ Unread int }
+		p := b.get("/app/api/badge")
+		if p.Status != http.StatusOK {
+			t.Fatalf("badge: status %d", p.Status)
+		}
+		if err := json.Unmarshal([]byte(p.Body), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Unread
+	}
+	exec(t, `INSERT INTO alerts (tenant_id, alert_type, severity, message) VALUES ($1, 'driver_offline', 'warning', 'Quiet driver')`, admin.tenant())
+	if a, d := badge(admin), badge(disp); a != 1 || d != 1 {
+		t.Fatalf("badges %d and %d, want 1 each", a, d)
+	}
+	admin.get("/app/alerts")
+	if a, d := badge(admin), badge(disp); a != 0 || d != 1 {
+		t.Errorf("after the admin opened the list: badges %d and %d, want 0 and 1", a, d)
+	}
+	// A new alert shows on both again.
+	exec(t, `INSERT INTO alerts (tenant_id, alert_type, severity, message, created_at) VALUES ($1, 'sms_paused', 'warning', 'Texts paused', NOW() + INTERVAL '1 second')`, admin.tenant())
+	if a, d := badge(admin), badge(disp); a != 1 || d != 2 {
+		t.Errorf("after a new alert: badges %d and %d, want 1 and 2", a, d)
+	}
+}
+
+// TestAmharicNamesFit (W9): name limits count letters, not bytes. An
+// Amharic letter takes three bytes, so 50 letters used to be refused as
+// "too long".
+func TestAmharicNamesFit(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Amharic Names")
+	name := strings.Repeat("ሀ", 100) // 300 bytes
+	p := office.post("/app/drivers", url.Values{"full_name": {name}, "phone": {phoneNumber()}})
+	if strings.Contains(errorText(p.Body), "too long") {
+		t.Fatalf("a 100-letter Amharic name was refused: %s", errorText(p.Body))
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM users WHERE tenant_id = $1 AND full_name = $2`, office.tenant(), name); n != 1 {
+		t.Errorf("%d drivers with the name, want 1 (%d %s)", n, p.Status, errorText(p.Body))
+	}
+	if p := office.post("/app/drivers", url.Values{"full_name": {strings.Repeat("ሀ", 121)}, "phone": {phoneNumber()}}); !strings.Contains(errorText(p.Body), "too long") {
+		t.Errorf("121 letters: %d %s, want too long", p.Status, errorText(p.Body))
+	}
+}
+
+// TestReopenFollowsTheRules (L2): reopening is new work. A driver at their
+// limit doesn't get the load back, and a read-only company can't reopen.
+func TestReopenFollowsTheRules(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Reopen Rules")
+	driverID, _, _ := office.addDriver("Mulu Alemu")
+	exec(t, `UPDATE tenants SET max_active_per_driver = 1 WHERE id = $1`, office.tenant())
+	first, _ := office.book("Addis Ababa", "Adama", driverID)
+	office.mustPost("/app/shipments/"+first+"/cancel", url.Values{"reason": {"customer_request"}})
+	office.book("Addis Ababa", "Hawassa", driverID) // the driver's one place
+
+	if msg, failed := office.result("/app/shipments/"+first+"/reopen", nil); failed {
+		t.Fatalf("reopen: %s", msg)
+	}
+	if !scalar[bool](t, `SELECT status = 'pending' AND driver_id IS NULL FROM shipments WHERE id = $1`, first) {
+		t.Error("a driver at their limit should not get the reopened load back")
+	}
+	if note := scalar[string](t, `SELECT note FROM shipment_events WHERE shipment_id = $1 AND event_type = 'unassigned'`, first); !strings.Contains(note, "Mulu Alemu already has 1 active") {
+		t.Errorf("unassigned note %q should say why", note)
+	}
+
+	office.mustPost("/app/shipments/"+first+"/cancel", url.Values{"reason": {"customer_request"}})
+	exec(t, `UPDATE tenants SET trial_ends_at = NOW() - INTERVAL '1 minute' WHERE id = $1`, office.tenant())
+	if msg, failed := office.result("/app/shipments/"+first+"/reopen", nil); !failed || !strings.Contains(msg, "read-only") {
+		t.Errorf("reopen in read-only mode: %q", msg)
+	}
+}
+
+// TestVehicleOnOneTripWithinCapacity (L3): a truck on one driver's trip
+// can't be given to another, nor loaded past its capacity. A driver's usual
+// truck in that state is left off rather than blocking the assignment.
+func TestVehicleOnOneTripWithinCapacity(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("One Truck Freight")
+	office.mustPost("/app/vehicles", url.Values{"plate_number": {"3-B22222"}, "vehicle_type": {"heavy_truck"}, "capacity_kg": {"15000"}, "active": {"on"}})
+	truck := scalar[string](t, `SELECT id::text FROM vehicles WHERE tenant_id = $1`, office.tenant())
+	first, _, _ := office.addDriver("Girma Wolde")
+	second, _, _ := office.addDriver("Hirut Bekele")
+
+	a, _ := office.book("Addis Ababa", "Adama", "") // 10,000 kg
+	if msg, failed := office.result("/app/shipments/"+a+"/assign", url.Values{"driver_id": {first}, "vehicle_id": {truck}}); failed {
+		t.Fatalf("assign: %s", msg)
+	}
+	b, _ := office.book("Addis Ababa", "Hawassa", "")
+	if msg, failed := office.result("/app/shipments/"+b+"/assign", url.Values{"driver_id": {second}, "vehicle_id": {truck}}); !failed || !strings.Contains(msg, "on Girma Wolde's trip") {
+		t.Errorf("a truck on another driver's trip: %q", msg)
+	}
+	if msg, failed := office.result("/app/shipments/"+b+"/assign", url.Values{"driver_id": {first}, "vehicle_id": {truck}}); !failed || !strings.Contains(msg, "carries up to 15,000 kg") {
+		t.Errorf("a second 10,000 kg load on a 15,000 kg truck: %q", msg)
+	}
+
+	// The truck is the second driver's usual one: assigning them still works,
+	// without it.
+	exec(t, `UPDATE users SET vehicle_id = $1 WHERE id = $2`, truck, second)
+	if msg, failed := office.result("/app/shipments/"+b+"/assign", url.Values{"driver_id": {second}}); failed {
+		t.Fatalf("assign with a busy usual truck: %s", msg)
+	}
+	if !scalar[bool](t, `SELECT driver_id = $2 AND vehicle_id IS NULL FROM shipments WHERE id = $1`, b, second) {
+		t.Error("the busy usual truck should have been left off")
+	}
+}

@@ -80,7 +80,7 @@ test-e2e:
 	E2E_CA_FILE=$(CURDIR)/$(STAGING_CA) go test -tags e2e -count=1 -v ./tests/e2e/
 
 staging-up:
-	$(STAGING) up -d --build --wait
+	$(STAGING) up -d --build --wait --wait-timeout 600
 	@$(MAKE) --no-print-directory staging-ca
 	@echo "Staging is up: https://kiflet.localhost:8443, the sandbox at https://sandbox.kiflet.localhost:8443"
 	@echo "and email at https://mail.kiflet.localhost:8443. Caddy's root certificate is $(STAGING_CA)."

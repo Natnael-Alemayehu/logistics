@@ -104,6 +104,13 @@ redirect, the headers, and that a client can't claim another address) and
 the figures in Prometheus and Grafana, and last, take a backup and restore
 it.
 
+One test runs the driver app itself in headless Chrome, the size of a
+phone: signing in and choosing a PIN, starting a trip, then, with the
+signal gone, a delivery form that survives the app being loaded again and
+a delivery that is sent once the signal is back. It finds Chrome or
+Chromium on the `PATH`, or the program named in `E2E_CHROME`, and is
+skipped without one, except in CI.
+
 ## Connecting the real providers
 
 The adapters follow what each provider publishes, and the sandbox plays the
