@@ -4,6 +4,21 @@ What changed in each release, newest first.
 
 ## Unreleased
 
+### Added
+
+- **A licence.** `LICENSE` says all rights are reserved: the code may be
+  read, and nothing else, without written permission.
+- `SECURITY.md`, on reporting a vulnerability and where to look for one,
+  and `CONTRIBUTING.md`, on running, testing and changing the code.
+- `docs/deploy.md`: production, monitoring, backups, staging and connecting
+  the providers, moved out of the README.
+
+### Changed
+
+- The long documents moved to `docs/`: the requirements, the background,
+  the manual test guide and the audit, which is now
+  `docs/audit-2026-11.md`.
+
 ### Fixed
 
 - **Maps work in every build.** The map library (Leaflet 1.9.4) had never

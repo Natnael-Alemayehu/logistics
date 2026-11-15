@@ -17,10 +17,11 @@ once it is done: this file should only ever hold what is still ahead.
   plus 53 templates and a 1,663-line driver app in plain JavaScript.
 - CI runs vet, unit tests, gofmt, `sqlc diff`, govulncheck, shellcheck, the
   integration tests and the end-to-end tests against staging.
-- The audit in `fable-audit.md` is fixed except for W1, W4, O1, O3, O4 and
-  O6.
-- The repository is public, with no licence, no releases or tags, and ten
-  branches on GitHub that are all merged into `main`.
+- The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O1, O3,
+  O4 and O6.
+- The repository is public and all rights are reserved (`LICENSE`). It has
+  no releases or tags, and ten old branches on GitHub that are all merged
+  into `main`.
 - The product and the repository were renamed Kiflet on 2026-11-15. The
   checks and registrations that make the name final are still open: see
   [Finish the rename](#1-finish-the-rename).
@@ -28,11 +29,10 @@ once it is done: this file should only ever hold what is still ahead.
 ## Decisions to make first
 
 Each of these changes what the release does. The recommendation is what the
-rest of this file assumes. Two were settled on 2026-11-15 and are marked.
+rest of this file assumes. The ones marked were settled on 2026-11-15.
 
 | Decision | Recommendation | Why |
 |---|---|---|
-| Licence | **Decided:** a `LICENSE` saying all rights are reserved; the repository stays public | Public with no licence is the least clear state: nobody may use the code, and nothing says so. Open-sourcing can come later; it can't be undone. |
 | Move everything out of `backend/` to the repository root | Yes | There is no frontend or mobile directory beside it any more, and the module path in `go.mod` has never included `backend`. |
 | Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#7-migrations). |
 | Twilio SMS adapter | Remove | Nothing uses it and the provider sandbox doesn't cover it. It comes back from git history if needed. |
@@ -85,13 +85,10 @@ Once those pass:
 
 Left over from the old name:
 
-- [ ] On each development machine, `docker volume ls` and `docker images`
-      still show the old project's database volume and images. Remove them
-      once nothing in the old database is needed.
 - [ ] In any other clone:
       `git remote set-url origin https://github.com/Natnael-Alemayehu/kiflet.git`.
-- [ ] A server that already runs the product moves its data as
-      `CHANGELOG.md` describes. It must not be renamed in place.
+      Its Docker volumes and images still carry the old project's name;
+      remove them.
 
 If Kiflet fails a check, the next choices:
 
@@ -131,35 +128,26 @@ names after the project, and the database on each driver's phone.
 
 ### 2. The front door
 
-What someone sees before reading any code.
+What someone sees before reading any code. The licence, `SECURITY.md`,
+`CONTRIBUTING.md`, the `docs/` folder and the README's screenshots are in.
+What is left:
 
-- [ ] `LICENSE`, as decided above.
-- [ ] `SECURITY.md`: how to report a vulnerability, and that `/metrics`,
-      webhooks and sign-in are the surfaces to look at.
-- [ ] `CONTRIBUTING.md`: how to run it, the test commands, and the rules now
-      in `AGENTS.md`. Keep `AGENTS.md` as the short version of the same
-      rules.
-- [ ] `CHANGELOG.md` exists and records the rename. Add the rest of this
-      release to it as each part lands.
-- [ ] Move the long documents into `docs/`: `functional_requirements.md`,
-      `logistics.md`, `E2E_TEST_GUIDE.md` and the audit. Leave `README.md`,
-      `AGENTS.md`, `ROADMAP.md` and the files above at the root. Fix the
-      links in `README.md`, `AGENTS.md` and the code comments that name
-      them.
-- [ ] `README.md`: add two screenshots (dispatcher overview, driver app) and
-      move the deployment detail (backups, staging, connecting providers,
-      about 90 lines) to `docs/deploy.md`, leaving a short Deploy section.
-- [ ] On GitHub: add topics, delete the merged branches, and protect
-      `main` so CI must pass.
+- [ ] On GitHub: turn on private vulnerability reporting (Settings, Code
+      security), which `SECURITY.md` tells reporters to use; add topics;
+      delete the merged branches; and protect `main` so CI must pass.
+- [ ] `CHANGELOG.md`: add each remaining part of this release as it lands.
+- [ ] Retake the two screenshots in `docs/images/` when the overview or the
+      driver app's first screen changes.
 
 ### 3. Layout
 
 - [ ] Move the contents of `backend/` to the root with `git mv`, in a pull
-      request that does nothing else. Paths to fix: `.gitignore` (6 lines),
-      `README.md` (6), `E2E_TEST_GUIDE.md` (4), `.github/workflows/ci.yml`
-      (4: the working directory and three cache paths), `AGENTS.md` (2),
-      the audit (24), and `scripts/backup.sh` (1). Delete the root `Makefile`, which only
-      forwards to `backend/`.
+      request that does nothing else. Then fix every path that still says
+      `backend/`: `git grep -n 'backend/'` lists them, in `.gitignore`,
+      `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `LICENSE`, the documents
+      in `docs/`, `.github/workflows/ci.yml` (the working directory and the
+      cache paths) and `scripts/backup.sh`. Delete the root `Makefile`,
+      which only forwards to `backend/`.
 - [ ] Put the development files together: `docker-compose.yml` and
       `sandbox.env` sit at the top of `backend/` while production's compose
       file is in `deployments/`. Move them to `deployments/dev/` and point
@@ -266,18 +254,15 @@ Where Claude appears today:
 |---|---|
 | 28 commit messages | The co-author line: 14 on the fixes of 23 August, 14 on the audit fixes |
 | 5 commit messages | "the Fable audit" and `fable-audit.md` |
-| `fable-audit.md` | Its name, and the "Auditor" line |
-| `tests/integration/audit_test.go` | A comment naming that file |
 | Pull request #2 | "Generated with Claude Code" at the end of its description |
+
+No file names Claude any more: the audit is `docs/audit-2026-11.md`.
 
 Steps:
 
 - [ ] **Stop new ones.** In Claude Code's user settings, not in a file in
       this repository, set `"attribution": {"commit": "", "pr": ""}`
       (older versions: `"includeCoAuthoredBy": false`).
-- [ ] **Files.** Rename the audit to `docs/audit-2026-11.md`, replace its
-      "Auditor" line with the date and method, and update the test comment
-      and the links. Part 6 removes `audit_test.go` anyway.
 - [ ] **Back up.** `git clone --mirror` the repository somewhere safe, and
       keep it until everything below is verified.
 - [ ] **Rewrite**, in a fresh clone, with `git filter-repo`
