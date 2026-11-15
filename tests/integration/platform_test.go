@@ -521,3 +521,26 @@ func readCSV(t *testing.T, b []byte) [][]string {
 	}
 	return rows
 }
+
+// TestPlatformAdminStaysOnPlatform: the platform admin's own company is
+// empty; its pages send them to the companies list.
+func TestPlatformAdminStaysOnPlatform(t *testing.T) {
+	e := newEnv(t)
+	admin := e.company("Platform Operator")
+	exec(t, `UPDATE users SET role = 'platform_admin' WHERE tenant_id = (SELECT tenant_id FROM users WHERE full_name = 'Owner of Platform Operator' LIMIT 1)`)
+
+	for _, path := range []string{"/app", "/app/shipments", "/app/settings"} {
+		if p := admin.get(path); p.Status != http.StatusSeeOther || p.Location != "/app/platform" {
+			t.Errorf("GET %s: %d → %q, want a redirect to /app/platform", path, p.Status, p.Location)
+		}
+	}
+	if p := admin.post("/app/shipments", url.Values{}); p.Status != http.StatusForbidden {
+		t.Errorf("POST /app/shipments: status %d, want 403", p.Status)
+	}
+	if p := admin.get("/app/platform"); p.Status != http.StatusOK {
+		t.Errorf("platform page: status %d", p.Status)
+	}
+	if p := admin.get("/app/account"); p.Status != http.StatusOK {
+		t.Errorf("account page: status %d", p.Status)
+	}
+}

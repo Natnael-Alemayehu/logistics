@@ -21,6 +21,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -494,3 +495,29 @@ func scalar[T any](t *testing.T, sql string, args ...any) T {
 
 // signaturePNG is a valid 1×1 PNG as a data URL.
 const signaturePNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+func exec(t *testing.T, sql string, args ...any) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), sql, args...); err != nil {
+		t.Fatalf("%s: %v", sql, err)
+	}
+}
+
+// storedFiles lists every file under a storage directory.
+func storedFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, de os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !de.IsDir() {
+			out = append(out, strings.TrimPrefix(p, dir))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
