@@ -50,6 +50,7 @@ make test                          # unit tests
 make test-integration              # HTTP-level tests against PostGIS
 make staging-up && make test-e2e   # production's images and compose file, over HTTPS
 make vet
+make lint                          # golangci-lint, node --check, gitleaks over the history
 ```
 
 - Templates are reloaded from disk with `DEV_RELOAD=true` (`make run` sets it),

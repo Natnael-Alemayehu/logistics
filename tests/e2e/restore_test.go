@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"net/http"
@@ -93,12 +94,11 @@ func script(t *testing.T, name, env string, args ...string) string {
 // archived lists the names in a .tar.gz.
 func archived(t *testing.T, file string) map[string]bool {
 	t.Helper()
-	f, err := os.Open(file)
+	raw, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	z, err := gzip.NewReader(f)
+	z, err := gzip.NewReader(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatal(err)
 	}

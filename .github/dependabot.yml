@@ -1,0 +1,58 @@
+# Dependabot: a pull request a week for each kind of dependency, the updates
+# of a kind together, so CI (staging included) tests them as one. Security
+# updates come as soon as they are published, whatever the schedule.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    groups:
+      go:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The images the app is built on.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: docker
+    groups:
+      images:
+        patterns: ["*"]
+    ignore:
+      # The Go release moves with GO_VERSION in CI, by hand (AGENTS.md).
+      - dependency-name: golang
+
+  # The images production runs beside it, and staging's and development's.
+  - package-ecosystem: docker-compose
+    directories:
+      - /deployments
+      - /deployments/dev
+      - /deployments/staging
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deployments
+    groups:
+      images:
+        patterns: ["*"]
+    ignore:
+      # A new PostgreSQL release needs the database dumped and restored,
+      # and CI's service image moves with it: by hand.
+      - dependency-name: postgis/postgis

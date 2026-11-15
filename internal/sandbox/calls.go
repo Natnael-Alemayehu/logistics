@@ -70,7 +70,7 @@ func (s *Sandbox) record(e Event) {
 	if e.Error != "" {
 		line += " (" + e.Error + ")"
 	}
-	fmt.Fprintln(s.out, line)
+	_, _ = fmt.Fprintln(s.out, line) // a console that can't be written to has no one to tell
 }
 
 // eventsAfter returns the logged events after an ID, oldest first, of one

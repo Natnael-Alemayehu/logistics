@@ -133,7 +133,11 @@ func (s *Sandbox) cbePay(number, merchant, ref string, amount int64, pin string)
 	s.mu.Unlock()
 
 	s.confirm(tx)
-	snap, _ = s.paymentCopy(tx.TransID)
+	// The confirmation may have changed it, unless newer payments have
+	// pushed it out of the list meanwhile.
+	if latest, ok := s.paymentCopy(tx.TransID); ok {
+		snap = latest
+	}
 	return snap, nil
 }
 
