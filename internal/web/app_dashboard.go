@@ -179,7 +179,6 @@ func (s *Server) live(w http.ResponseWriter, r *http.Request) {
 		return // the upgrader has already answered
 	}
 	c := websocket.NewClient(s.hub, conn, p.TenantID.String(), p.UserID.String(), p.Role)
-	c.Rooms[websocket.GetTenantRoomID(p.TenantID.String())] = true
 	s.hub.Register <- c
 	go c.WritePump()
 	go c.ReadPump()

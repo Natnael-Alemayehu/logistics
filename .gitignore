@@ -1,68 +1,46 @@
-# Binaries
-bin/
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Directory rules start with a slash so they match at the repository root
+# only. A bare vendor/ once matched internal/web/static/vendor too and kept
+# the map library out of git.
 
-# Test binary, built with `go test -c`
+# Built programs: `make build`, and `go build ./cmd/server` or ./cmd/sandbox
+/bin/
+/server
+/sandbox
+
+# Test binaries (`go test -c`) and coverage profiles
 *.test
-
-# Output of the go coverage tool
 *.out
+coverage.html
 
-# Go's vendor directory. Anchored: a bare vendor/ also matched the map
-# library in internal/web/static/vendor and kept it out of git.
+# Go's vendor directory
 /vendor/
 
-# Go workspace file
-go.work
-go.work.sum
-
-# Environment files
+# Settings with secrets in them. .env.example is the template.
 .env
-.env.local
-.env.*.local
 
-# IDE
+# Keys: the app's own secret (APP_SECRET_FILE), the sandbox's throwaway
+# telebirr pairs (`make sandbox-keys`), and the providers' for production,
+# mounted at /run/secrets
+/keys/
+/sandbox-keys/
+*.pem
+deployments/secrets/*
+!deployments/secrets/README.md
+
+# The token Prometheus sends to /metrics: the same secret as METRICS_TOKEN
+deployments/prometheus/metrics_token
+
+# What running the app leaves behind: signatures and delivery photos stored
+# locally, `make dev`'s builds and staging's certificate, and logs
+/uploads/
+/tmp/
+*.log
+
+# Editors and operating systems
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
-
-# Keys
-keys/
-*.pem
-
-# Logs
-*.log
-logs/
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Temporary files
-tmp/
-temp/
-
-# Test coverage
-coverage.html
-coverage.out
-# Signatures and delivery photos stored locally
-uploads/
-
-# The token Prometheus sends to /metrics: the same secret as METRICS_TOKEN
-deployments/prometheus/metrics_token
-
-# `go build ./cmd/server`
-/server
-
-# The provider sandbox's throwaway telebirr keys (make sandbox-keys)
-/sandbox-keys/
-
-# Provider keys for production, mounted at /run/secrets
-deployments/secrets/*
-!deployments/secrets/README.md

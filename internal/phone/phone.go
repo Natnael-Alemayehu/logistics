@@ -43,14 +43,6 @@ func Normalize(s string) (string, error) {
 	return d, nil
 }
 
-// E164 converts a normalised local number to +251 form.
-func E164(local string) string {
-	if strings.HasPrefix(local, "0") {
-		return "+251" + local[1:]
-	}
-	return local
-}
-
 // Mask hides the middle of a number for display to someone who should
 // recognise it but not learn it, such as a customer looking up shipments.
 func Mask(local string) string {

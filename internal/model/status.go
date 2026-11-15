@@ -331,8 +331,3 @@ func CanManageFleet(role string) bool {
 func CanManageCompany(role string) bool {
 	return role == RoleAdmin || role == RolePlatformAdmin
 }
-
-// IsStaff reports whether a role uses the dashboard.
-func IsStaff(role string) bool {
-	return role != RoleDriver && role != ""
-}

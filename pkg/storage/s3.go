@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"strings"
 	"time"
 
@@ -159,9 +158,4 @@ func (s *S3Storage) GetURL(ctx context.Context, path string) (string, error) {
 	}
 
 	return presignedReq.URL, nil
-}
-
-func (s *S3Storage) GetPublicURL(path string) string {
-	path = strings.TrimPrefix(path, "/")
-	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.bucket, s.region, url.PathEscape(path))
 }
