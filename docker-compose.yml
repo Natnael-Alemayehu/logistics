@@ -5,7 +5,8 @@
 #   make sandbox-keys && docker compose --profile sandbox up sandbox
 #
 # The project is named, or it would be named after the directory, and
-# compose would take another checkout's "backend" project for this one.
+# compose would take another checkout in a directory of the same name for
+# this one.
 name: kiflet-dev
 
 services:

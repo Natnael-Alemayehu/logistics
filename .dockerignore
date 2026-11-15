@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+bin/
+tmp/
+uploads/
+keys/
+sandbox-keys/
+deployments/
+*.log
+# Not needed to build: the build context is the repository root.
+.git
+.github/
+docs/
+*.md
+LICENSE
