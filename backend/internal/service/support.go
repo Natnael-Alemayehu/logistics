@@ -7,11 +7,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
 )
 
 // SupportService carries questions from companies to the people running
-// Menged, and their answers (FR-049 AC-049.5). Both sides are emailed when
+// Kiflet, and their answers (FR-049 AC-049.5). Both sides are emailed when
 // the other writes.
 type SupportService struct{ *core }
 

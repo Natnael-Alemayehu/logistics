@@ -4,7 +4,7 @@
 // weak signal mustn't keep the driver looking at a blank screen. API calls are
 // never cached: the app keeps its own data in IndexedDB and queues changes
 // there.
-const CACHE = "menged-driver-v2";
+const CACHE = "kiflet-driver-v2";
 const WAIT_MS = 3000;
 const SHELL = [
   "/driver/",

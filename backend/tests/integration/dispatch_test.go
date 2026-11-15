@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 // TestBulkAssign: ticked shipments go to one driver, each on its own, so

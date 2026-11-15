@@ -1,21 +1,21 @@
 package sandbox
 
-// CBE Birr's side of Menged's adapter (pkg/payments/cbebirr.go). CBE Birr
-// publishes no merchant API, so this is the contract as Menged defines it.
-// The payer pays Menged's merchant ID from their phone, quoting a
-// reference, and CBE Birr calls Menged with the merchant's login in Basic
+// CBE Birr's side of Kiflet's adapter (pkg/payments/cbebirr.go). CBE Birr
+// publishes no merchant API, so this is the contract as Kiflet defines it.
+// The payer pays Kiflet's merchant ID from their phone, quoting a
+// reference, and CBE Birr calls Kiflet with the merchant's login in Basic
 // authentication:
 //
-//	POST {Menged}/api/v1/payments/cbebirr/query         {"BillRefNumber", "BusinessShortCode", "MSISDN"}
+//	POST {Kiflet}/api/v1/payments/cbebirr/query         {"BillRefNumber", "BusinessShortCode", "MSISDN"}
 //	     → {"ResultCode", "ResultDesc", "Amount", "Currency", "CustomerName", "Description"}
-//	POST {Menged}/api/v1/payments/cbebirr/validation    a transaction → {"ResultCode", "ResultDesc"}
-//	POST {Menged}/api/v1/payments/cbebirr/confirmation  the transaction, once the money is taken
+//	POST {Kiflet}/api/v1/payments/cbebirr/validation    a transaction → {"ResultCode", "ResultDesc"}
+//	POST {Kiflet}/api/v1/payments/cbebirr/confirmation  the transaction, once the money is taken
 //
 // A transaction is TransType, TransID, TransTime (yyyyMMddHHmmss, Ethiopian
 // time), TransAmount ("2875.00"), BusinessShortCode, BillRefNumber and
 // MSISDN (251…). ResultCode 0 accepts; any other refuses, and ResultDesc is
-// shown to the payer. The confirmation is sent until Menged answers 200;
-// one Menged refuses is reversed, the money going back to the payer.
+// shown to the payer. The confirmation is sent until Kiflet answers 200;
+// one Kiflet refuses is reversed, the money going back to the payer.
 
 import (
 	"encoding/base64"
@@ -62,7 +62,7 @@ type cbePayment struct {
 	Amount    int64     `json:"amount_santim"`
 	At        time.Time `json:"at"`
 	// Confirmation is what became of the confirmation. Confirmed is set when
-	// Menged accepted one, and Reversed when it refused it and the money
+	// Kiflet accepted one, and Reversed when it refused it and the money
 	// went back.
 	Confirmation string `json:"confirmation"`
 	Confirmed    bool   `json:"confirmed"`
@@ -71,7 +71,7 @@ type cbePayment struct {
 
 const keepPayments = 100
 
-// cbeQuery asks Menged what a reference owes, as CBE Birr does when the
+// cbeQuery asks Kiflet what a reference owes, as CBE Birr does when the
 // payer keys it in.
 func (s *Sandbox) cbeQuery(number, merchant, ref string) (cbeBill, error) {
 	if merchant != s.cfg.CBEBirr.MerchantID {
@@ -87,7 +87,7 @@ func (s *Sandbox) cbeQuery(number, merchant, ref string) (cbeBill, error) {
 }
 
 // cbePay pays a reference from a phone's CBE Birr wallet, as CBE Birr does
-// once the payer confirms: it checks the PIN and the balance, asks Menged
+// once the payer confirms: it checks the PIN and the balance, asks Kiflet
 // to validate the payment, takes the money and confirms it.
 func (s *Sandbox) cbePay(number, merchant, ref string, amount int64, pin string) (cbePayment, error) {
 	switch {
@@ -137,7 +137,7 @@ func (s *Sandbox) cbePay(number, merchant, ref string, amount int64, pin string)
 	return snap, nil
 }
 
-// cbeFunds checks a wallet holds an amount, before Menged is asked to
+// cbeFunds checks a wallet holds an amount, before Kiflet is asked to
 // validate it.
 func (s *Sandbox) cbeFunds(number string, amount int64) error {
 	s.mu.Lock()
@@ -149,7 +149,7 @@ func (s *Sandbox) cbeFunds(number string, amount int64) error {
 }
 
 // confirm sends a transaction's confirmation, as the faults say: held back,
-// twice, or once, tried until Menged takes it.
+// twice, or once, tried until Kiflet takes it.
 func (s *Sandbox) confirm(tx cbeTransaction) {
 	f := s.currentFaults()
 	c := s.newCall("CBE Birr", "confirmation "+tx.TransID+" for "+tx.BillRefNumber, s.cbeURL("confirmation"), s.cbeHeader(), mustJSON(tx), 12,
@@ -168,7 +168,7 @@ func (s *Sandbox) confirm(tx cbeTransaction) {
 	}
 }
 
-// confirmed records what Menged made of a confirmation. A refused one, say
+// confirmed records what Kiflet made of a confirmation. A refused one, say
 // for an invoice cancelled since it was validated, is reversed: the money
 // goes back to the payer, as a wallet does when a merchant turns a payment
 // away. Once one confirmation is accepted or reversed, repeats change
@@ -186,13 +186,13 @@ func (s *Sandbox) confirmed(transID string, a answer, last bool) {
 	switch {
 	case pay.Confirmed || pay.Reversed:
 	case refused:
-		pay.Reversed, pay.Confirmation = true, "Refused by Menged: "+res.ResultDesc+" The money went back."
+		pay.Reversed, pay.Confirmation = true, "Refused by Kiflet: "+res.ResultDesc+" The money went back."
 		p := s.phoneLocked(pay.Phone)
 		p.CBEBirr += pay.Amount
 		s.receive(p, "CBE Birr", fmt.Sprintf("ETB %s for reference %s was returned: %s Your CBE Birr balance is ETB %s.",
 			birr(pay.Amount), pay.Reference, res.ResultDesc, birr(p.CBEBirr)))
 	case a.ok():
-		pay.Confirmed, pay.Confirmation = true, "Taken by Menged"
+		pay.Confirmed, pay.Confirmation = true, "Taken by Kiflet"
 	case last:
 		pay.Confirmation = describeAnswer(a)
 	default:
@@ -249,7 +249,7 @@ func (s *Sandbox) cbeHeader() http.Header {
 	return h
 }
 
-// cbeAnswer reads Menged's answer to a call, or says, for the payer, why
+// cbeAnswer reads Kiflet's answer to a call, or says, for the payer, why
 // there is none.
 func cbeAnswer(a answer, out any) error {
 	switch {

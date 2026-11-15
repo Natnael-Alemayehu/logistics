@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 // TestDismissedAlertsStayDismissed: the checks run every minute, so an alert

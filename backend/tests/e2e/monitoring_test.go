@@ -25,10 +25,10 @@ func TestMonitoring(t *testing.T) {
 	// The app is up as Prometheus sees it, and the figures are the app's:
 	// the requests it served, the texts it sent and the jobs it ran.
 	for _, q := range []string{
-		`up{job="menged"}`,
-		`sum(menged_http_requests_total{job="menged"})`,
-		`sum(menged_messages_total{job="menged",channel="sms",result="sent"})`,
-		`count(menged_job_last_success_timestamp_seconds{job="menged"})`,
+		`up{job="kiflet"}`,
+		`sum(kiflet_http_requests_total{job="kiflet"})`,
+		`sum(kiflet_messages_total{job="kiflet",channel="sms",result="sent"})`,
+		`count(kiflet_job_last_success_timestamp_seconds{job="kiflet"})`,
 	} {
 		within(t, 90*time.Second, "Prometheus to have "+q, func() bool { return query(t, q) >= 1 })
 	}
@@ -39,8 +39,8 @@ func TestMonitoring(t *testing.T) {
 			Panels []json.RawMessage `json:"panels"`
 		} `json:"dashboard"`
 	}
-	if code := grafana(t, "/api/dashboards/uid/menged-overview", &dash); code != http.StatusOK || dash.Dashboard.Title != "Menged" || len(dash.Dashboard.Panels) == 0 {
-		t.Errorf("the Menged dashboard: status %d, %q with %d panels", code, dash.Dashboard.Title, len(dash.Dashboard.Panels))
+	if code := grafana(t, "/api/dashboards/uid/kiflet-overview", &dash); code != http.StatusOK || dash.Dashboard.Title != "Kiflet" || len(dash.Dashboard.Panels) == 0 {
+		t.Errorf("the Kiflet dashboard: status %d, %q with %d panels", code, dash.Dashboard.Title, len(dash.Dashboard.Panels))
 	}
 }
 

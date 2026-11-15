@@ -17,7 +17,7 @@ import (
 )
 
 // The key files, in SANDBOX_KEYS_DIR. telebirr's calls are signed with RSA
-// keys: Menged signs its requests with the merchant's private key and checks
+// keys: Kiflet signs its requests with the merchant's private key and checks
 // notifications with telebirr's public key, and the sandbox holds the other
 // half of each pair.
 const (
@@ -30,7 +30,7 @@ const (
 // WriteKeys makes a merchant and a telebirr key pair in dir, keeping a pair
 // already there, and returns the files it wrote. They are readable by all,
 // so that a sandbox in a container can read them: they are throwaway keys,
-// which only the sandbox and a Menged pointed at it trust.
+// which only the sandbox and a Kiflet pointed at it trust.
 func WriteKeys(dir string) ([]string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -76,10 +76,10 @@ func exists(path string) bool {
 }
 
 // LoadKeys reads the sandbox's halves of the key pairs from dir: the
-// merchant's public key, to check Menged's signatures, and telebirr's
+// merchant's public key, to check Kiflet's signatures, and telebirr's
 // private key, to sign as telebirr.
 func LoadKeys(dir string) (*rsa.PublicKey, *rsa.PrivateKey, error) {
-	hint := fmt.Sprintf(" (make them with `menged-sandbox keys` or `make sandbox-keys`, in %s)", dir)
+	hint := fmt.Sprintf(" (make them with `kiflet-sandbox keys` or `make sandbox-keys`, in %s)", dir)
 	b, err := os.ReadFile(filepath.Join(dir, MerchantPublicKey))
 	if err != nil {
 		return nil, nil, fmt.Errorf("the merchant's public key: %w%s", err, hint)

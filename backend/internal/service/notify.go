@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
 )
 
 // The texts customers and drivers receive. They are kept short — a single

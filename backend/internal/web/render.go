@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 // renderer holds the parsed templates: one set per page, each combining the

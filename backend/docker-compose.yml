@@ -6,7 +6,7 @@
 #
 # The project is named, or it would be named after the directory, and
 # compose would take another checkout's "backend" project for this one.
-name: menged-dev
+name: kiflet-dev
 
 services:
   postgres:

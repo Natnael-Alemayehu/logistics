@@ -11,22 +11,22 @@ import (
 )
 
 // CBEBirr takes payments the way CBE Birr merchants are paid. The payer
-// opens CBE Birr, pays Menged's merchant ID and quotes the invoice's
-// reference. CBE Birr then calls Menged three times:
+// opens CBE Birr, pays Kiflet's merchant ID and quotes the invoice's
+// reference. CBE Birr then calls Kiflet three times:
 //
 //   - query, to ask what the reference owes;
 //   - validation, to check the payment before taking the money;
 //   - confirmation, once the money is taken.
 //
-// Menged never calls CBE Birr.
+// Kiflet never calls CBE Birr.
 //
 // CBE Birr does not publish its merchant API. The three steps are those of
 // the only public integration package. The field names, the result codes
-// and the Basic authentication of CBE Birr's calls are Menged's own; they
+// and the Basic authentication of CBE Birr's calls are Kiflet's own; they
 // are kept in this file, to be matched to CBE's documents at onboarding.
 type CBEBirr struct{ cfg CBEBirrConfig }
 
-// CBEBirrConfig is Menged's CBE Birr merchant account.
+// CBEBirrConfig is Kiflet's CBE Birr merchant account.
 type CBEBirrConfig struct {
 	// MerchantID is the short code payers enter.
 	MerchantID string

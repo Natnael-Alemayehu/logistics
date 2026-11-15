@@ -26,11 +26,11 @@ import (
 
 // TestImportsOnlyTheStandardLibraryAndTheConsole: the sandbox implements the
 // providers' side of each contract on its own, so that a mistake in
-// Menged's adapter shows up as a refused call rather than being shared.
+// Kiflet's adapter shows up as a refused call rather than being shared.
 func TestImportsOnlyTheStandardLibraryAndTheConsole(t *testing.T) {
 	allowed := map[string]bool{
-		"github.com/natnael-alemayehu/logistics/pkg/console":      true,
-		"github.com/natnael-alemayehu/logistics/internal/sandbox": true,
+		"github.com/natnael-alemayehu/kiflet/pkg/console":      true,
+		"github.com/natnael-alemayehu/kiflet/internal/sandbox": true,
 	}
 	for _, dir := range []string{".", "../../cmd/sandbox"} {
 		paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
@@ -54,7 +54,7 @@ func TestImportsOnlyTheStandardLibraryAndTheConsole(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// A sandbox and a fake Menged
+// A sandbox and a fake Kiflet
 // ---------------------------------------------------------------------------
 
 var testKeys = sync.OnceValues(func() ([2]*rsa.PrivateKey, error) {
@@ -69,7 +69,7 @@ var testKeys = sync.OnceValues(func() ([2]*rsa.PrivateKey, error) {
 	return keys, nil
 })
 
-// fakeApp plays Menged's side of the calls the sandbox makes, and keeps
+// fakeApp plays Kiflet's side of the calls the sandbox makes, and keeps
 // them. respond, when set, answers them; otherwise they get 200.
 type fakeApp struct {
 	mu      sync.Mutex
@@ -162,11 +162,11 @@ type testbed struct {
 	sb       *Sandbox
 	url      string
 	app      *fakeApp
-	merchant *rsa.PrivateKey // Menged's half: signs its requests
+	merchant *rsa.PrivateKey // Kiflet's half: signs its requests
 	telebirr *rsa.PrivateKey // telebirr's: its public half checks notifications
 }
 
-// newTestbed starts a sandbox for a fake Menged. change, when given,
+// newTestbed starts a sandbox for a fake Kiflet. change, when given,
 // alters its settings first.
 func newTestbed(t *testing.T, change ...func(*Config)) *testbed {
 	t.Helper()
@@ -177,7 +177,7 @@ func newTestbed(t *testing.T, change ...func(*Config)) *testbed {
 	app := &fakeApp{}
 	cfg := Config{
 		AppURL: app.start(t),
-		SMS:    SMSConfig{APIKey: "sms-key", SenderID: "MENGED", Number: "6060", Secret: "hook-secret"},
+		SMS:    SMSConfig{APIKey: "sms-key", SenderID: "KIFLET", Number: "6060", Secret: "hook-secret"},
 		Telebirr: TelebirrConfig{
 			FabricAppID: "fabric", AppSecret: "app-secret", MerchantAppID: "850001", MerchantCode: "900001",
 			MerchantKey: &keys[0].PublicKey, Key: keys[1],
@@ -300,11 +300,11 @@ func TestSMSGateway(t *testing.T) {
 	}
 	token := tb.smsToken()
 
-	code, res := tb.sendSMS(token, "+251911223344", "MENGED", "Your code is 482913.")
+	code, res := tb.sendSMS(token, "+251911223344", "KIFLET", "Your code is 482913.")
 	if code != http.StatusOK || res.Status != "accepted" || !strings.HasPrefix(res.MessageID, "ET") {
 		t.Fatalf("sending: status %d, %+v", code, res)
 	}
-	if p := tb.sb.phoneCopy("0911223344"); len(p.Texts) != 1 || p.Texts[0].Body != "Your code is 482913." || p.Texts[0].From != "MENGED" {
+	if p := tb.sb.phoneCopy("0911223344"); len(p.Texts) != 1 || p.Texts[0].Body != "Your code is 482913." || p.Texts[0].From != "KIFLET" {
 		t.Fatalf("the phone has %+v", p.Texts)
 	}
 
@@ -318,7 +318,7 @@ func TestSMSGateway(t *testing.T) {
 	}
 	eventually(t, "the report's outcome on the text", func() bool {
 		tx := tb.sb.phoneCopy("0911223344").Texts[0]
-		return tx.State == "Delivered" && tx.Report == "Report: Taken by Menged"
+		return tx.State == "Delivered" && tx.Report == "Report: Taken by Kiflet"
 	})
 
 	for name, c := range map[string]struct {
@@ -326,12 +326,12 @@ func TestSMSGateway(t *testing.T) {
 		status                   int
 		kind                     string
 	}{
-		"unknown token":   {"not-a-token", "+251911223344", "MENGED", "Hi", http.StatusUnauthorized, "error"},
+		"unknown token":   {"not-a-token", "+251911223344", "KIFLET", "Hi", http.StatusUnauthorized, "error"},
 		"another sender":  {token, "+251911223344", "SOMEONE", "Hi", http.StatusBadRequest, "rejected"},
-		"local form":      {token, "0911223344", "MENGED", "Hi", http.StatusBadRequest, "rejected"},
-		"landline":        {token, "+251111223344", "MENGED", "Hi", http.StatusBadRequest, "rejected"},
-		"empty":           {token, "+251911223344", "MENGED", "  ", http.StatusBadRequest, "rejected"},
-		"eleven parts in": {token, "+251911223344", "MENGED", strings.Repeat("ሀ", 68*11), http.StatusBadRequest, "rejected"},
+		"local form":      {token, "0911223344", "KIFLET", "Hi", http.StatusBadRequest, "rejected"},
+		"landline":        {token, "+251111223344", "KIFLET", "Hi", http.StatusBadRequest, "rejected"},
+		"empty":           {token, "+251911223344", "KIFLET", "  ", http.StatusBadRequest, "rejected"},
+		"eleven parts in": {token, "+251911223344", "KIFLET", strings.Repeat("ሀ", 68*11), http.StatusBadRequest, "rejected"},
 	} {
 		if code, res := tb.sendSMS(c.token, c.to, c.from, c.message); code != c.status || res.Status != c.kind {
 			t.Errorf("%s: status %d %+v, want %d %s", name, code, res, c.status, c.kind)
@@ -340,10 +340,10 @@ func TestSMSGateway(t *testing.T) {
 
 	// Tokens end when the gateway says, and a new sign-in works.
 	tb.sb.expireTokens()
-	if code, _ := tb.sendSMS(token, "+251911223344", "MENGED", "Hi"); code != http.StatusUnauthorized {
+	if code, _ := tb.sendSMS(token, "+251911223344", "KIFLET", "Hi"); code != http.StatusUnauthorized {
 		t.Errorf("an expired token: status %d, want 401", code)
 	}
-	if code, _ := tb.sendSMS(tb.smsToken(), "+251911223344", "MENGED", "Hi"); code != http.StatusOK {
+	if code, _ := tb.sendSMS(tb.smsToken(), "+251911223344", "KIFLET", "Hi"); code != http.StatusOK {
 		t.Errorf("a new token: status %d", code)
 	}
 }
@@ -353,18 +353,18 @@ func TestSMSFaults(t *testing.T) {
 	token := tb.smsToken()
 
 	tb.faults(map[string]any{"sms_down": true})
-	if code, res := tb.sendSMS(token, "+251911223344", "MENGED", "Hi"); code != http.StatusServiceUnavailable || res.Status != "error" {
+	if code, res := tb.sendSMS(token, "+251911223344", "KIFLET", "Hi"); code != http.StatusServiceUnavailable || res.Status != "error" {
 		t.Errorf("gateway down: status %d %+v", code, res)
 	}
 	tb.faults(map[string]any{"sms_down": false, "sms_refuse_tokens": true})
-	if code, _ := tb.sendSMS(tb.smsToken(), "+251911223344", "MENGED", "Hi"); code != http.StatusUnauthorized {
+	if code, _ := tb.sendSMS(tb.smsToken(), "+251911223344", "KIFLET", "Hi"); code != http.StatusUnauthorized {
 		t.Errorf("tokens refused: status %d, want 401 even for a new token", code)
 	}
 	tb.faults(map[string]any{"sms_refuse_tokens": false, "barred": []string{"0911000001"}, "unreachable": []string{"+251911000002"}})
-	if code, res := tb.sendSMS(token, "+251911000001", "MENGED", "Hi"); code != http.StatusBadRequest || res.Status != "rejected" {
+	if code, res := tb.sendSMS(token, "+251911000001", "KIFLET", "Hi"); code != http.StatusBadRequest || res.Status != "rejected" {
 		t.Errorf("a barred number: status %d %+v", code, res)
 	}
-	if code, _ := tb.sendSMS(token, "+251911000002", "MENGED", "Hi"); code != http.StatusOK {
+	if code, _ := tb.sendSMS(token, "+251911000002", "KIFLET", "Hi"); code != http.StatusOK {
 		t.Errorf("an unreachable number: status %d, want the text taken", code)
 	}
 	if f := tb.app.received(t, "/api/v1/sms/status", 1)[0].fields(t); f["status"] != "undelivered" || f["error"] == "" {
@@ -373,7 +373,7 @@ func TestSMSFaults(t *testing.T) {
 
 	// Reports kept back go when sent by hand.
 	tb.faults(map[string]any{"unreachable": []string{}, "drop_reports": true})
-	if code, _ := tb.sendSMS(token, "+251911000003", "MENGED", "Hi"); code != http.StatusOK {
+	if code, _ := tb.sendSMS(token, "+251911000003", "KIFLET", "Hi"); code != http.StatusOK {
 		t.Fatalf("sending: status %d", code)
 	}
 	var held []call
@@ -389,11 +389,11 @@ func TestSMSFaults(t *testing.T) {
 		t.Error("the sent report is still held")
 	}
 
-	// A slow gateway: Menged stops waiting, and nothing is sent.
+	// A slow gateway: Kiflet stops waiting, and nothing is sent.
 	tb.faults(map[string]any{"drop_reports": false, "sms_slow": true})
 	impatient := &http.Client{Timeout: 50 * time.Millisecond}
 	req, _ := http.NewRequest(http.MethodPost, tb.url+"/ethiotelecom/sms/send",
-		bytes.NewReader(mustJSON(map[string]string{"to": "+251911000004", "from": "MENGED", "message": "Hi"})))
+		bytes.NewReader(mustJSON(map[string]string{"to": "+251911000004", "from": "KIFLET", "message": "Hi"})))
 	req.Header.Set("Authorization", "Bearer "+token)
 	if res, err := impatient.Do(req); err == nil {
 		res.Body.Close()
@@ -401,7 +401,7 @@ func TestSMSFaults(t *testing.T) {
 	}
 	time.Sleep(350 * time.Millisecond)
 	if p := tb.sb.phoneCopy("0911000004"); len(p.Texts) != 0 {
-		t.Error("the slow gateway sent a text Menged gave up on")
+		t.Error("the slow gateway sent a text Kiflet gave up on")
 	}
 }
 
@@ -412,16 +412,16 @@ func TestTextsFromPhones(t *testing.T) {
 	})
 	var res struct {
 		Text         text `json:"text"`
-		MengedStatus int  `json:"menged_status"`
+		KifletStatus int  `json:"kiflet_status"`
 	}
 	if code := tb.call(http.MethodPost, "/api/phones/0911223344/texts", nil, map[string]string{"text": "ET 4821 1"}, &res); code != http.StatusOK {
 		t.Fatalf("texting: status %d", code)
 	}
 	in := tb.app.received(t, "/api/v1/sms/inbound", 1)[0]
 	if f := in.fields(t); f["from"] != "+251911223344" || f["to"] != "6060" || f["message"] != "ET 4821 1" || in.Header.Get("X-Webhook-Secret") != "hook-secret" {
-		t.Errorf("Menged was sent %v, secret %q", f, in.Header.Get("X-Webhook-Secret"))
+		t.Errorf("Kiflet was sent %v, secret %q", f, in.Header.Get("X-Webhook-Secret"))
 	}
-	if res.MengedStatus != 200 || !res.Text.Mine || res.Text.State != "Taken by Menged: In transit recorded." {
+	if res.KifletStatus != 200 || !res.Text.Mine || res.Text.State != "Taken by Kiflet: In transit recorded." {
 		t.Errorf("the text is %+v", res)
 	}
 
@@ -433,7 +433,7 @@ func TestTextsFromPhones(t *testing.T) {
 		t.Errorf("a refused text is %+v", res.Text)
 	}
 	if n := tb.app.count("/api/v1/sms/inbound"); n != 2 {
-		t.Errorf("%d texts sent to Menged, want 2: a refused one isn't sent again", n)
+		t.Errorf("%d texts sent to Kiflet, want 2: a refused one isn't sent again", n)
 	}
 }
 
@@ -460,7 +460,7 @@ type telebirrAnswer struct {
 	ErrorMsg   string            `json:"errorMsg"`
 }
 
-// telebirrCall signs and makes one of Menged's API calls. change, when
+// telebirrCall signs and makes one of Kiflet's API calls. change, when
 // set, alters the request after it is signed.
 func (tb *testbed) telebirrCall(path, method, token string, biz map[string]string, key *rsa.PrivateKey, change func(map[string]any)) (int, telebirrAnswer) {
 	tb.t.Helper()
@@ -505,7 +505,7 @@ func (tb *testbed) orderBiz(merchOrderID string) map[string]string {
 	}
 }
 
-// checkoutLink is the signed link Menged sends the payer to.
+// checkoutLink is the signed link Kiflet sends the payer to.
 func (tb *testbed) checkoutLink(prepayID string, key *rsa.PrivateKey) string {
 	fields := map[string]string{
 		"appid": "850001", "merch_code": "900001", "nonce_str": random(upperChars, 32), "prepay_id": prepayID,
@@ -522,14 +522,14 @@ func (tb *testbed) checkoutLink(prepayID string, key *rsa.PrivateKey) string {
 	return "/telebirr/checkout?" + q.Encode()
 }
 
-// notifyAt points an order's notifications at the fake Menged.
+// notifyAt points an order's notifications at the fake Kiflet.
 func (tb *testbed) notifyAt(biz map[string]string) map[string]string {
 	biz["notify_url"] = tb.sb.cfg.AppURL + "/api/v1/payments/telebirr/notify"
 	return biz
 }
 
 // telebirrSigned reports whether a notification is signed with telebirr's
-// key, as Menged checks it.
+// key, as Kiflet checks it.
 func (tb *testbed) telebirrSigned(f map[string]string) bool {
 	return verify(&tb.telebirr.PublicKey, f, f["sign"])
 }
@@ -631,7 +631,7 @@ func TestTelebirrCheckout(t *testing.T) {
 		t.Errorf("too little money: status %d", p.Status)
 	}
 	if o, _ := tb.sb.orderCopy(prepay); o.Status != orderPending || tb.app.count("/api/v1/payments/telebirr/notify") != 0 {
-		t.Fatalf("refused answers changed the order to %s, or notified Menged", o.Status)
+		t.Fatalf("refused answers changed the order to %s, or notified Kiflet", o.Status)
 	}
 
 	full := int64(startingBalance)
@@ -662,7 +662,7 @@ func TestTelebirrCheckout(t *testing.T) {
 	if c := tb.app.count("/api/v1/payments/telebirr/notify"); c != 1 {
 		t.Errorf("%d notifications, want 1", c)
 	}
-	if o, _ := tb.sb.orderCopy(prepay); o.Notified != "Taken by Menged" {
+	if o, _ := tb.sb.orderCopy(prepay); o.Notified != "Taken by Kiflet" {
 		t.Errorf("the order's notification is %q", o.Notified)
 	}
 
@@ -726,7 +726,7 @@ func TestTelebirrFaults(t *testing.T) {
 	}
 	tb.app.received(t, notify, 5)
 
-	// Menged refusing: tried four times, then held.
+	// Kiflet refusing: tried four times, then held.
 	tb.faults(map[string]any{"delay_notifications": false})
 	tb.app.answer(func(fakeCall) (int, any) { return http.StatusInternalServerError, map[string]string{"error": "down"} })
 	prepay = payOrder("PAYREFUSED")
@@ -741,7 +741,7 @@ func TestTelebirrFaults(t *testing.T) {
 // CBE Birr
 // ---------------------------------------------------------------------------
 
-// cbeApp answers CBE Birr's calls as Menged does, for one bill. confirm
+// cbeApp answers CBE Birr's calls as Kiflet does, for one bill. confirm
 // decides each confirmation's answer.
 func (tb *testbed) cbeApp(confirm func(n int) (int, any)) {
 	confirmations := 0
@@ -791,7 +791,7 @@ func (tb *testbed) payCBE(ref string, amount int64, pin string) (int, cbeReply) 
 func TestCBEBirr(t *testing.T) {
 	tb := newTestbed(t)
 	const confirmation = "/api/v1/payments/cbebirr/confirmation"
-	// The first confirmation is refused: CBE Birr tries again until Menged
+	// The first confirmation is refused: CBE Birr tries again until Kiflet
 	// takes it.
 	tb.cbeApp(func(n int) (int, any) {
 		if n == 1 {
@@ -827,7 +827,7 @@ func TestCBEBirr(t *testing.T) {
 		t.Errorf("after paying: %d in the wallet, texts %+v", p.CBEBirr, p.Texts)
 	}
 
-	// A confirmation Menged refuses is reversed.
+	// A confirmation Kiflet refuses is reversed.
 	tb.cbeApp(func(int) (int, any) {
 		return http.StatusOK, map[string]string{"ResultCode": "3", "ResultDesc": "This invoice was cancelled."}
 	})
@@ -855,7 +855,7 @@ func TestCBEBirr(t *testing.T) {
 		t.Error("the duplicate confirmation differs from the first")
 	}
 
-	// Menged must recognise CBE Birr's login.
+	// Kiflet must recognise CBE Birr's login.
 	wrong := newTestbed(t, func(c *Config) { c.CBEBirr.Password = "wrong" })
 	wrong.cbeApp(nil)
 	if _, err := wrong.sb.cbeQuery("0911223344", "100100", "202600012"); err == nil || !strings.Contains(err.Error(), "401") {
@@ -894,7 +894,7 @@ func TestPages(t *testing.T) {
 	tb := newTestbed(t)
 	tb.cbeApp(nil)
 	token := tb.smsToken()
-	tb.sendSMS(token, "+251911223344", "MENGED", "Your code is 482913.")
+	tb.sendSMS(token, "+251911223344", "KIFLET", "Your code is 482913.")
 
 	for path, want := range map[string]string{
 		"/":                        "0911 22 33 44",
@@ -1013,7 +1013,7 @@ func TestFromEnv(t *testing.T) {
 	if cfg.AppURL != "http://localhost:8090" || cfg.PIN != "1234" || cfg.SMS.Number != "6060" || cfg.SMS.APIKey != "k" || cfg.Telebirr.Key == nil {
 		t.Errorf("from the environment: %+v", cfg)
 	}
-	env["PUBLIC_URL"], env["SANDBOX_APP_URL"] = "https://menged.example", "http://app:8080"
+	env["PUBLIC_URL"], env["SANDBOX_APP_URL"] = "https://kiflet.example", "http://app:8080"
 	if cfg, _ = FromEnv(func(k string) string { return env[k] }); cfg.AppURL != "http://app:8080" {
 		t.Errorf("SANDBOX_APP_URL comes first: %s", cfg.AppURL)
 	}
@@ -1027,7 +1027,7 @@ func TestReachAndMasking(t *testing.T) {
 	for in, want := range map[string]string{
 		"http://localhost:8090/api/v1/sms/status": "http://host.docker.internal:8090/api/v1/sms/status",
 		"http://127.0.0.1/notify":                 "http://host.docker.internal/notify",
-		"https://menged.example/notify":           "https://menged.example/notify",
+		"https://kiflet.example/notify":           "https://kiflet.example/notify",
 	} {
 		if got := s.reach(in); got != want {
 			t.Errorf("reach(%s) = %s, want %s", in, got, want)

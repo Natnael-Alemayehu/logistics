@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/geo"
-	"github.com/natnael-alemayehu/logistics/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/geo"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
 )
 
 // TestDeliveryLifecycle follows one load from booking to the customer's

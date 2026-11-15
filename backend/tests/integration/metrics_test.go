@@ -48,11 +48,11 @@ func TestMetrics(t *testing.T) {
 		t.Fatalf("/metrics: status %d", status)
 	}
 	for _, want := range []string{
-		`menged_http_requests_total{method="GET",route="/app/shipments/{id}",status="200"}`,
-		`menged_http_request_duration_seconds_bucket{method="POST",route="/api/v1/driver/sync"`,
-		`menged_sync_changes_total{kind="status",result="applied"}`,
-		`menged_messages_total{channel="sms",provider="mock",result="sent"}`,
-		`menged_websocket_connections`,
+		`kiflet_http_requests_total{method="GET",route="/app/shipments/{id}",status="200"}`,
+		`kiflet_http_request_duration_seconds_bucket{method="POST",route="/api/v1/driver/sync"`,
+		`kiflet_sync_changes_total{kind="status",result="applied"}`,
+		`kiflet_messages_total{channel="sms",provider="mock",result="sent"}`,
+		`kiflet_websocket_connections`,
 		`go_goroutines`,
 	} {
 		if !strings.Contains(body, want) {

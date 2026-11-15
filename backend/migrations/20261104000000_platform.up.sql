@@ -3,13 +3,13 @@
 
 -- ---------------------------------------------------------------------------
 -- The audit log and the shipment timeline are append-only (FR-042 AC-042.5).
--- Only a transaction that sets menged.purge may change or remove rows:
+-- Only a transaction that sets kiflet.purge may change or remove rows:
 -- deleting a company, and removing personal data after the retention period
 -- or on request (FR-041).
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION append_only() RETURNS trigger AS $$
 BEGIN
-    IF current_setting('menged.purge', true) = 'on' THEN
+    IF current_setting('kiflet.purge', true) = 'on' THEN
         IF TG_OP = 'DELETE' THEN
             RETURN OLD;
         END IF;
@@ -41,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_shipments_to_anonymise ON shipments (updated_at)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS anonymised_at TIMESTAMPTZ;
 
 -- ---------------------------------------------------------------------------
--- Support tickets between a company and the people running Menged
+-- Support tickets between a company and the people running Kiflet
 -- (FR-049 AC-049.5). open: waiting for the platform; answered: waiting for
 -- the company.
 -- ---------------------------------------------------------------------------

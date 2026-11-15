@@ -157,4 +157,4 @@ DELETE FROM tenants WHERE id = $1;
 -- name: AllowLogRewrite :exec
 -- Lets this transaction change the append-only audit log and shipment
 -- timeline (see the append_only trigger).
-SELECT set_config('menged.purge', 'on', true);
+SELECT set_config('kiflet.purge', 'on', true);

@@ -17,19 +17,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
-	"github.com/natnael-alemayehu/logistics/internal/app"
-	"github.com/natnael-alemayehu/logistics/internal/config"
-	"github.com/natnael-alemayehu/logistics/internal/db"
-	"github.com/natnael-alemayehu/logistics/internal/geo"
-	"github.com/natnael-alemayehu/logistics/internal/model"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/hash"
+	"github.com/natnael-alemayehu/kiflet/internal/app"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/geo"
+	"github.com/natnael-alemayehu/kiflet/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/hash"
 )
 
 // Demo credentials printed at the end of seeding.
 const (
-	demoPassword  = "menged-demo"
-	adminPassword = "menged-admin"
+	demoPassword  = "kiflet-demo"
+	adminPassword = "kiflet-admin"
 	demoPIN       = "2580"
 )
 
@@ -76,11 +76,11 @@ var (
 func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerolog.Logger) error {
 	q := db.New(pool)
 	var exists bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE email = 'demo@menged.et')`).Scan(&exists); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE email = 'demo@kiflet.et')`).Scan(&exists); err != nil {
 		return err
 	}
 	if exists {
-		return errors.New("demo data is already loaded (demo@menged.et exists)")
+		return errors.New("demo data is already loaded (demo@kiflet.et exists)")
 	}
 	a, err := app.New(cfg, pool, log, app.Options{})
 	if err != nil {
@@ -93,8 +93,8 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 
 	// The platform operator's own account.
 	plat, err := svc.Tenants.CreateCompany(ctx, service.SignupInput{
-		Company: "Menged Platform", City: "Addis Ababa", AdminName: "Platform Admin",
-		Email: "admin@menged.et", Phone: "0911000001", Password: adminPassword,
+		Company: "Kiflet Platform", City: "Addis Ababa", AdminName: "Platform Admin",
+		Email: "admin@kiflet.et", Phone: "0911000001", Password: adminPassword,
 	}, ci)
 	if err != nil {
 		return fmt.Errorf("platform tenant: %w", err)
@@ -112,7 +112,7 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	// The demo company.
 	res, err := svc.Tenants.CreateCompany(ctx, service.SignupInput{
 		Company: "Abay Freight PLC", City: "Addis Ababa", AdminName: "Selam Tesfaye",
-		Email: "demo@menged.et", Phone: "0911000002", Password: demoPassword,
+		Email: "demo@kiflet.et", Phone: "0911000002", Password: demoPassword,
 	}, ci)
 	if err != nil {
 		return fmt.Errorf("demo tenant: %w", err)
@@ -136,7 +136,7 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 		return fmt.Errorf("demo payment: %w", err)
 	}
 	disp, err := svc.Users.CreateStaff(ctx, admin, service.PersonInput{
-		FullName: "Dawit Bekele", Email: "dispatch@menged.et", Phone: "0911000003", Role: model.RoleDispatcher,
+		FullName: "Dawit Bekele", Email: "dispatch@kiflet.et", Phone: "0911000003", Role: model.RoleDispatcher,
 	}, ci)
 	if err != nil {
 		return fmt.Errorf("dispatcher: %w", err)
@@ -348,9 +348,9 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 Demo data is loaded.
 
   Dashboard          %[1]s/login
-    administrator    demo@menged.et      / %[2]s
-    dispatcher       dispatch@menged.et  / %[2]s
-    platform admin   admin@menged.et     / %[3]s
+    administrator    demo@kiflet.et      / %[2]s
+    dispatcher       dispatch@kiflet.et  / %[2]s
+    platform admin   admin@kiflet.et     / %[3]s
 
   Driver app         %[1]s/driver/
     drivers          0912345601 … 0912345605, PIN %[4]s
@@ -408,7 +408,7 @@ func rewriteHistory(ctx context.Context, pool *pgxpool.Pool, stmts ...stmt) erro
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // a no-op after commit
-	if _, err := tx.Exec(ctx, "SELECT set_config('menged.purge', 'on', true)"); err != nil {
+	if _, err := tx.Exec(ctx, "SELECT set_config('kiflet.purge', 'on', true)"); err != nil {
 		return err
 	}
 	for _, s := range stmts {

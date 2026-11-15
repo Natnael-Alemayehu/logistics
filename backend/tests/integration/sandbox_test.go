@@ -27,17 +27,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/config"
-	"github.com/natnael-alemayehu/logistics/internal/sandbox"
-	"github.com/natnael-alemayehu/logistics/internal/service"
-	"github.com/natnael-alemayehu/logistics/pkg/console"
-	"github.com/natnael-alemayehu/logistics/pkg/payments"
+	"github.com/natnael-alemayehu/kiflet/internal/config"
+	"github.com/natnael-alemayehu/kiflet/internal/sandbox"
+	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/pkg/console"
+	"github.com/natnael-alemayehu/kiflet/pkg/payments"
 )
 
 // What the app and the sandbox agree on, as both read it from sandbox.env.
 const (
 	smsKey         = "integration-ethio-telecom-key"
-	senderID       = "MENGED"
+	senderID       = "KIFLET"
 	smsSecret      = "integration-sms-webhook-secret"
 	fabricAppID    = "integration-fabric-app"
 	telebirrSecret = "integration-telebirr-app-secret"
@@ -53,7 +53,7 @@ const (
 // sandbox the other halves.
 var sandboxKeys = sync.OnceValues(func() (keyFiles, error) {
 	var k keyFiles
-	dir, err := os.MkdirTemp("", "menged-sandbox-keys-")
+	dir, err := os.MkdirTemp("", "kiflet-sandbox-keys-")
 	if err != nil {
 		return k, err
 	}
@@ -223,12 +223,12 @@ func (p *providers) texts(number string) []console.Item {
 func (p *providers) text(from, body string) int {
 	p.t.Helper()
 	var res struct {
-		MengedStatus int `json:"menged_status"`
+		KifletStatus int `json:"kiflet_status"`
 	}
 	if code := p.call(http.MethodPost, "/api/phones/"+from+"/texts", map[string]string{"text": body}, &res); code != http.StatusOK {
 		p.t.Fatalf("texting from %s: status %d", from, code)
 	}
-	return res.MengedStatus
+	return res.KifletStatus
 }
 
 type heldCall struct {
@@ -371,7 +371,7 @@ func TestTextsThroughTheGateway(t *testing.T) {
 	}
 	within(t, 5*time.Second, "the gateway learning the report was taken", func() bool {
 		tx := p.phone(office.phone).from(senderID)
-		return len(tx) == 1 && tx[0].State == "Delivered" && tx[0].Report == "Report: Taken by Menged"
+		return len(tx) == 1 && tx[0].State == "Delivered" && tx[0].Report == "Report: Taken by Kiflet"
 	})
 
 	// The driver is texted the shipment, and texts back from the road.

@@ -30,7 +30,7 @@ import (
 var ErrMalformed = errors.New("the provider's message could not be read")
 
 // Telebirr takes payments through telebirr's web checkout, its H5 C2B
-// integration. Menged creates an order with telebirr's payment server and
+// integration. Kiflet creates an order with telebirr's payment server and
 // sends the payer to telebirr's checkout page, where they pay with their
 // phone number and PIN. telebirr then reports the result to the
 // notification URL. A lost report is made up for by asking about the order.
@@ -38,7 +38,7 @@ var ErrMalformed = errors.New("the provider's message could not be read")
 // The calls follow telebirr's published integration guide. Two things it
 // leaves open each live in one place, to check against the merchant
 // portal: the signature padding (pss) and the order states
-// (telebirrOutcome). Answers to Menged's own calls arrive over the HTTPS
+// (telebirrOutcome). Answers to Kiflet's own calls arrive over the HTTPS
 // connection it opened, so their signatures aren't checked; notifications,
 // which anyone could send, are.
 type Telebirr struct {
@@ -64,7 +64,7 @@ type TelebirrConfig struct {
 	// FabricAppID and AppSecret obtain the API token.
 	FabricAppID string
 	AppSecret   string
-	// MerchantAppID and MerchantCode identify Menged in orders.
+	// MerchantAppID and MerchantCode identify Kiflet in orders.
 	MerchantAppID string
 	MerchantCode  string
 	// PrivateKey is ours and PublicKey telebirr's: PEM, or the bare base64
@@ -475,7 +475,7 @@ func keyDER(b []byte) []byte {
 // and digits only: PAY-AB12 becomes PAYAB12.
 func orderID(reference string) string { return strings.ReplaceAll(reference, "-", "") }
 
-// referenceOf puts back the dash orderID removed from Menged's PAY-
+// referenceOf puts back the dash orderID removed from Kiflet's PAY-
 // references.
 func referenceOf(orderID string) string {
 	if strings.HasPrefix(orderID, "PAY") && !strings.Contains(orderID, "-") {

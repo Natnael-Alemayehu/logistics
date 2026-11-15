@@ -1,4 +1,4 @@
-/* Menged dashboard and public pages. One stylesheet, no build step.
+/* Kiflet dashboard and public pages. One stylesheet, no build step.
    Colours are tokens on :root; dark mode redefines them. */
 
 :root {

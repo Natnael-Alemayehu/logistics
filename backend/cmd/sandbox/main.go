@@ -1,15 +1,15 @@
 // Command sandbox runs the provider sandbox: Ethio telecom's SMS gateway,
-// telebirr and CBE Birr as Menged reaches them, with the phones and payers
+// telebirr and CBE Birr as Kiflet reaches them, with the phones and payers
 // on the other side (internal/sandbox).
 //
 //	sandbox        serve on SANDBOX_ADDR (127.0.0.1:8091)
 //	sandbox keys   write throwaway telebirr key pairs to SANDBOX_KEYS_DIR
 //
-// The providers' settings are the variables Menged reads, so the two share
+// The providers' settings are the variables Kiflet reads, so the two share
 // sandbox.env (make sandbox, make run-sandbox). The sandbox's own:
 //
 //	SANDBOX_ADDR        where to listen
-//	SANDBOX_APP_URL     Menged, which the providers call (PUBLIC_URL, or http://localhost:$PORT)
+//	SANDBOX_APP_URL     Kiflet, which the providers call (PUBLIC_URL, or http://localhost:$PORT)
 //	SANDBOX_KEYS_DIR    the key pairs (sandbox-keys)
 //	SANDBOX_PIN         every wallet's PIN (1234)
 //	SANDBOX_HOST_ALIAS  what localhost is from inside a container (host.docker.internal)
@@ -26,7 +26,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/natnael-alemayehu/logistics/internal/sandbox"
+	"github.com/natnael-alemayehu/kiflet/internal/sandbox"
 )
 
 func main() {

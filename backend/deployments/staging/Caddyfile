@@ -17,19 +17,19 @@ http:// {
 	redir https://{host}:8443{uri} 308
 }
 
-# {$DOMAIN}, menged.localhost:8443.
+# {$DOMAIN}, kiflet.localhost:8443.
 import /etc/caddy/production.caddy
 
 # The provider sandbox: phones, telebirr's checkout, faults and its API.
-sandbox.menged.localhost:8443 {
+sandbox.kiflet.localhost:8443 {
 	reverse_proxy sandbox:8091
 }
 
 # Every email the app sends.
-mail.menged.localhost:8443 {
+mail.kiflet.localhost:8443 {
 	reverse_proxy mailpit:8025
 }
 
-grafana.menged.localhost:8443 {
+grafana.kiflet.localhost:8443 {
 	reverse_proxy grafana:3000
 }

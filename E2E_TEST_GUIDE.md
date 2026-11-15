@@ -327,7 +327,7 @@ count as it was. Dismissing an alert clears it for everyone.
 
 Under **Account → Alerts**:
 - **Turn on notifications in this browser** makes critical alerts pop up as
-  system notifications while Menged is in a background tab.
+  system notifications while Kiflet is in a background tab.
 - **Email me these alerts** picks the alert types that are emailed to you as
   well, once your email address is confirmed. Each email links to the
   shipment.
@@ -358,8 +358,8 @@ SMS: the email appears in the server terminal.
 
 ### Help and your data
 
-- **Help** holds questions to the Menged team. **Ask a question** with a
-  subject and a message. The team is emailed (an `EMAIL to admin@menged.et`
+- **Help** holds questions to the Kiflet team. **Ask a question** with a
+  subject and a message. The team is emailed (an `EMAIL to admin@kiflet.et`
   block in the terminal). Its answer shows on the question's page and is
   emailed to whoever asked. Reply to carry on, or **Close** the question when
   it's settled; writing again reopens it. **Ask for an offer** under
@@ -472,7 +472,7 @@ Check:
 
 ## 10. The operator
 
-Sign in as `admin@menged.et`. **Companies** lists every company with plan,
+Sign in as `admin@kiflet.et`. **Companies** lists every company with plan,
 drivers, activity and billing state. Company pages such as `/app/shipments`
 send the operator back to this list. A company's row opens its page: usage,
 plan, invoices and questions, and these actions:
@@ -523,7 +523,7 @@ company is emailed. (Two checkouts paid for one invoice end the same way.)
 - Forms posted from another site are refused (cross-origin protection).
 - `/metrics` returns 404 unless `METRICS_TOKEN` is set and sent as a bearer
   token. With it, `curl -H "Authorization: Bearer $METRICS_TOKEN"
-  localhost:8080/metrics` lists the `menged_*` metrics, with requests labelled
+  localhost:8080/metrics` lists the `kiflet_*` metrics, with requests labelled
   by route pattern (`route="/app/shipments/{id}"`) and no IDs.
 - The audit log and shipment histories can't be changed or deleted, even in
   the database:
@@ -552,7 +552,7 @@ app's terminal.
 1. **The sign-up code.** Sign up a new company. The code isn't printed: it
    arrives on the sandbox's phone. Open the sandbox, open the phone by its
    number, read the code and finish signing up. Under the text, *Delivered ·
-   Report: Taken by Menged*: the gateway's delivery report reached the app,
+   Report: Taken by Kiflet*: the gateway's delivery report reached the app,
    and Settings → Text messages shows the text **Delivered**.
 2. **A driver's text.** Add a driver and book a shipment for them. Their
    phone in the sandbox shows the assignment, ending "text ET <ref> 1 to
@@ -600,15 +600,15 @@ behind Caddy over HTTPS, with the provider sandbox, Mailpit and SeaweedFS in
 place of the providers, the mail server and S3. From `backend/`:
 
 ```bash
-make staging-up   # https://menged.localhost:8443
+make staging-up   # https://kiflet.localhost:8443
 make test-e2e     # the automated pass over the steps below
 ```
 
 Trust `tmp/staging-ca.crt` in the browser, or accept its warning. Texts
-arrive on the sandbox's phones (https://sandbox.menged.localhost:8443) and
-email in Mailpit (https://mail.menged.localhost:8443).
+arrive on the sandbox's phones (https://sandbox.kiflet.localhost:8443) and
+email in Mailpit (https://mail.kiflet.localhost:8443).
 
-1. **Sign up** at https://menged.localhost:8443/signup, with the code from
+1. **Sign up** at https://kiflet.localhost:8443/signup, with the code from
    the sandbox's phone, and confirm the address from the link in Mailpit.
 2. **The driver app.** Add a driver and book a load for them. On a phone
    (or the browser's device mode), open `/driver/`, sign in with the PIN
@@ -621,8 +621,8 @@ email in Mailpit (https://mail.menged.localhost:8443).
 4. **Pay** an invoice at telebirr's checkout on the sandbox (any number, PIN
    `1234`): it returns to the payment page, paid, and the receipt is in
    Mailpit.
-5. **Monitoring.** Grafana (https://grafana.menged.localhost:8443, `admin` /
-   `staging-grafana-password`) shows the Menged dashboard with the requests,
+5. **Monitoring.** Grafana (https://grafana.kiflet.localhost:8443, `admin` /
+   `staging-grafana-password`) shows the Kiflet dashboard with the requests,
    texts and emails from the steps above.
 6. **Backup and restore**, as on a production machine:
 
@@ -633,12 +633,12 @@ email in Mailpit (https://mail.menged.localhost:8443).
    ```
 
    Sign up another company, then run the `scripts/restore.sh` command the
-   backup printed and type `menged-staging`. The second company is gone, and
+   backup printed and type `kiflet-staging`. The second company is gone, and
    the first is still signed in. Unset `COMPOSE_FILE` and `ENV_FILE`
    afterwards, or the next `docker compose` goes to staging too.
 
 Check:
-- http://menged.localhost:8088 redirects to HTTPS, port included.
+- http://kiflet.localhost:8088 redirects to HTTPS, port included.
 - Responses carry HSTS, the CSP, `X-Content-Type-Options: nosniff` and an
   `Alt-Svc` header offering HTTP/3. `/metrics` is 404 through Caddy.
 - `make staging-down` removes staging and its data.

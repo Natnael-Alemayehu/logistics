@@ -30,7 +30,7 @@
     box.append(t);
     setTimeout(() => t.remove(), opts.ttl || 6000);
   }
-  window.mengedToast = toast;
+  window.kifletToast = toast;
 
   // ---- navigation drawer -------------------------------------------------------
   document.addEventListener("click", (e) => {
@@ -164,7 +164,7 @@
 
   // ---- column choice ----------------------------------------------------------------
   // Which columns of the shipment list show (FR-029), kept per browser.
-  const COLUMNS_KEY = "menged.shipments.hidden";
+  const COLUMNS_KEY = "kiflet.shipments.hidden";
 
   function initColumns(root) {
     const table = $("table[data-hideable]", root);
@@ -185,7 +185,7 @@
   // ---- browser notifications --------------------------------------------------------
   // Opt-in, per browser: a critical alert pops up when the dashboard is in
   // a background tab (FR-033).
-  const NOTIFY_KEY = "menged.notify";
+  const NOTIFY_KEY = "kiflet.notify";
 
   function notifyOn() {
     return "Notification" in window && Notification.permission === "granted" && store.get(NOTIFY_KEY) === "1";
@@ -223,7 +223,7 @@
     if (d.severity !== "critical" || !document.hidden || !notifyOn()) return;
     try {
       // The tag keeps one pop-up per alert when several tabs are open.
-      const n = new Notification(d.label || "Alert", { body: d.message, tag: "menged-" + d.id, icon: $("link[rel~='icon']")?.href });
+      const n = new Notification(d.label || "Alert", { body: d.message, tag: "kiflet-" + d.id, icon: $("link[rel~='icon']")?.href });
       n.addEventListener("click", () => {
         window.focus();
         location.href = d.shipment_id ? "/app/shipments/" + d.shipment_id : "/app/alerts";
@@ -374,7 +374,7 @@
         } catch {
           return;
         }
-        window.dispatchEvent(new CustomEvent("menged:live", { detail: msg }));
+        window.dispatchEvent(new CustomEvent("kiflet:live", { detail: msg }));
         handle(msg);
       });
       socket.addEventListener("close", () => {

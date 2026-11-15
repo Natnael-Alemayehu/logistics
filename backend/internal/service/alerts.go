@@ -5,7 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
 )
 
 // Alert types.

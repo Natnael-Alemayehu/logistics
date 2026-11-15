@@ -5,7 +5,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/natnael-alemayehu/logistics/pkg/metrics"
+	"github.com/natnael-alemayehu/kiflet/pkg/metrics"
 )
 
 type Hub struct {

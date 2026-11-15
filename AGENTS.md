@@ -2,7 +2,7 @@
 
 ## Project
 
-Menged: offline-first shipment tracking and proof of delivery for Ethiopian
+Kiflet: offline-first shipment tracking and proof of delivery for Ethiopian
 trucking companies. See `README.md` for what it does and how it fits together.
 
 - `functional_requirements.md`: the original requirements (FR numbers are
@@ -10,6 +10,9 @@ trucking companies. See `README.md` for what it does and how it fits together.
   deliberately differs; add to it when you depart from a requirement.
 - `logistics.md`: background on the problem
 - `E2E_TEST_GUIDE.md`: manual walkthrough of every flow
+- `ROADMAP.md`: what comes next, in order. Delete a section once it is done.
+- `CHANGELOG.md`: what changed in each release. It is the only file that
+  may name what the product was called before; CI checks.
 
 ## Architecture
 
@@ -57,7 +60,7 @@ make vet
 - `audit_logs` and `shipment_events` are append-only: a trigger rejects
   UPDATE, DELETE and TRUNCATE. Code that must remove them (company deletion,
   retention) runs inside `purgeTx` in `internal/service/data.go`, which sets
-  `menged.purge` for its transaction only.
+  `kiflet.purge` for its transaction only.
 - The driver app's status rules come from `/api/v1/driver/config`, which is
   derived from `model.AllowedTransitions`. Change the rules there, not in JS.
 - Live updates: an element with `data-live-region` and an `id` is fetched

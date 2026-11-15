@@ -1,6 +1,6 @@
 {
-  "name": "Menged Driver",
-  "short_name": "Menged",
+  "name": "Kiflet Driver",
+  "short_name": "Kiflet",
   "description": "Your shipments, status updates and proof of delivery — works without signal.",
   "start_url": "/driver/",
   "scope": "/driver/",

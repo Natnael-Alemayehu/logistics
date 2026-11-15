@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/natnael-alemayehu/logistics/internal/db"
+	"github.com/natnael-alemayehu/kiflet/internal/db"
 )
 
 // AuditService records security-relevant actions: sign-ins, account and
