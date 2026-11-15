@@ -242,39 +242,62 @@ func TestRetentionClearsAccountLinks(t *testing.T) {
 // five wrong passwords that lock an account, and signing in doesn't use up
 // its allowance for what texts a code, which is 10.
 func TestRateLimits(t *testing.T) {
-	e := newEnv(t)
-	b := e.browser()
-	// The limiter's window is the wall-clock minute, and its estimate drops
-	// once a new one starts; the 30 refused passwords take seconds, so
-	// start them early in a minute.
-	if left := time.Until(time.Now().Truncate(time.Minute).Add(time.Minute)); left < 20*time.Second {
+	withinOneMinute(t, func(e *env) string {
+		b := e.browser()
+		for i := range 30 {
+			if p := b.post("/login", url.Values{"identifier": {fmt.Sprintf("nobody%d@example.et", i)}, "password": {"wrong-password"}}); p.Status != http.StatusUnauthorized {
+				return fmt.Sprintf("sign-in %d: status %d, want it refused for the password", i+1, p.Status)
+			}
+		}
+		p := b.post("/login", url.Values{"identifier": {"nobody@example.et"}, "password": {"wrong-password"}})
+		if p.Status != http.StatusTooManyRequests || !strings.Contains(p.Body, "Wait a minute") {
+			return fmt.Sprintf("the 31st sign-in in a minute: status %d, want 429", p.Status)
+		}
+		var api struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if code := e.api("POST", "/api/v1/driver/login", "", map[string]string{"phone": phoneNumber(), "pin": "1234", "device_id": "d"}, &api); code != http.StatusTooManyRequests || api.Error.Code != "RATE_LIMITED" {
+			return fmt.Sprintf("a driver signing in from the same address: status %d %q, want 429", code, api.Error.Code)
+		}
+
+		for i := range 10 {
+			if p := b.post("/forgot", url.Values{"email": {fmt.Sprintf("nobody%d@example.et", i)}}); p.Status != http.StatusOK {
+				return fmt.Sprintf("reset request %d: status %d, want it taken", i+1, p.Status)
+			}
+		}
+		if p := b.post("/forgot", url.Values{"email": {"nobody@example.et"}}); p.Status != http.StatusTooManyRequests {
+			return fmt.Sprintf("the 11th reset request in a minute: status %d, want 429", p.Status)
+		}
+		return ""
+	})
+}
+
+// withinOneMinute runs a check of the rate limits, which returns what was
+// wrong or nothing. The limiter counts by the minute of the wall clock, and
+// its estimate drops when a new minute starts, so the check's requests have
+// to land inside one. On a busy machine they may not: a check that failed
+// after crossing into a new minute has shown nothing, and is run again from
+// the start of a minute, on a fresh copy of the app whose counts are empty.
+func withinOneMinute(t *testing.T, check func(e *env) string) {
+	t.Helper()
+	minute := func() time.Time { return time.Now().Truncate(time.Minute) }
+	// The refused passwords take seconds: start early in a minute.
+	if left := time.Until(minute().Add(time.Minute)); left < 20*time.Second {
 		time.Sleep(left)
 	}
-	for i := range 30 {
-		if p := b.post("/login", url.Values{"identifier": {fmt.Sprintf("nobody%d@example.et", i)}, "password": {"wrong-password"}}); p.Status != http.StatusUnauthorized {
-			t.Fatalf("sign-in %d: status %d, want it refused for the password", i+1, p.Status)
+	for attempt := 1; ; attempt++ {
+		started := minute()
+		problem := check(newEnv(t))
+		if problem == "" {
+			return
 		}
-	}
-	p := b.post("/login", url.Values{"identifier": {"nobody@example.et"}, "password": {"wrong-password"}})
-	if p.Status != http.StatusTooManyRequests || !strings.Contains(p.Body, "Wait a minute") {
-		t.Fatalf("the 31st sign-in in a minute: status %d, want 429", p.Status)
-	}
-	var api struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if code := e.api("POST", "/api/v1/driver/login", "", map[string]string{"phone": phoneNumber(), "pin": "1234", "device_id": "d"}, &api); code != http.StatusTooManyRequests || api.Error.Code != "RATE_LIMITED" {
-		t.Errorf("a driver signing in from the same address: status %d %q, want 429", code, api.Error.Code)
-	}
-
-	for i := range 10 {
-		if p := b.post("/forgot", url.Values{"email": {fmt.Sprintf("nobody%d@example.et", i)}}); p.Status != http.StatusOK {
-			t.Fatalf("reset request %d: status %d, want it taken", i+1, p.Status)
+		if minute().Equal(started) || attempt == 3 {
+			t.Fatal(problem)
 		}
-	}
-	if p := b.post("/forgot", url.Values{"email": {"nobody@example.et"}}); p.Status != http.StatusTooManyRequests {
-		t.Errorf("the 11th reset request in a minute: status %d, want 429", p.Status)
+		t.Logf("attempt %d ran into a new minute (%s): trying again", attempt, problem)
+		time.Sleep(time.Until(minute().Add(time.Minute)))
 	}
 }
 
