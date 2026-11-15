@@ -2,7 +2,7 @@
 # DB_PORT moves it off 5434 if that port is taken.
 #
 # The provider sandbox, for an app on the host run with `make run-sandbox`:
-#   make sandbox-keys && docker compose --profile sandbox up sandbox
+#   make sandbox-keys && docker compose -f deployments/dev/compose.yml --profile sandbox up sandbox
 #
 # The project is named, or it would be named after the directory, and
 # compose would take another checkout in a directory of the same name for
@@ -31,7 +31,7 @@ services:
   sandbox:
     profiles: [sandbox]
     build:
-      context: .
+      context: ../..
       target: sandbox
     env_file: sandbox.env
     environment:
@@ -45,7 +45,7 @@ services:
     ports:
       - "127.0.0.1:8091:8091"
     volumes:
-      - ./sandbox-keys:/keys:ro
+      - ../../sandbox-keys:/keys:ro
 
 volumes:
   postgres_data:

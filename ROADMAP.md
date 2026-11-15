@@ -12,7 +12,7 @@ once it is done: this file should only ever hold what is still ahead.
 
 ## Where things stand
 
-- One Go application in `backend/`: about 25,400 lines of Go and 12,900
+- One Go application, at the repository root: about 25,400 lines of Go and 12,900
   lines of tests (210 unit tests, 95 integration tests, 8 end-to-end tests),
   plus 53 templates and a 1,663-line driver app in plain JavaScript.
 - CI runs vet, unit tests, gofmt, `sqlc diff`, govulncheck, shellcheck, the
@@ -33,10 +33,9 @@ rest of this file assumes. The ones marked were settled on 2026-11-15.
 
 | Decision | Recommendation | Why |
 |---|---|---|
-| Move everything out of `backend/` to the repository root | Yes | There is no frontend or mobile directory beside it any more, and the module path in `go.mod` has never included `backend`. |
-| Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#7-migrations). |
+| Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#6-migrations). |
 | Twilio SMS adapter | Remove | Nothing uses it and the provider sandbox doesn't cover it. It comes back from git history if needed. |
-| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#9-commit-attribution). |
+| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#8-commit-attribution). |
 | Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
 
 ## The next release: a clean baseline
@@ -109,9 +108,8 @@ Renaming again costs little while nobody is live. The first rename was
 these commands and no edits by hand, 604 lines in 126 files:
 
 ```bash
-git grep -lzi kiflet -- . ':!backend/internal/db' ':!CHANGELOG.md' ':!ROADMAP.md' |
+git grep -lzi kiflet -- . ':!internal/db' ':!CHANGELOG.md' ':!ROADMAP.md' |
   xargs -0 sed -i 's/Kiflet/Newname/g; s/kiflet/newname/g; s/KIFLET/NEWNAME/g'
-cd backend
 git mv deployments/grafana/dashboards/kiflet.json \
        deployments/grafana/dashboards/newname.json
 git mv deployments/grafana/provisioning/dashboards/kiflet.yml \
@@ -139,24 +137,10 @@ What is left:
 - [ ] Retake the two screenshots in `docs/images/` when the overview or the
       driver app's first screen changes.
 
-### 3. Layout
-
-- [ ] Move the contents of `backend/` to the root with `git mv`, in a pull
-      request that does nothing else. Then fix every path that still says
-      `backend/`: `git grep -n 'backend/'` lists them, in `.gitignore`,
-      `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `LICENSE`, the documents
-      in `docs/`, `.github/workflows/ci.yml` (the working directory and the
-      cache paths) and `scripts/backup.sh`. Delete the root `Makefile`,
-      which only forwards to `backend/`.
-- [ ] Put the development files together: `docker-compose.yml` and
-      `sandbox.env` sit at the top of `backend/` while production's compose
-      file is in `deployments/`. Move them to `deployments/dev/` and point
-      the Makefile at them.
-
-### 4. Dead code and leftovers
+### 3. Dead code and leftovers
 
 Found by searching for exported names nothing refers to. No linter was
-available for the survey, so the first run of the linter in part 8 will add
+available for the survey, so the first run of the linter in part 7 will add
 to this list.
 
 - [ ] `pkg/websocket`: the hub was built for per-shipment and per-driver
@@ -174,7 +158,7 @@ to this list.
 - [ ] `.gitignore`: drop rules for things that no longer exist, and keep one
       rule per line of reasoning.
 
-### 5. Files that are too large to read
+### 4. Files that are too large to read
 
 Split by the sections the files already mark. Moves only, no edits.
 
@@ -192,7 +176,7 @@ Split by the sections the files already mark. Moves only, no edits.
       files to the service worker's `SHELL` list;
       `TestDriverShellFilesExist` then checks them.
 
-### 6. Tests named for what they test
+### 5. Tests named for what they test
 
 - [ ] `tests/integration/audit_test.go` holds 27 tests grouped by where the
       findings came from, not by subject. Move each to the file for its
@@ -211,7 +195,7 @@ Split by the sections the files already mark. Moves only, no edits.
       restore a delivery draft after a reload. This is the only part of the
       product with no automated test of its own.
 
-### 7. Migrations
+### 6. Migrations
 
 There are 21 migration files. They tell the story of how the schema got
 here, including a table that was created and later dropped
@@ -226,7 +210,7 @@ mean nothing to a new reader.
 - [ ] If one does: leave the files alone and add `docs/schema.md`, a short
       guide to the tables, instead.
 
-### 8. Checks that keep it clean
+### 7. Checks that keep it clean
 
 - [ ] golangci-lint in CI with `staticcheck`, `unused`, `errcheck` and
       `ineffassign`. Fix or explicitly excuse what the first run reports.
@@ -240,7 +224,7 @@ mean nothing to a new reader.
       `internal/web`. Unit coverage shows 5.8% and 4.2% for them only
       because their tests are the integration tests.
 
-### 9. Commit attribution
+### 8. Commit attribution
 
 GitHub lists Claude as a contributor because 28 commits on `main` end
 with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
@@ -306,7 +290,7 @@ What it costs:
 - The old commits stay reachable through pull request #2's page. Only
   GitHub Support can remove them, and the contributor list doesn't need it.
 
-### 10. Tag it
+### 9. Tag it
 
 - [ ] `CHANGELOG.md` entry, tag `v0.9.0` on the rewritten `main`, and a
       GitHub release. Tag after the rewrite, never before.
@@ -365,6 +349,6 @@ In order. The first three can run side by side.
 
 - **Moving `pkg/` under `internal/`.** Nothing outside this module imports
   it, but the move touches every file for no change a reader would feel.
-- **Rewriting old commit messages** beyond the lines in part 9. The early
+- **Rewriting old commit messages** beyond the lines in part 8. The early
   history is rough, and it is still the history. That includes the
   product's first name: old commits keep it.
