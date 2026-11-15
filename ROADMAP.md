@@ -13,9 +13,10 @@ once it is done: this file should only ever hold what is still ahead.
 ## Where things stand
 
 - One Go application, at the repository root: about 25,000 lines of Go and
-  12,600 lines of tests (175 unit tests, 95 integration tests, 9 end-to-end
-  tests, one of them the driver app in headless Chrome), plus 53 templates
-  and a 1,663-line driver app in plain JavaScript.
+  12,800 lines of tests (175 unit tests, 96 integration tests, 9 end-to-end
+  tests, one of them the driver app in headless Chrome), 53 templates, a
+  1,663-line driver app in plain JavaScript, and the schema in one
+  migration.
 - CI runs vet, unit tests, gofmt, `sqlc diff`, govulncheck, shellcheck, the
   integration tests and the end-to-end tests against staging.
 - The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O1, O3,
@@ -30,12 +31,11 @@ once it is done: this file should only ever hold what is still ahead.
 ## Decisions to make first
 
 Each of these changes what the release does. The recommendation is what the
-rest of this file assumes. The ones marked were settled on 2026-11-15.
+rest of this file assumes; none of them is settled yet.
 
 | Decision | Recommendation | Why |
 |---|---|---|
-| Replace the 21 migrations with one baseline schema | **Decided:** yes. No database holds data that must be kept | See [Migrations](#4-migrations). |
-| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#6-commit-attribution). |
+| Correct the author name and email while rewriting history | Yes | 57 commits carry a misspelled name, and all carry a personal email address in a public repository. History is being rewritten anyway. The cost is under [Commit attribution](#5-commit-attribution). |
 | Release number | `v0.9.0` now, `v1.0.0` with the first paying customer | The product isn't live yet. |
 | Split the driver app's script into modules | Not before its updates are made all-or-nothing; after the release is fine | A half-finished update would otherwise leave a phone with mixed versions. See [The driver app's one large file](#3-the-driver-apps-one-large-file). |
 
@@ -118,8 +118,9 @@ git mv deployments/grafana/provisioning/dashboards/kiflet.yml \
 make sqlc
 ```
 
-Then: a migration like `20261115000000_purge_setting`, so that a database
-made under the old name can still purge; `gofmt -w .` if the new name isn't
+Then: a migration that defines `append_only()` again with the new
+setting's name, so that a database made under the old name can still purge
+(the first rename's was `20261115000000_purge_setting`, now in git history); `gofmt -w .` if the new name isn't
 six letters long; a `CHANGELOG.md` entry; and every test, staging included.
 The three things that hold state are the reason to settle this before the
 first customer: the purge setting in the database, the volumes Compose
@@ -166,22 +167,7 @@ without signal, which is when a driver needs it.
       requests. `TestDriverAppInABrowser` in the end-to-end suite then shows
       the app still signs in, works offline and keeps its drafts.
 
-### 4. Migrations
-
-There are 21 migration files. They tell the story of how the schema got
-here, including a table that was created and later dropped
-(`device_tokens`), and names like `logic_fixes` and `product_core` that
-mean nothing to a new reader.
-
-- [ ] If no database holds data that must be kept: replace them with one
-      `…_baseline.up.sql` holding the schema as it is now, generated with
-      `pg_dump --schema-only` from a freshly migrated database and tidied.
-      Prove it with a test that migrates one database the old way and one
-      the new way and compares the schemas.
-- [ ] If one does: leave the files alone and add `docs/schema.md`, a short
-      guide to the tables, instead.
-
-### 5. Checks that keep it clean
+### 4. Checks that keep it clean
 
 - [ ] golangci-lint in CI with `staticcheck`, `unused`, `errcheck` and
       `ineffassign`. Fix or explicitly excuse what the first run reports.
@@ -198,7 +184,7 @@ mean nothing to a new reader.
       `internal/web`. Unit coverage shows 5.8% and 4.2% for them only
       because their tests are the integration tests.
 
-### 6. Commit attribution
+### 5. Commit attribution
 
 GitHub lists Claude as a contributor because 28 commits on `main` end
 with a `Co-Authored-By: Claude … <noreply@anthropic.com>` line. Removing
@@ -264,7 +250,7 @@ What it costs:
 - The old commits stay reachable through pull request #2's page. Only
   GitHub Support can remove them, and the contributor list doesn't need it.
 
-### 7. Tag it
+### 6. Tag it
 
 - [ ] `CHANGELOG.md` entry, tag `v0.9.0` on the rewritten `main`, and a
       GitHub release. Tag after the rewrite, never before.
@@ -323,6 +309,6 @@ In order. The first three can run side by side.
 
 - **Moving `pkg/` under `internal/`.** Nothing outside this module imports
   it, but the move touches every file for no change a reader would feel.
-- **Rewriting old commit messages** beyond the lines in part 6. The early
+- **Rewriting old commit messages** beyond the lines in part 5. The early
   history is rough, and it is still the history. That includes the
   product's first name: old commits keep it.
