@@ -1,4 +1,6 @@
-// Package websocket handles the websocket connections of this project.
+// Package websocket keeps the dashboards' live feed: a Client is one
+// browser's connection, and the Hub sends a company's updates to that
+// company's clients.
 package websocket
 
 import (
@@ -22,7 +24,6 @@ type Client struct {
 	TenantID string
 	UserID   string
 	Role     string
-	Rooms    map[string]bool
 	ctx      context.Context
 	cancel   context.CancelFunc
 }
@@ -36,7 +37,6 @@ func NewClient(hub *Hub, conn *websocket.Conn, tenantID, userID, role string) *C
 		TenantID: tenantID,
 		UserID:   userID,
 		Role:     role,
-		Rooms:    make(map[string]bool),
 		ctx:      ctx,
 		cancel:   cancel,
 	}
@@ -108,12 +108,3 @@ func (c *Client) Disconnect() {
 
 // Done is closed once the client has disconnected.
 func (c *Client) Done() <-chan struct{} { return c.ctx.Done() }
-
-func (c *Client) IsConnected() bool {
-	select {
-	case <-c.ctx.Done():
-		return false
-	default:
-		return true
-	}
-}

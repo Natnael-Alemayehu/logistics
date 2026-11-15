@@ -62,9 +62,6 @@ type Config struct {
 	SMSProvider          string
 	SMSNumber            string
 	SMSInboundSecret     string
-	TwilioAccountSID     string
-	TwilioAuthToken      string
-	TwilioFromNumber     string
 	EthioTelecomAPIURL   string
 	EthioTelecomAPIKey   string
 	EthioTelecomSenderID string
@@ -158,9 +155,6 @@ func Load() (*Config, error) {
 		SMSProvider:             getEnv("SMS_PROVIDER", "mock"),
 		SMSNumber:               getEnv("SMS_NUMBER", ""),
 		SMSInboundSecret:        getEnv("SMS_INBOUND_SECRET", ""),
-		TwilioAccountSID:        getEnv("TWILIO_ACCOUNT_SID", ""),
-		TwilioAuthToken:         getEnv("TWILIO_AUTH_TOKEN", ""),
-		TwilioFromNumber:        getEnv("TWILIO_FROM_NUMBER", ""),
 		EthioTelecomAPIURL:      getEnv("ETHIO_TELECOM_API_URL", ""),
 		EthioTelecomAPIKey:      getEnv("ETHIO_TELECOM_API_KEY", ""),
 		EthioTelecomSenderID:    getEnv("ETHIO_TELECOM_SENDER_ID", ""),

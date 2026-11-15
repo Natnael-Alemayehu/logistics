@@ -75,8 +75,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log zerolog.Logger, opts Option
 	}
 	// Opt-outs and pacing live in the service's outbox.
 	provider, err := sms.NewProvider(sms.Config{
-		Provider:         sms.ProviderType(cfg.SMSProvider),
-		TwilioAccountSID: cfg.TwilioAccountSID, TwilioAuthToken: cfg.TwilioAuthToken, TwilioFromNumber: cfg.TwilioFromNumber,
+		Provider:           sms.ProviderType(cfg.SMSProvider),
 		EthioTelecomAPIURL: cfg.EthioTelecomAPIURL, EthioTelecomAPIKey: cfg.EthioTelecomAPIKey, EthioTelecomSenderID: cfg.EthioTelecomSenderID,
 		Console: out,
 	}, smsLog{log.With().Str("component", "sms").Logger()})
