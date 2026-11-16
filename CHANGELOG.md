@@ -6,6 +6,12 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **The live map reads one row a driver** (audit O3). Each driver's
+  newest position is kept in its own table as positions arrive, where
+  the map used to search a week of them on every load. The migration
+  fills it from the last week. A phone's saved positions now go to the
+  database a thousand to a statement, not one by one. Nothing looks
+  different.
 - **The driver app is in modules.** Its 1,686 lines of `app.js` are now 19
   ES modules: the state, the text in both languages, IndexedDB, the
   server, the outbox and sync, settings, GPS, the router, the signature

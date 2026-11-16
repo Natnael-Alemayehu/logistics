@@ -104,10 +104,15 @@ type Querier interface {
 	// A slug already taken returns no row, so the caller can try another
 	// without aborting its transaction.
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
+	// A batch of a driver's GPS fixes in one statement: a phone back from a day
+	// without signal sends thousands. The arrays run in parallel, one element
+	// a fix, with -1 standing for a missing number and '' for a missing client
+	// ID, since an array here can't hold NULL.
+	//
 	// client_id carries the offline client's own row identifier. Paired with
 	// device_id it is what a retried batch conflicts on, so replaying a batch whose
 	// response was lost cannot duplicate telemetry.
-	CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (pgtype.UUID, error)
+	CreateTrackingEvents(ctx context.Context, arg CreateTrackingEventsParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)
 	CreateVerificationCode(ctx context.Context, arg CreateVerificationCodeParams) (VerificationCode, error)
@@ -162,6 +167,7 @@ type Querier interface {
 	// are the platform's and unique, so this finds one company's invoice.
 	GetInvoiceByNumber(ctx context.Context, number string) (Invoice, error)
 	GetLatestDriverLocation(ctx context.Context, arg GetLatestDriverLocationParams) (GetLatestDriverLocationRow, error)
+	// The fleet map: where each active driver was last seen, within a week.
 	GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error)
 	// Where the shipment was last seen, for the public tracking page.
 	GetLatestShipmentPosition(ctx context.Context, arg GetLatestShipmentPositionParams) (GetLatestShipmentPositionRow, error)
@@ -432,6 +438,9 @@ type Querier interface {
 	// The driver app's settings, chosen on the phone (FR-026 AC-026.6). The
 	// phone sends only those the driver changed; the rest stay as they are.
 	SetDriverAppSettings(ctx context.Context, arg SetDriverAppSettingsParams) error
+	// Keeps the driver's newest position for the fleet map. An older fix,
+	// from a phone sending what it saved while offline, changes nothing.
+	SetDriverPosition(ctx context.Context, arg SetDriverPositionParams) error
 	SetDriverVehicle(ctx context.Context, arg SetDriverVehicleParams) error
 	SetEmailVerified(ctx context.Context, arg SetEmailVerifiedParams) (int64, error)
 	SetEnterpriseOffer(ctx context.Context, arg SetEnterpriseOfferParams) error

@@ -59,6 +59,15 @@ type BroadcastRecipient struct {
 	BySms       bool        `db:"by_sms" json:"by_sms"`
 }
 
+type DriverPosition struct {
+	DriverID     pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	TenantID     pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Coordinates  interface{}        `db:"coordinates" json:"coordinates"`
+	SpeedKph     pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
+	BatteryLevel *int32             `db:"battery_level" json:"battery_level"`
+	RecordedAt   pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
 type Email struct {
 	ID            pgtype.UUID        `db:"id" json:"id"`
 	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`

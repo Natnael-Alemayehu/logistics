@@ -155,12 +155,22 @@ type Ping struct {
 	RecordedAt time.Time
 }
 
+// trackingBatch is how many fixes go to the database in one statement.
+const trackingBatch = 1000
+
 // record stores a batch of fixes for a driver, discarding ones that cannot be
-// real, and pushes the newest to the map. allowed is the set of shipments the
-// driver may attribute positions to.
+// real, keeps the newest as the driver's position, and pushes it to the map.
+// allowed is the set of shipments the driver may attribute positions to.
 func (s *TrackingService) record(ctx context.Context, a Actor, deviceID string, pings []Ping, allowed map[pgtype.UUID]bool) (stored int, rejected []string) {
-	var newest *Ping
 	now := s.now()
+	// or is a number for the batch insert, which reads -1 as "none".
+	or := func(v *float64, ok bool) float64 {
+		if v == nil || !ok {
+			return -1
+		}
+		return *v
+	}
+	valid := make([]*Ping, 0, len(pings))
 	for i := range pings {
 		p := &pings[i]
 		switch {
@@ -172,35 +182,60 @@ func (s *TrackingService) record(ctx context.Context, a Actor, deviceID string, 
 			rejected = append(rejected, p.ClientID)
 			continue
 		}
-		var battery *int32
-		if p.Battery != nil && *p.Battery >= 0 && *p.Battery <= 100 {
-			b := int32(*p.Battery)
-			battery = &b
+		if p.Battery != nil && (*p.Battery < 0 || *p.Battery > 100) {
+			p.Battery = nil
 		}
-		params := db.CreateTrackingEventParams{
-			TenantID: a.TenantID, ShipmentID: p.ShipmentID, DriverID: a.UserID,
-			Longitude: p.Lng, Latitude: p.Lat, EventType: "gps_ping", RecordedAt: toTimestamp(p.RecordedAt),
-			DeviceID: toText(deviceID), BatteryLevel: battery, ClientID: toText(p.ClientID),
+		if p.Speed != nil && (*p.Speed < 0 || *p.Speed >= 200) {
+			p.Speed = nil
 		}
-		if p.Accuracy != nil {
-			params.AccuracyMeters = toNumeric(*p.Accuracy)
+		valid = append(valid, p)
+	}
+
+	var newest *Ping
+	for chunk := range slices.Chunk(valid, trackingBatch) {
+		params := db.CreateTrackingEventsParams{TenantID: a.TenantID, DriverID: a.UserID, DeviceID: toText(deviceID)}
+		for _, p := range chunk {
+			battery := int32(-1)
+			if p.Battery != nil {
+				battery = int32(*p.Battery)
+			}
+			params.ShipmentIds = append(params.ShipmentIds, p.ShipmentID)
+			params.Longitudes = append(params.Longitudes, p.Lng)
+			params.Latitudes = append(params.Latitudes, p.Lat)
+			params.Accuracies = append(params.Accuracies, or(p.Accuracy, true))
+			params.Speeds = append(params.Speeds, or(p.Speed, true))
+			params.Headings = append(params.Headings, or(p.Heading, p.Heading != nil && *p.Heading >= 0 && *p.Heading < 360))
+			params.Batteries = append(params.Batteries, battery)
+			params.Recorded = append(params.Recorded, toTimestamp(p.RecordedAt))
+			params.ClientIds = append(params.ClientIds, p.ClientID)
 		}
-		if p.Speed != nil && *p.Speed >= 0 && *p.Speed < 200 {
-			params.SpeedKph = toNumeric(*p.Speed)
-		}
-		if p.Heading != nil && *p.Heading >= 0 && *p.Heading < 360 {
-			params.Heading = toNumeric(*p.Heading)
-		}
-		if _, err := s.q.CreateTrackingEvent(ctx, params); err != nil && !isNoRows(err) {
-			s.log.Error().Err(err).Msg("store gps fix")
+		// A statement that fails stores none of its fixes. The phone keeps
+		// what it wasn't told was stored, and sends it again.
+		if err := s.q.CreateTrackingEvents(ctx, params); err != nil {
+			s.log.Error().Err(err).Int("fixes", len(chunk)).Msg("store gps fixes")
 			continue
 		}
-		stored++
-		if newest == nil || p.RecordedAt.After(newest.RecordedAt) {
-			newest = p
+		stored += len(chunk)
+		for _, p := range chunk {
+			if newest == nil || p.RecordedAt.After(newest.RecordedAt) {
+				newest = p
+			}
 		}
 	}
 	if newest != nil {
+		pos := db.SetDriverPositionParams{
+			DriverID: a.UserID, TenantID: a.TenantID, Longitude: newest.Lng, Latitude: newest.Lat,
+			RecordedAt: toTimestamp(newest.RecordedAt),
+		}
+		if newest.Speed != nil {
+			pos.SpeedKph = toNumeric(*newest.Speed)
+		}
+		if newest.Battery != nil {
+			pos.BatteryLevel = ptr(int32(*newest.Battery))
+		}
+		if err := s.q.SetDriverPosition(ctx, pos); err != nil {
+			s.log.Error().Err(err).Msg("keep the driver's newest position")
+		}
 		s.publish(a.TenantID, "location", map[string]any{
 			"driver_id": a.UserID.String(), "name": a.Name, "lat": newest.Lat, "lng": newest.Lng,
 			"at": newest.RecordedAt, "speed_kph": newest.Speed, "battery": newest.Battery,
