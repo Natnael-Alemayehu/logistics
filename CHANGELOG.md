@@ -25,6 +25,18 @@ What changed in each release, newest first.
 
 ### Added
 
+- **A shipment can name its receiver** (audit W4). The booking form has
+  a second, optional person: who takes delivery at the destination, when
+  that isn't the customer who booked. Both get the booked, departed,
+  delayed and cancelled texts. What belongs to the handover goes to the
+  receiver alone: the arrival text, the driver's Call button and
+  suggested names in the driver app, and the link to confirm receipt.
+  The customer is told the delivery was made, with the tracking link.
+  Either finds the shipment with their phone on `/track/phone`. The
+  shipment page, the search, both exports and the waybill (Shipper and
+  Consignee) carry the receiver, and the keeping period removes them
+  with the customer. A shipment without one works as before: the
+  customer receives. Texts double for a shipment with two people.
 - **Customers can be written to in Amharic** (audit W1, the customers'
   half). Settings has a language for customers, English or Amharic. A
   company that chooses Amharic sends its customers Amharic texts, and

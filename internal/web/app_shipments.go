@@ -291,7 +291,7 @@ func (s *Server) shipmentCSV(w http.ResponseWriter, r *http.Request, f service.S
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="shipments-%s.csv"`, time.Now().In(s.cfg.Timezone).Format("2006-01-02")))
 	_, _ = w.Write([]byte("\xEF\xBB\xBF")) // so Excel reads UTF-8
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"Tracking number", "Status", "Priority", "Created", "Customer", "Customer phone",
+	_ = cw.Write([]string{"Tracking number", "Status", "Priority", "Created", "Customer", "Customer phone", "Receiver", "Receiver phone",
 		"Origin", "Origin address", "Destination", "Destination address", "Driver", "Vehicle",
 		"Cargo", "Weight (kg)", "Value (ETB)", "ETA", "Picked up", "Delivered", "On time"})
 	loc := s.cfg.Timezone
@@ -320,7 +320,7 @@ func (s *Server) shipmentCSV(w http.ResponseWriter, r *http.Request, f service.S
 			}
 			_ = cw.Write([]string{
 				sh.TrackingNumber, model.StatusLabel(sh.Status), sh.Priority, ts(sh.CreatedAt),
-				csvSafe(sh.CustomerName), sh.CustomerPhone,
+				csvSafe(sh.CustomerName), sh.CustomerPhone, csvSafe(deref(sh.ConsigneeName)), deref(sh.ConsigneePhone),
 				deref(sh.OriginCity), csvSafe(sh.OriginAddress), deref(sh.DestinationCity), csvSafe(sh.DestinationAddress),
 				csvSafe(deref(row.DriverName)), deref(row.VehiclePlate),
 				csvSafe(deref(sh.CargoDescription)), numStr(toFloat(sh.CargoWeight)), numStr(toFloat(sh.CargoValue)),

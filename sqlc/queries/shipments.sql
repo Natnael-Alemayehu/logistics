@@ -26,7 +26,7 @@ INSERT INTO shipments (
     customer_name, customer_phone,
     cargo_description, cargo_weight, cargo_value, special_instructions,
     driver_id, vehicle_id, status, estimated_delivery, eta_manual, created_by, status_changed_at,
-    planned_pickup_at
+    planned_pickup_at, consignee_name, consignee_phone
 ) VALUES (
     $1, $2, $3,
     $4, $5, $6, $7,
@@ -34,7 +34,7 @@ INSERT INTO shipments (
     $13, $14,
     $15, $16, $17, $18,
     $19, $20, $21, $22, $23, $24, NOW(),
-    sqlc.narg(planned_pickup_at)
+    sqlc.narg(planned_pickup_at), sqlc.narg(consignee_name), sqlc.narg(consignee_phone)
 ) RETURNING *;
 
 -- name: UpdateShipmentDetails :one
@@ -59,6 +59,8 @@ SET priority = $3,
     estimated_delivery = $19,
     eta_manual = $20,
     planned_pickup_at = sqlc.narg(planned_pickup_at),
+    consignee_name = sqlc.narg(consignee_name),
+    consignee_phone = sqlc.narg(consignee_phone),
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
 RETURNING *;
@@ -161,6 +163,8 @@ WHERE s.tenant_id = sqlc.arg(tenant_id)
        OR s.tracking_number ILIKE '%' || sqlc.narg(query)::text || '%'
        OR s.customer_name ILIKE '%' || sqlc.narg(query)::text || '%'
        OR s.customer_phone ILIKE '%' || sqlc.narg(query)::text || '%'
+       OR s.consignee_name ILIKE '%' || sqlc.narg(query)::text || '%'
+       OR s.consignee_phone ILIKE '%' || sqlc.narg(query)::text || '%'
        OR d.full_name ILIKE '%' || sqlc.narg(query)::text || '%')
 ORDER BY
   CASE WHEN sqlc.arg(sort)::text = 'created_asc' THEN s.created_at END ASC,
@@ -207,6 +211,8 @@ WHERE s.tenant_id = sqlc.arg(tenant_id)
        OR s.tracking_number ILIKE '%' || sqlc.narg(query)::text || '%'
        OR s.customer_name ILIKE '%' || sqlc.narg(query)::text || '%'
        OR s.customer_phone ILIKE '%' || sqlc.narg(query)::text || '%'
+       OR s.consignee_name ILIKE '%' || sqlc.narg(query)::text || '%'
+       OR s.consignee_phone ILIKE '%' || sqlc.narg(query)::text || '%'
        OR d.full_name ILIKE '%' || sqlc.narg(query)::text || '%');
 
 -- name: ListActiveShipmentsByDriver :many
@@ -313,12 +319,13 @@ ORDER BY s.planned_pickup_at
 LIMIT 1000;
 
 -- name: ListShipmentsByCustomerPhone :many
+-- A person's shipments: the ones they booked and the ones they receive.
 SELECT s.tracking_number, s.status, s.origin_city, s.destination_city,
        s.estimated_delivery, s.actual_delivery, s.created_at, s.updated_at,
        t.name AS company_name
 FROM shipments s
 JOIN tenants t ON t.id = s.tenant_id
-WHERE s.customer_phone = $1
+WHERE (s.customer_phone = sqlc.arg(phone) OR s.consignee_phone = sqlc.arg(phone))
   AND s.created_at > NOW() - INTERVAL '90 days'
 ORDER BY s.created_at DESC
 LIMIT 50;

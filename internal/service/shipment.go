@@ -40,6 +40,10 @@ type ShipmentInput struct {
 
 	CustomerName  string
 	CustomerPhone string
+	// ConsigneeName and ConsigneePhone are who takes delivery, when that
+	// isn't the customer. Both or neither.
+	ConsigneeName  string
+	ConsigneePhone string
 
 	CargoDescription    string
 	CargoWeightKg       float64
@@ -110,11 +114,14 @@ type validShipment struct {
 	origin, dest  resolvedPlace
 	customerName  string
 	customerPhone string
-	cargo         *string
-	weight, value pgtype.Numeric
-	instructions  *string
-	pickup        *time.Time
-	etaManual     *time.Time
+	// consigneeName and consigneePhone are nil when the customer receives.
+	consigneeName  *string
+	consigneePhone *string
+	cargo          *string
+	weight, value  pgtype.Numeric
+	instructions   *string
+	pickup         *time.Time
+	etaManual      *time.Time
 }
 
 // start is when the trip is expected to begin: the planned pickup, unless
@@ -157,6 +164,24 @@ func validateShipment(in ShipmentInput, now time.Time) (validShipment, error) {
 	}
 	if v.customerPhone, err = phone.Normalize(in.CustomerPhone); err != nil {
 		return v, invalid("customer_phone", err.Error())
+	}
+	name, number := strings.TrimSpace(in.ConsigneeName), strings.TrimSpace(in.ConsigneePhone)
+	switch {
+	case name == "" && number == "":
+	case name == "":
+		return v, invalid("consignee_name", "Enter the receiver's name, or clear their phone number.")
+	case utf8.RuneCountInString(name) > 200:
+		return v, invalid("consignee_name", "That name is too long.")
+	case number == "":
+		return v, invalid("consignee_phone", "Enter the receiver's phone number, or clear their name.")
+	default:
+		if number, err = phone.Normalize(number); err != nil {
+			return v, invalid("consignee_phone", err.Error())
+		}
+		if number == v.customerPhone {
+			return v, invalid("consignee_phone", "That is the customer's number. Leave the receiver empty when the customer takes delivery.")
+		}
+		v.consigneeName, v.consigneePhone = &name, &number
 	}
 
 	if in.CargoWeightKg < 0 || math.IsNaN(in.CargoWeightKg) || in.CargoWeightKg > 200000 {
@@ -264,6 +289,8 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 			DestinationPrecise:  v.dest.Precise,
 			CustomerName:        v.customerName,
 			CustomerPhone:       v.customerPhone,
+			ConsigneeName:       v.consigneeName,
+			ConsigneePhone:      v.consigneePhone,
 			CargoDescription:    v.cargo,
 			CargoWeight:         v.weight,
 			CargoValue:          v.value,
@@ -298,7 +325,8 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 		}
 
 		if tenant.SmsOnCreated {
-			s.notifyCustomer(ctx, q, after, tenant, out, s.customerCreatedText(tenant, out))
+			body := s.customerCreatedText(tenant, out)
+			s.notifyCustomer(ctx, q, after, tenant, out, body, body)
 		}
 		if driver != nil && tenant.SmsDriverOnAssign {
 			s.notifyDriverAssigned(ctx, q, after, tenant, out, *driver)
@@ -362,6 +390,8 @@ func (s *ShipmentService) Update(ctx context.Context, a Actor, id pgtype.UUID, i
 			DestinationPrecise:  v.dest.Precise,
 			CustomerName:        v.customerName,
 			CustomerPhone:       v.customerPhone,
+			ConsigneeName:       v.consigneeName,
+			ConsigneePhone:      v.consigneePhone,
 			CargoDescription:    v.cargo,
 			CargoWeight:         v.weight,
 			CargoValue:          v.value,
@@ -413,8 +443,8 @@ func (s *ShipmentService) textNewDestination(ctx context.Context, q *db.Queries,
 	}
 	s.enqueueSMS(ctx, q, after, outboundSMS{
 		TenantID: sh.TenantID, ShipmentID: sh.ID, Phone: *d.Phone, Purpose: PurposeDriverMessage,
-		Body: fmt.Sprintf("%s: shipment %s now goes to %s. Customer %s %s.",
-			t.Name, ShortRef(sh.TrackingNumber), place(sh.DestinationCity, sh.DestinationAddress), sh.CustomerName, sh.CustomerPhone),
+		Body: fmt.Sprintf("%s: shipment %s now goes to %s. %s.",
+			t.Name, ShortRef(sh.TrackingNumber), place(sh.DestinationCity, sh.DestinationAddress), meet(sh)),
 	})
 	return nil
 }
@@ -433,6 +463,7 @@ func changedFields(a, b db.Shipment) []string {
 		deref(a.DestinationLat) != deref(b.DestinationLat) || deref(a.DestinationLng) != deref(b.DestinationLng), "destination")
 	add(a.CustomerName != b.CustomerName, "customer name")
 	add(a.CustomerPhone != b.CustomerPhone, "customer phone")
+	add(deref(a.ConsigneeName) != deref(b.ConsigneeName) || deref(a.ConsigneePhone) != deref(b.ConsigneePhone), "receiver")
 	add(deref(a.CargoDescription) != deref(b.CargoDescription) || numericOr(a.CargoWeight) != numericOr(b.CargoWeight), "cargo")
 	add(numericOr(a.CargoValue) != numericOr(b.CargoValue), "cargo value")
 	add(deref(a.SpecialInstructions) != deref(b.SpecialInstructions), "instructions")
@@ -449,7 +480,7 @@ func sameTime(a, b pgtype.Timestamptz) bool {
 func driverRelevant(fields []string) bool {
 	for _, f := range fields {
 		switch f {
-		case "origin", "destination", "customer name", "customer phone", "cargo", "instructions", "priority", "pickup time":
+		case "origin", "destination", "customer name", "customer phone", "receiver", "cargo", "instructions", "priority", "pickup time":
 			return true
 		}
 	}

@@ -66,6 +66,21 @@
   </fieldset>
 
   <fieldset class="card">
+    <legend>Receiver, if not the customer</legend>
+    <p class="small muted">Who takes delivery at the destination. They get the texts too, the driver calls them, and the link to confirm receipt goes to them. Leave both empty when the customer takes delivery.</p>
+    <div class="row-2">
+      <label>Name
+        <input name="consignee_name" value="{{field $f "consignee_name" ""}}" autocomplete="off" {{if index $e "consignee_name"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "consignee_name")}}
+      </label>
+      <label>Phone
+        <input name="consignee_phone" type="tel" inputmode="tel" value="{{field $f "consignee_phone" ""}}" placeholder="09… or +251…" {{if index $e "consignee_phone"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "consignee_phone")}}
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset class="card">
     <legend>Cargo</legend>
     <label>What is being carried
       <input name="cargo_description" value="{{field $f "cargo_description" ""}}" placeholder="e.g. 200 bags of cement" {{if index $e "cargo_description"}}aria-invalid="true"{{end}}>

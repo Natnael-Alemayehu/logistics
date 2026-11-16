@@ -225,9 +225,8 @@ func (s *ShipmentService) applyStatus(ctx context.Context, q *db.Queries, after 
 			Message: fmt.Sprintf("%s was delivered%s in %s.", out.TrackingNumber, to, place(out.DestinationCity, out.DestinationAddress)),
 		})
 	}
-	if text, send := s.customerStatusText(tenant, out, ch.Status, firstDeparture, reason, ch.recipient); send {
-		s.notifyCustomer(ctx, q, after, tenant, out, text)
-	}
+	toReceiver, toCustomer := s.customerStatusText(tenant, out, ch.Status, firstDeparture, reason, ch.recipient)
+	s.notifyCustomer(ctx, q, after, tenant, out, toReceiver, toCustomer)
 
 	after.do(func() { s.publishShipment(out, "status") })
 	return out, nil
@@ -350,7 +349,8 @@ func (s *ShipmentService) Cancel(ctx context.Context, a Actor, id pgtype.UUID, r
 			return err
 		}
 		if tenant.SmsOnCancelled {
-			s.notifyCustomer(ctx, q, after, tenant, out, s.customerCancelledText(tenant, out))
+			body := s.customerCancelledText(tenant, out)
+			s.notifyCustomer(ctx, q, after, tenant, out, body, body)
 		}
 		if cur.DriverID.Valid && model.IsActiveStatus(cur.Status) {
 			if d, err := q.GetUserByID(ctx, db.GetUserByIDParams{ID: cur.DriverID, TenantID: a.TenantID}); err == nil && d.Phone != nil {

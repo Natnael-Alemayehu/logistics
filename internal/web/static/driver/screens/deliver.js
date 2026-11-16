@@ -86,9 +86,9 @@ export function screenDeliver(sh) {
   }
   const submit = h("button", { class: "btn primary big", type: "submit", text: t("confirmDelivery") });
 
-  // Who usually signs for this customer, to save typing (AC-020.4).
+  // Who usually signs for this receiver, to save typing (AC-020.4).
   const taken = new Set();
-  const names = [sh.customer_name, ...(sh.recent_recipients || [])].filter((n) => {
+  const names = [sh.consignee_name || sh.customer_name, ...(sh.recent_recipients || [])].filter((n) => {
     const k = (n || "").trim().toLowerCase();
     return k && !taken.has(k) && taken.add(k);
   }).slice(0, 6);
@@ -181,5 +181,5 @@ export function screenDeliver(sh) {
   }).catch(() => {}).finally(() => { restoring = false; });
 
   return h("div", {}, header(t("deliverBtn") + " · #" + sh.ref, "#/s/" + sh.id),
-    h("main", { class: "page" }, h("p", { class: "muted small" }, sh.customer_name + " · " + sh.destination_address), form));
+    h("main", { class: "page" }, h("p", { class: "muted small" }, (sh.consignee_name || sh.customer_name) + " · " + sh.destination_address), form));
 }

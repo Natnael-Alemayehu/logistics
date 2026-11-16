@@ -48,6 +48,11 @@ var (
 		{"Jimma Coffee Export", "0917445566"}, {"Gondar Malt Factory", "0918665544"},
 		{"Sheba Construction PLC", "0911887766"},
 	}
+	// demoReceivers take delivery of every third demo shipment in place of
+	// the customer who booked it.
+	demoReceivers = []struct{ name, phone string }{
+		{"Lakeside Hardware", "0913220011"}, {"Tana Wholesale", "0918330022"}, {"Harar Gate Stores", "0915440033"},
+	}
 	demoCargo = []struct {
 		what string
 		kg   float64
@@ -203,6 +208,7 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	}
 	pick := func(list []string) string { return list[rng.IntN(len(list))] }
 
+	booked := 0
 	book := func(r demoRoute, driver int, priority string) (db.Shipment, error) {
 		c := demoCustomers[rng.IntN(len(demoCustomers))]
 		cargo := demoCargo[rng.IntN(len(demoCargo))]
@@ -211,6 +217,12 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 			DestinationCity: r.to, DestinationAddress: pick(demoAddresses[r.to]),
 			CustomerName: c.name, CustomerPhone: c.phone, CargoDescription: cargo.what,
 			CargoWeightKg: cargo.kg, CargoValueETB: cargo.etb,
+		}
+		// Chosen by count, not by rng, so the rest of the demo data is
+		// what it was before receivers existed.
+		if booked++; booked%3 == 0 {
+			to := demoReceivers[booked/3%len(demoReceivers)]
+			in.ConsigneeName, in.ConsigneePhone = to.name, to.phone
 		}
 		if driver >= 0 {
 			in.DriverID = drivers[driver].ID.String()

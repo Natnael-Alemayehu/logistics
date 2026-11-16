@@ -161,9 +161,9 @@ driver card and the note form are left alone, being forms in use. */}}
     </div>
     {{if $s.CustomerConfirmedAt.Valid}}
     <p class="callout {{if $s.CustomerFeedback}}callout-warn{{else}}callout-good{{end}}">
-      {{if $s.CustomerFeedback}}<strong>The customer reported a problem</strong> {{ago $s.CustomerConfirmedAt}}: “{{str $s.CustomerFeedback}}”{{else}}<strong>The customer confirmed receipt</strong> {{ago $s.CustomerConfirmedAt}}.{{end}}
+      {{if $s.CustomerFeedback}}<strong>The {{if $s.ConsigneePhone}}receiver{{else}}customer{{end}} reported a problem</strong> {{ago $s.CustomerConfirmedAt}}: “{{str $s.CustomerFeedback}}”{{else}}<strong>The {{if $s.ConsigneePhone}}receiver{{else}}customer{{end}} confirmed receipt</strong> {{ago $s.CustomerConfirmedAt}}.{{end}}
     </p>
-    {{else if eq $s.Status "delivered"}}<p class="muted small">The customer has been sent a link to confirm receipt.</p>{{end}}
+    {{else if eq $s.Status "delivered"}}<p class="muted small">The {{if $s.ConsigneePhone}}receiver{{else}}customer{{end}} has been sent a link to confirm receipt.</p>{{end}}
   </section>
   {{end}}
   </div>
@@ -172,6 +172,7 @@ driver card and the note form are left alone, being forms in use. */}}
     <div class="card-head"><h2>Details</h2></div>
     <dl class="facts facts-2">
       <div><dt>Customer</dt><dd>{{$s.CustomerName}}<br><a href="{{telURL $s.CustomerPhone}}">{{$s.CustomerPhone}}</a></dd></div>
+      {{if $s.ConsigneePhone}}<div><dt>Receiver</dt><dd>{{str $s.ConsigneeName}}<br><a href="{{telURL (str $s.ConsigneePhone)}}">{{str $s.ConsigneePhone}}</a></dd></div>{{end}}
       <div><dt>Cargo</dt><dd>{{with $s.CargoDescription}}{{.}}{{else}}—{{end}}{{if hasNum $s.CargoWeight}}<br>{{kg $s.CargoWeight}}{{end}}{{if hasNum $s.CargoValue}} · {{money $s.CargoValue}}{{end}}</dd></div>
       {{with $s.SpecialInstructions}}<div class="span-2"><dt>Instructions for the driver</dt><dd class="pre">{{.}}</dd></div>{{end}}
       <div class="span-2"><dt>Customer tracking link</dt><dd><a href="{{$d.TrackURL}}" target="_blank" rel="noopener" class="mono small">{{$d.TrackURL}}</a> <button type="button" class="btn btn-sm btn-ghost" data-copy="{{$d.TrackURL}}">Copy</button></dd></div>

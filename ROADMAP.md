@@ -21,8 +21,8 @@ once it is done: this file should only ever hold what is still ahead.
   shellcheck, `node --check`, a secret scan of the whole history, the
   integration tests and the end-to-end tests against staging. Dependabot
   proposes updates weekly.
-- The audit in `docs/audit-2026-11.md` is fixed except for W1, W4, O3, O4
-  and O6.
+- The audit in `docs/audit-2026-11.md` is fixed except for W1 on the
+  dashboard, O3, O4 and O6.
 - The repository is public and all rights are reserved (`LICENSE`), with
   private vulnerability reporting on and `main` protected so CI must pass.
   The first release is `v0.9.0`, of 2026-11-15. History was rewritten that
@@ -152,14 +152,10 @@ In order. The first two can run side by side.
    provider, make two age keys held by two people, fill in `backup.env`,
    and run the drill in `docs/deploy.md` once. Everything after this point
    should be reordered by what the pilot shows.
-5. **Shipper and consignee as separate people** (W4). A schema change, and
-   the most likely first request from a real customer: today the tracking
-   texts, the confirmation link and the driver's Call button all go to one
-   phone.
-6. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
+5. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-7. **Later:** CSV import of shipments (FR-013), a last-position table for
+6. **Later:** CSV import of shipments (FR-013), a last-position table for
    the live map (O3), a second app instance (O4), a public API and webhooks
    (FR-046, FR-047), and point-in-time recovery (WAL archiving, the rest of
    O1) if a pilot can't afford to lose a day.

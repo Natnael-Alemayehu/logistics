@@ -147,20 +147,24 @@ type DriverShipment struct {
 	DestinationPrecise bool     `json:"destination_precise"`
 	// ToleranceM is how far from the destination a delivery may be recorded
 	// before the app asks why.
-	ToleranceM    float64    `json:"tolerance_m"`
-	CustomerName  string     `json:"customer_name"`
-	CustomerPhone string     `json:"customer_phone"`
-	Cargo         string     `json:"cargo"`
-	WeightKg      float64    `json:"weight_kg"`
-	Instructions  string     `json:"instructions"`
-	Vehicle       string     `json:"vehicle"`
-	ETA           *time.Time `json:"eta"`
-	PlannedPickup *time.Time `json:"planned_pickup"`
-	PickedUpAt    *time.Time `json:"picked_up_at"`
-	DeliveredAt   *time.Time `json:"delivered_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	// RecentRecipients are people who signed for this customer before,
+	ToleranceM    float64 `json:"tolerance_m"`
+	CustomerName  string  `json:"customer_name"`
+	CustomerPhone string  `json:"customer_phone"`
+	// ConsigneeName and ConsigneePhone are who takes delivery, and empty
+	// when that is the customer.
+	ConsigneeName  string     `json:"consignee_name"`
+	ConsigneePhone string     `json:"consignee_phone"`
+	Cargo          string     `json:"cargo"`
+	WeightKg       float64    `json:"weight_kg"`
+	Instructions   string     `json:"instructions"`
+	Vehicle        string     `json:"vehicle"`
+	ETA            *time.Time `json:"eta"`
+	PlannedPickup  *time.Time `json:"planned_pickup"`
+	PickedUpAt     *time.Time `json:"picked_up_at"`
+	DeliveredAt    *time.Time `json:"delivered_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	// RecentRecipients are people who signed for this receiver before,
 	// newest first, to suggest on the delivery screen.
 	RecentRecipients []string `json:"recent_recipients"`
 }
@@ -505,7 +509,8 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 	}
 	phones := make([]string, 0, len(ships))
 	for _, sh := range ships {
-		phones = append(phones, sh.CustomerPhone)
+		_, to := receiver(sh)
+		phones = append(phones, to)
 	}
 	signed := map[string][]string{}
 	if len(phones) > 0 {
@@ -514,14 +519,15 @@ func (s *SyncService) pull(ctx context.Context, p *Principal, since *time.Time, 
 			return err
 		}
 		for _, r := range rows {
-			if len(signed[r.CustomerPhone]) < recentRecipients {
-				signed[r.CustomerPhone] = append(signed[r.CustomerPhone], r.RecipientName)
+			if len(signed[r.ReceiverPhone]) < recentRecipients {
+				signed[r.ReceiverPhone] = append(signed[r.ReceiverPhone], r.RecipientName)
 			}
 		}
 	}
 	for _, sh := range ships {
 		ds := toDriverShipment(sh, plates[sh.VehicleID])
-		ds.RecentRecipients = signed[sh.CustomerPhone]
+		_, to := receiver(sh)
+		ds.RecentRecipients = signed[to]
 		if ds.RecentRecipients == nil {
 			ds.RecentRecipients = []string{}
 		}
@@ -651,6 +657,8 @@ func toDriverShipment(sh db.Shipment, plate string) DriverShipment {
 		ToleranceM:         geo.DeliveryTolerance(sh.DestinationPrecise),
 		CustomerName:       sh.CustomerName,
 		CustomerPhone:      sh.CustomerPhone,
+		ConsigneeName:      deref(sh.ConsigneeName),
+		ConsigneePhone:     deref(sh.ConsigneePhone),
 		Cargo:              deref(sh.CargoDescription),
 		WeightKg:           numericOr(sh.CargoWeight),
 		Instructions:       deref(sh.SpecialInstructions),

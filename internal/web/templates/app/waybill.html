@@ -30,7 +30,12 @@
   <section class="wb-grid">
     <div class="wb-box"><h2>From / ከ</h2><p><strong>{{str $s.OriginCity}}</strong></p><p>{{$s.OriginAddress}}</p></div>
     <div class="wb-box"><h2>To / ወደ</h2><p><strong>{{str $s.DestinationCity}}</strong></p><p>{{$s.DestinationAddress}}</p></div>
+    {{if $s.ConsigneePhone}}
+    <div class="wb-box"><h2>Shipper / ላኪ</h2><p><strong>{{$s.CustomerName}}</strong></p><p>{{$s.CustomerPhone}}</p></div>
+    <div class="wb-box"><h2>Consignee / ተቀባይ</h2><p><strong>{{str $s.ConsigneeName}}</strong></p><p>{{str $s.ConsigneePhone}}</p></div>
+    {{else}}
     <div class="wb-box"><h2>Consignee / ተቀባይ</h2><p><strong>{{$s.CustomerName}}</strong></p><p>{{$s.CustomerPhone}}</p></div>
+    {{end}}
     <div class="wb-box"><h2>Carrier / አጓጓዥ</h2>
       <p><strong>{{with $d.D.Driver}}{{.FullName}}{{else}}—{{end}}</strong></p>
       <p>{{with $d.D.Driver}}{{str .Phone}}{{end}}{{with $d.D.Vehicle}} · Plate {{.PlateNumber}}{{end}}</p>

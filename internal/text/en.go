@@ -128,7 +128,9 @@ var en = map[string]string{
 	"sms.arrived":      "%[1]s: shipment %[2]s has arrived in %[3]s. The driver will contact you for handover.",
 	"sms.delivered":    "%[1]s: shipment %[2]s was delivered%[3]s on %[4]s. Confirm receipt or report a problem: %[5]s",
 	"sms.delivered_to": " to %s",
-	"sms.cancelled":    "%[1]s: shipment %[2]s has been cancelled.%[3]s",
-	"sms.questions":    " Questions: %s",
-	"sms.lookup_code":  "%[1]s: your code to see your shipments is %[2]s. It expires in 10 minutes.",
+	// To the customer who booked, when someone else took delivery.
+	"sms.delivered_booker": "%[1]s: shipment %[2]s was delivered%[3]s on %[4]s. Details: %[5]s",
+	"sms.cancelled":        "%[1]s: shipment %[2]s has been cancelled.%[3]s",
+	"sms.questions":        " Questions: %s",
+	"sms.lookup_code":      "%[1]s: your code to see your shipments is %[2]s. It expires in 10 minutes.",
 }

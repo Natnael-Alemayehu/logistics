@@ -252,6 +252,8 @@ type Shipment struct {
 	EtaManual           bool               `db:"eta_manual" json:"eta_manual"`
 	PlannedPickupAt     pgtype.Timestamptz `db:"planned_pickup_at" json:"planned_pickup_at"`
 	AnonymisedAt        pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
+	ConsigneeName       *string            `db:"consignee_name" json:"consignee_name"`
+	ConsigneePhone      *string            `db:"consignee_phone" json:"consignee_phone"`
 }
 
 type ShipmentEvent struct {
