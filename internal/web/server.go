@@ -31,17 +31,21 @@ var embedded embed.FS
 
 // Server holds what the handlers need.
 type Server struct {
-	cfg      *config.Config
-	svc      *service.Services
-	log      zerolog.Logger
-	hub      *websocket.Hub
-	pool     *pgxpool.Pool
-	views    *renderer
-	assets   fs.FS
-	version  string
-	upgrader gorillaws.Upgrader
-	mockSMS  bool
-	mockMail bool
+	cfg     *config.Config
+	svc     *service.Services
+	log     zerolog.Logger
+	hub     *websocket.Hub
+	pool    *pgxpool.Pool
+	views   *renderer
+	assets  fs.FS
+	version string
+	// driverBuild is the driver app's version, served as
+	// /driver/build.json (driver.go). Nil with DEV_RELOAD, which works it
+	// out on each request.
+	driverBuild []byte
+	upgrader    gorillaws.Upgrader
+	mockSMS     bool
+	mockMail    bool
 	// mockPay is set when payments only pretend to take money, which opens
 	// the page standing in for the payer's phone.
 	mockPay bool
@@ -80,6 +84,11 @@ func New(cfg *config.Config, svc *service.Services, pool *pgxpool.Pool, hub *web
 		})
 	}
 	s.version = assetVersion(assets)
+	if !cfg.DevReload {
+		if s.driverBuild, err = driverBuild(assets); err != nil {
+			return nil, err
+		}
+	}
 	s.views, err = newRenderer(tpl, s.funcs(), cfg.DevReload)
 	if err != nil {
 		return nil, err

@@ -616,7 +616,9 @@ email in Mailpit (https://mail.kiflet.localhost:8443).
    the dashboard showed and choose a new one. Turn the network off and
    reload: the app opens from its service worker and says *No signal*. Mark
    the load arrived; it is sent when the network is back, and the dashboard
-   updates without a reload.
+   updates without a reload. After a deploy that changes the app, it keeps
+   running the version it has; it switches once the new one is downloaded,
+   when it next starts or when you come back to it with no form open.
 3. **Proof of delivery** with a photo: the photo on the shipment's page is
    kept in S3 and served by the app from there.
 4. **Pay** an invoice at telebirr's checkout on the sandbox (any number, PIN

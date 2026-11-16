@@ -67,6 +67,10 @@ make lint                          # golangci-lint, node --check, gitleaks over 
   `kiflet.purge` for its transaction only.
 - The driver app's status rules come from `/api/v1/driver/config`, which is
   derived from `model.AllowedTransitions`. Change the rules there, not in JS.
+- The driver app's service worker installs every file under
+  `static/driver` as one version, listed in `/driver/build.json`
+  (`internal/web/driver.go`), so a new file needs no list. A deploy reaches
+  a phone the next time the app starts after downloading it.
 - Live updates: an element with `data-live-region` and an `id` is fetched
   again and swapped in when a WebSocket message says something changed
   (`static/app.js`). Mark new live parts of a page that way instead of

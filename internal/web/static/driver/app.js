@@ -1586,10 +1586,33 @@
     }
   }
 
+  // Updates. The service worker downloads a new version whole and keeps it
+  // ready (sw.js); it takes over when the app next starts. The app hands
+  // over sooner when that interrupts nothing: when it comes back to the
+  // screen with no form open. It then loads again, in the new version, with
+  // drafts and the outbox where they were.
+  function watchUpdates() {
+    if (!("serviceWorker" in navigator)) return;
+    const sw = navigator.serviceWorker;
+    let ready = false;
+    sw.addEventListener("message", (event) => {
+      if (event.data === "ready") ready = true;
+      else if (event.data === "switched") location.reload();
+    });
+    sw.register("/driver/sw.js", { scope: "/driver/" }).catch(() => {});
+    // The first worker downloads the app as it installs.
+    const ask = (message) => sw.controller && sw.controller.postMessage(message);
+    ask("check");
+    setInterval(() => {
+      if (navigator.onLine) ask("check");
+    }, 60 * 60 * 1000);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && ready && !formOpen) ask("take-over");
+    });
+  }
+
   async function boot() {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/driver/sw.js", { scope: "/driver/" }).catch(() => {});
-    }
+    watchUpdates();
     S.deviceId = await kvGet("deviceId");
     if (!S.deviceId) {
       S.deviceId = uuid();

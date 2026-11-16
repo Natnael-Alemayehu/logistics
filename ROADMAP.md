@@ -15,7 +15,7 @@ once it is done: this file should only ever hold what is still ahead.
 - One Go application, at the repository root: about 25,000 lines of Go and
   12,800 lines of tests (175 unit tests, 96 integration tests, 9 end-to-end
   tests, one of them the driver app in headless Chrome), 53 templates, a
-  1,663-line driver app in plain JavaScript, and the schema in one
+  1,686-line driver app in plain JavaScript, and the schema in one
   migration.
 - CI runs vet, golangci-lint, unit tests, gofmt, `sqlc diff`, govulncheck,
   shellcheck, `node --check`, a secret scan of the whole history, the
@@ -134,25 +134,19 @@ In order. The first two can run side by side.
    with the phone locked in between. Fix what it shows before anything
    else in the driver app.
 3. **The driver app in modules.** `internal/web/static/driver/app.js` is
-   1,663 lines in one file, and splitting it changes how the app reaches a
-   phone. The service worker refreshes each file on its own whenever there
-   is signal: safe for one script, but with twenty modules an update that
-   half-finishes on a weak signal leaves new and old mixed in the cache,
-   and the app may not start offline, which is when a driver needs it.
-   - First make the service worker replace the app as a whole: download
-     every file of a new version, then switch to it. This changes when an
-     update reaches a driver; record it in Appendix D if it departs from a
-     requirement.
-   - Then split into ES modules, which need no build step: `state.js`,
-     `text.js` (English and Amharic), `store.js` (IndexedDB), `api.js`,
-     `sync.js` (outbox and sync), `gps.js`, `signature.js`, and one module
-     per screen. `formOpen` is set by five screens and read by the router,
-     and a module can't assign to another's variable, so it moves into the
-     state object. List the modules in the service worker's `SHELL`
-     (`TestDriverShellFilesExist` then checks them) and name each in a
-     `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
-     requests. `TestDriverAppInABrowser` then shows the app still signs
-     in, works offline and keeps its drafts.
+   1,686 lines in one file. The service worker now installs every file under
+   `static/driver` as one version and switches only once all of it has
+   arrived, so a split can't leave a phone with half an update. Split it
+   into ES modules, which need no build step: `state.js`, `text.js`
+   (English and Amharic), `store.js` (IndexedDB), `api.js`, `sync.js`
+   (outbox and sync), `gps.js`, `signature.js`, and one module per screen.
+   `formOpen` is set by five screens and read by the router and by the
+   update handover, and a module can't assign to another's variable, so it
+   moves into the state object. Name each module in a
+   `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
+   requests; `TestDriverBuild` checks that every file the page names is
+   installed. `TestDriverAppInABrowser` then shows the app still signs in,
+   works offline, keeps its drafts and updates.
 4. **Amharic for customers, then for the office** (W1). First the tracking
    page, the confirmation page and the texts customers get; then the
    dashboard. It needs a native speaker, who should also review the
@@ -179,8 +173,8 @@ In order. The first two can run side by side.
 - **`v1.0.0` with the first paying customer** (2026-11-15). Until then
   releases are `0.x`; `v0.9.0` is the first.
 - **The driver app stays one file for now** (2026-11-15). Splitting it is
-  item 3 of [Toward the first paying customer](#toward-the-first-paying-customer),
-  and waits for the service worker to update the app all-or-nothing.
+  item 3 of [Toward the first paying customer](#toward-the-first-paying-customer);
+  the service worker it waited for now updates the app as a whole.
   Revisit if the file gets in the way of a fix the Android session or the
   pilot asks for.
 - **The name Kiflet, for now** (2026-11-15). Revisit if one of the checks
