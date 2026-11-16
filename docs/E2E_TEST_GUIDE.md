@@ -87,6 +87,12 @@ Check:
 - A load whose pickup is still ahead is never shown as late. Two hours after
   a missed pickup, a **Not collected** alert appears.
 - **Book again** on any shipment pre-fills a copy.
+- Book one with a **Receiver** (a second name and phone). Both people get
+  the "booked" SMS, the driver's says "Deliver to" the receiver, and the
+  driver app shows the receiver first with the large Call button. When
+  the driver arrives, only the receiver is texted. After delivery the
+  receiver gets the confirmation link and the customer a "was delivered"
+  text with the tracking link. The waybill prints Shipper and Consignee.
 - **Waybill** prints a one-page document.
 
 ## 4. The driver app

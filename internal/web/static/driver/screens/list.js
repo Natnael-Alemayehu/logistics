@@ -14,7 +14,7 @@ function card(sh) {
       h("span", { class: "st st-" + sh.status, text: statusLabel(sh.status) }),
       sh.pending ? h("span", { class: "pending-dot", title: t("pendingSend") }) : null),
     h("div", { class: "ship-route" }, h("strong", { text: sh.origin_city || sh.origin_address }), " → ", h("strong", { text: sh.destination_city || sh.destination_address })),
-    h("div", { class: "muted small" }, sh.customer_name, sh.eta && ACTIVE.includes(sh.status) ? " · " + t("due") + " " + fmtTime(sh.eta) : "",
+    h("div", { class: "muted small" }, sh.consignee_name || sh.customer_name, sh.eta && ACTIVE.includes(sh.status) ? " · " + t("due") + " " + fmtTime(sh.eta) : "",
       sh.delivered_at && sh.status === "delivered" ? " · " + t("deliveredAt") + " " + fmtTime(sh.delivered_at) : ""),
     sh.priority !== "normal" ? h("div", { class: "prio", text: t("priority_" + sh.priority) }) : null,
   );

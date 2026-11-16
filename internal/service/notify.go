@@ -44,35 +44,40 @@ func (s *ShipmentService) customerCreatedText(t db.Tenant, sh db.Shipment) strin
 		place(sh.DestinationCity, sh.DestinationAddress), s.trackURL(sh))
 }
 
-// customerStatusText is the customer's message for a status change, if the
-// tenant sends one for it.
-func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status string, firstDeparture bool, reason, recipient string) (string, bool) {
+// customerStatusText is what a status change says to the receiver and to
+// the customer who booked, if the tenant sends a text for it. They are
+// told apart only when the shipment names a consignee: the receiver is the
+// one the driver hands over to, so the arrival and the link to confirm
+// receipt are theirs, and the customer is told the delivery was made.
+func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status string, firstDeparture bool, reason, recipient string) (toReceiver, toCustomer string) {
 	lang := t.CustomerLanguage
 	dest := place(sh.DestinationCity, sh.DestinationAddress)
 	switch status {
 	case model.StatusInTransit:
 		if !t.SmsOnDispatched || !firstDeparture {
-			return "", false
+			return "", ""
 		}
 		eta := ""
 		if sh.EstimatedDelivery.Valid {
 			eta = text.T(lang, "sms.eta", text.ShortWhen(lang, sh.EstimatedDelivery.Time.In(s.cfg.Location)))
 		}
-		return text.T(lang, "sms.on_way", t.Name, sh.TrackingNumber, dest, eta, s.trackURL(sh)), true
+		body := text.T(lang, "sms.on_way", t.Name, sh.TrackingNumber, dest, eta, s.trackURL(sh))
+		return body, body
 	case model.StatusDelayed:
 		if !t.SmsOnDelayed {
-			return "", false
+			return "", ""
 		}
-		return text.T(lang, "sms.delayed",
-			t.Name, sh.TrackingNumber, strings.ToLower(text.Reason(lang, reason)), s.trackURL(sh)), true
+		body := text.T(lang, "sms.delayed",
+			t.Name, sh.TrackingNumber, strings.ToLower(text.Reason(lang, reason)), s.trackURL(sh))
+		return body, body
 	case model.StatusArrived:
 		if !t.SmsOnArrived {
-			return "", false
+			return "", ""
 		}
-		return text.T(lang, "sms.arrived", t.Name, sh.TrackingNumber, dest), true
+		return text.T(lang, "sms.arrived", t.Name, sh.TrackingNumber, dest), ""
 	case model.StatusDelivered:
 		if !t.SmsOnDelivered {
-			return "", false
+			return "", ""
 		}
 		who := ""
 		if recipient != "" {
@@ -86,10 +91,11 @@ func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status
 		if sh.ConfirmToken != nil {
 			link = s.confirmURL(*sh.ConfirmToken)
 		}
-		return text.T(lang, "sms.delivered",
-			t.Name, sh.TrackingNumber, who, text.ShortWhen(lang, at.In(s.cfg.Location)), link), true
+		when := text.ShortWhen(lang, at.In(s.cfg.Location))
+		return text.T(lang, "sms.delivered", t.Name, sh.TrackingNumber, who, when, link),
+			text.T(lang, "sms.delivered_booker", t.Name, sh.TrackingNumber, who, when, s.trackURL(sh))
 	}
-	return "", false
+	return "", ""
 }
 
 func (s *ShipmentService) customerCancelledText(t db.Tenant, sh db.Shipment) string {
@@ -100,10 +106,42 @@ func (s *ShipmentService) customerCancelledText(t db.Tenant, sh db.Shipment) str
 	return text.T(t.CustomerLanguage, "sms.cancelled", t.Name, sh.TrackingNumber, contact)
 }
 
-func (s *ShipmentService) notifyCustomer(ctx context.Context, q *db.Queries, after *afterCommit, t db.Tenant, sh db.Shipment, body string) {
-	s.enqueueSMS(ctx, q, after, outboundSMS{
-		TenantID: t.ID, ShipmentID: sh.ID, Phone: sh.CustomerPhone, Body: body, Purpose: PurposeCustomerUpdate,
-	})
+// receiver is who takes delivery of a shipment: its consignee, or the
+// customer who booked it when it names none.
+func receiver(sh db.Shipment) (name, phone string) {
+	if sh.ConsigneePhone != nil {
+		return deref(sh.ConsigneeName), *sh.ConsigneePhone
+	}
+	return sh.CustomerName, sh.CustomerPhone
+}
+
+// notifyCustomer texts the people a shipment is for: toReceiver goes to
+// whoever takes delivery, and toCustomer to the customer who booked, when
+// that is someone else. An empty text is not sent.
+func (s *ShipmentService) notifyCustomer(ctx context.Context, q *db.Queries, after *afterCommit, t db.Tenant, sh db.Shipment, toReceiver, toCustomer string) {
+	send := func(phone, body string) {
+		if body == "" {
+			return
+		}
+		s.enqueueSMS(ctx, q, after, outboundSMS{
+			TenantID: t.ID, ShipmentID: sh.ID, Phone: phone, Body: body, Purpose: PurposeCustomerUpdate,
+		})
+	}
+	_, to := receiver(sh)
+	send(to, toReceiver)
+	if sh.ConsigneePhone != nil {
+		send(sh.CustomerPhone, toCustomer)
+	}
+}
+
+// meet is who the driver is told to meet: "Customer Name 09…", or "Deliver
+// to Name 09…" when the receiver isn't the customer.
+func meet(sh db.Shipment) string {
+	name, phone := receiver(sh)
+	if sh.ConsigneePhone != nil {
+		return "Deliver to " + name + " " + phone
+	}
+	return "Customer " + name + " " + phone
 }
 
 func (s *ShipmentService) notifyDriverAssigned(ctx context.Context, q *db.Queries, after *afterCommit, t db.Tenant, sh db.Shipment, d db.User) {
@@ -128,9 +166,9 @@ func (s *ShipmentService) notifyDriverAssigned(ctx context.Context, q *db.Querie
 	if s.cfg.SMSNumber != "" {
 		report = fmt.Sprintf(" When you leave, open the driver app or text ET %s 1 to %s.", ref, s.cfg.SMSNumber)
 	}
-	body := fmt.Sprintf("%s: %snew shipment %s, %s to %s.%s Customer %s %s.%s%s",
+	body := fmt.Sprintf("%s: %snew shipment %s, %s to %s.%s %s.%s%s",
 		t.Name, priority, ref, place(sh.OriginCity, sh.OriginAddress), place(sh.DestinationCity, sh.DestinationAddress),
-		pickup, sh.CustomerName, sh.CustomerPhone, cargo, report)
+		pickup, meet(sh), cargo, report)
 	s.enqueueSMS(ctx, q, after, outboundSMS{
 		TenantID: t.ID, ShipmentID: sh.ID, Phone: *d.Phone, Body: body, Purpose: PurposeDriverAssigned,
 	})

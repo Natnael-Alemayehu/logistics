@@ -33,7 +33,7 @@
   <form method="get" action="/app/shipments" class="filter-grid">
     {{with $q.Get "tab"}}<input type="hidden" name="tab" value="{{.}}">{{end}}
     <label class="span-2">Search
-      <input type="search" name="q" value="{{$q.Get "q"}}" placeholder="Tracking number, customer, phone or driver">
+      <input type="search" name="q" value="{{$q.Get "q"}}" placeholder="Tracking number, customer, receiver, phone or driver">
     </label>
     <label>Driver
       <select name="driver">
@@ -137,7 +137,7 @@
     <td data-col="shipment"><a class="mono" href="/app/shipments/{{uuid $s.ID}}">{{mark $d.Search $s.TrackingNumber}}</a>{{template "priority" $s.Priority}}
       <div class="muted small">{{with $s.CargoDescription}}{{truncate 40 .}}{{else}}—{{end}}{{if hasNum $s.CargoWeight}} · {{kg $s.CargoWeight}}{{end}}</div></td>
     <td data-col="route"><span class="route">{{with $s.OriginCity}}{{.}}{{else}}{{truncate 24 $s.OriginAddress}}{{end}} <span aria-label="to">→</span> {{with $s.DestinationCity}}{{.}}{{else}}{{truncate 24 $s.DestinationAddress}}{{end}}</span></td>
-    <td data-col="customer">{{mark $d.Search $s.CustomerName}}<div class="muted small">{{mark $d.Search $s.CustomerPhone}}</div></td>
+    <td data-col="customer">{{mark $d.Search $s.CustomerName}}<div class="muted small">{{mark $d.Search $s.CustomerPhone}}</div>{{if $s.ConsigneePhone}}<div class="muted small">to {{mark $d.Search (str $s.ConsigneeName)}} {{mark $d.Search (str $s.ConsigneePhone)}}</div>{{end}}</td>
     <td data-col="driver">{{with .DriverName}}{{mark $d.Search .}}{{else}}<span class="muted">Unassigned</span>{{end}}
       {{if and $s.DriverID.Valid (isActive $s.Status)}}{{$c := connState .DriverLastSync}}{{if ne $c "live"}}<div class="small sync-stale">{{template "conn" $c}} {{if eq $c "never"}}never used the app{{else}}synced {{ago .DriverLastSync}}{{end}}</div>{{end}}{{end}}
       {{with .VehiclePlate}}<div class="muted small">{{.}}</div>{{end}}</td>

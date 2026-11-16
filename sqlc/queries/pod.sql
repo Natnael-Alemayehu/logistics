@@ -72,14 +72,15 @@ SET status = sqlc.arg(status), reviewed_at = NOW(), reviewed_by = sqlc.arg(revie
 WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id);
 
 -- name: ListRecentRecipients :many
--- Who signed for each customer's deliveries in the last year, newest first,
--- so the driver app can suggest the name (AC-020.4).
-SELECT s.customer_phone, p.recipient_name, MAX(p.recorded_at)::timestamptz AS last_at
+-- Who signed for each receiver's deliveries in the last year, newest first,
+-- so the driver app can suggest the name (AC-020.4). The receiver is the
+-- consignee, or the customer when the shipment names none.
+SELECT COALESCE(s.consignee_phone, s.customer_phone)::text AS receiver_phone, p.recipient_name, MAX(p.recorded_at)::timestamptz AS last_at
 FROM proof_of_deliveries p
 JOIN shipments s ON s.id = p.shipment_id AND s.tenant_id = p.tenant_id
 WHERE p.tenant_id = sqlc.arg(tenant_id)
   AND p.status = 'accepted'
-  AND s.customer_phone = ANY(sqlc.arg(phones)::text[])
+  AND COALESCE(s.consignee_phone, s.customer_phone) = ANY(sqlc.arg(phones)::text[])
   AND p.recorded_at > NOW() - INTERVAL '365 days'
-GROUP BY s.customer_phone, p.recipient_name
-ORDER BY s.customer_phone, last_at DESC;
+GROUP BY receiver_phone, p.recipient_name
+ORDER BY receiver_phone, last_at DESC;

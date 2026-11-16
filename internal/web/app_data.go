@@ -126,7 +126,7 @@ it from the shipment's page while it is kept.
 
 	err := writeCSV(zw, "shipments.csv", []string{
 		"Tracking number", "Status", "Reason", "Priority", "Booked", "Planned pickup", "Picked up", "Due", "Delivered",
-		"From city", "From address", "To city", "To address", "Customer", "Customer phone",
+		"From city", "From address", "To city", "To address", "Customer", "Customer phone", "Receiver", "Receiver phone",
 		"Cargo", "Weight (kg)", "Value (ETB)", "Instructions", "Driver", "Vehicle",
 		"Customer confirmed", "Customer feedback", "Details removed",
 	}, len(ex.Shipments), func(i int) []string {
@@ -135,7 +135,7 @@ it from the shipment's page while it is kept.
 			sh.TrackingNumber, model.StatusLabel(sh.Status), reasonText(sh.StatusReason), sh.Priority,
 			ts(sh.CreatedAt), ts(sh.PlannedPickupAt), ts(sh.PickedUpAt), ts(sh.EstimatedDelivery), ts(sh.ActualDelivery),
 			sh.OriginCity, csvSafe(sh.OriginAddress), sh.DestinationCity, csvSafe(sh.DestinationAddress),
-			csvSafe(sh.CustomerName), csvSafe(sh.CustomerPhone),
+			csvSafe(sh.CustomerName), csvSafe(sh.CustomerPhone), csvSafe(sh.ConsigneeName), csvSafe(sh.ConsigneePhone),
 			csvSafe(sh.CargoDescription), numStr(sh.CargoWeightKg), numStr(sh.CargoValue), csvSafe(sh.SpecialInstructions),
 			csvSafe(sh.DriverName), sh.VehiclePlate,
 			ts(sh.CustomerConfirmedAt), csvSafe(sh.CustomerFeedback), ts(sh.AnonymisedAt),

@@ -66,7 +66,8 @@ func (q *Queries) AnonymiseShipmentEvents(ctx context.Context, ids []pgtype.UUID
 
 const anonymiseShipments = `-- name: AnonymiseShipments :exec
 UPDATE shipments
-SET customer_name = 'Former customer', customer_phone = '', special_instructions = NULL, status_note = NULL,
+SET customer_name = 'Former customer', customer_phone = '', consignee_name = NULL, consignee_phone = NULL,
+    special_instructions = NULL, status_note = NULL,
     customer_feedback = NULL, confirm_token = NULL, origin_address = '', destination_address = '',
     origin_lat = NULL, origin_lng = NULL, destination_lat = NULL, destination_lng = NULL,
     anonymised_at = NOW()
@@ -362,6 +363,7 @@ SELECT s.tracking_number, s.status, COALESCE(s.status_reason, '')::text AS statu
        COALESCE(s.origin_city, '')::text AS origin_city, s.origin_address,
        COALESCE(s.destination_city, '')::text AS destination_city, s.destination_address,
        s.customer_name, s.customer_phone,
+       COALESCE(s.consignee_name, '')::text AS consignee_name, COALESCE(s.consignee_phone, '')::text AS consignee_phone,
        COALESCE(s.cargo_description, '')::text AS cargo_description,
        COALESCE(s.cargo_weight, 0)::float8 AS cargo_weight_kg, COALESCE(s.cargo_value, 0)::float8 AS cargo_value,
        COALESCE(s.special_instructions, '')::text AS special_instructions,
@@ -390,6 +392,8 @@ type ExportShipmentsRow struct {
 	DestinationAddress  string             `db:"destination_address" json:"destination_address"`
 	CustomerName        string             `db:"customer_name" json:"customer_name"`
 	CustomerPhone       string             `db:"customer_phone" json:"customer_phone"`
+	ConsigneeName       string             `db:"consignee_name" json:"consignee_name"`
+	ConsigneePhone      string             `db:"consignee_phone" json:"consignee_phone"`
 	CargoDescription    string             `db:"cargo_description" json:"cargo_description"`
 	CargoWeightKg       float64            `db:"cargo_weight_kg" json:"cargo_weight_kg"`
 	CargoValue          float64            `db:"cargo_value" json:"cargo_value"`
@@ -428,6 +432,8 @@ func (q *Queries) ExportShipments(ctx context.Context, tenantID pgtype.UUID) ([]
 			&i.DestinationAddress,
 			&i.CustomerName,
 			&i.CustomerPhone,
+			&i.ConsigneeName,
+			&i.ConsigneePhone,
 			&i.CargoDescription,
 			&i.CargoWeightKg,
 			&i.CargoValue,

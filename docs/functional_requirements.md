@@ -1011,6 +1011,13 @@ the requirement, what Kiflet does instead, and why.
 
 ### Shipments and the driver app
 
+- **Customer and receiver (the user roles, FR-006)**: the requirements have
+  one customer, "the end recipient of the shipment". A shipment can also
+  name a receiver (its consignee) apart from the customer who booked it.
+  Both are texted; the arrival text, the driver's call and the
+  confirmation link (AC-037.5) go to the receiver. Without one, the
+  customer is the recipient, as the requirements have it.
+
 - **FR-012, cancellation (AC-012.1)**: a dispatcher can also cancel a load
   that is on the road, with on-road reasons (refused by the recipient,
   returned to origin, cargo lost or damaged). Otherwise a refused load would

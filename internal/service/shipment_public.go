@@ -246,7 +246,9 @@ func (s *ShipmentService) CustomerRespond(ctx context.Context, token string, ok 
 		return &Error{Kind: KindInvalid, Field: "feedback", Key: "error.feedback_required", Message: text.T(text.English, "error.feedback_required")}
 	}
 	sh := v.Shipment
-	a := Actor{TenantID: sh.TenantID, Name: sh.CustomerName, Source: SourceCustomer}
+	// The link went to whoever took delivery, so the answer is theirs.
+	who, _ := receiver(sh)
+	a := Actor{TenantID: sh.TenantID, Name: who, Source: SourceCustomer}
 	return s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 		if ok {
 			if sh.CustomerConfirmedAt.Valid {
@@ -264,7 +266,7 @@ func (s *ShipmentService) CustomerRespond(ctx context.Context, token string, ok 
 		s.event(ctx, q, a, sh, shipmentEvent{Type: "customer_issue", Note: feedback})
 		s.raise(ctx, q, after, newAlert{
 			TenantID: sh.TenantID, ShipmentID: sh.ID, DriverID: sh.DriverID, Type: AlertCustomerIssue, Severity: SeverityCritical,
-			Message: fmt.Sprintf("%s reported a problem with %s: %s", sh.CustomerName, sh.TrackingNumber, truncate(feedback, 200)),
+			Message: fmt.Sprintf("%s reported a problem with %s: %s", who, sh.TrackingNumber, truncate(feedback, 200)),
 		})
 		return nil
 	})

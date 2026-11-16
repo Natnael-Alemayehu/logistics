@@ -7,6 +7,7 @@ SELECT s.tracking_number, s.status, COALESCE(s.status_reason, '')::text AS statu
        COALESCE(s.origin_city, '')::text AS origin_city, s.origin_address,
        COALESCE(s.destination_city, '')::text AS destination_city, s.destination_address,
        s.customer_name, s.customer_phone,
+       COALESCE(s.consignee_name, '')::text AS consignee_name, COALESCE(s.consignee_phone, '')::text AS consignee_phone,
        COALESCE(s.cargo_description, '')::text AS cargo_description,
        COALESCE(s.cargo_weight, 0)::float8 AS cargo_weight_kg, COALESCE(s.cargo_value, 0)::float8 AS cargo_value,
        COALESCE(s.special_instructions, '')::text AS special_instructions,
@@ -93,7 +94,8 @@ DELETE FROM sms_messages WHERE shipment_id = ANY(sqlc.arg(ids)::uuid[]);
 -- What reports count stays: dates, statuses, reasons, cities, driver,
 -- vehicle and cargo.
 UPDATE shipments
-SET customer_name = 'Former customer', customer_phone = '', special_instructions = NULL, status_note = NULL,
+SET customer_name = 'Former customer', customer_phone = '', consignee_name = NULL, consignee_phone = NULL,
+    special_instructions = NULL, status_note = NULL,
     customer_feedback = NULL, confirm_token = NULL, origin_address = '', destination_address = '',
     origin_lat = NULL, origin_lng = NULL, destination_lat = NULL, destination_lng = NULL,
     anonymised_at = NOW()

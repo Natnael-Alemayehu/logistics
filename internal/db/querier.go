@@ -266,8 +266,9 @@ type Querier interface {
 	ListPlatformAudit(ctx context.Context, arg ListPlatformAuditParams) ([]ListPlatformAuditRow, error)
 	ListPublicShipmentEvents(ctx context.Context, shipmentID pgtype.UUID) ([]ListPublicShipmentEventsRow, error)
 	ListRecentPayments(ctx context.Context, limit int32) ([]ListRecentPaymentsRow, error)
-	// Who signed for each customer's deliveries in the last year, newest first,
-	// so the driver app can suggest the name (AC-020.4).
+	// Who signed for each receiver's deliveries in the last year, newest first,
+	// so the driver app can suggest the name (AC-020.4). The receiver is the
+	// consignee, or the customer when the shipment names none.
 	ListRecentRecipients(ctx context.Context, arg ListRecentRecipientsParams) ([]ListRecentRecipientsRow, error)
 	ListRecentShipmentsByDriver(ctx context.Context, arg ListRecentShipmentsByDriverParams) ([]Shipment, error)
 	ListRecentShipmentsByVehicle(ctx context.Context, arg ListRecentShipmentsByVehicleParams) ([]ListRecentShipmentsByVehicleRow, error)
@@ -294,7 +295,8 @@ type Querier interface {
 	// constraint". Sorting goes through a whitelist of keys rather than
 	// interpolated SQL.
 	ListShipments(ctx context.Context, arg ListShipmentsParams) ([]ListShipmentsRow, error)
-	ListShipmentsByCustomerPhone(ctx context.Context, customerPhone string) ([]ListShipmentsByCustomerPhoneRow, error)
+	// A person's shipments: the ones they booked and the ones they receive.
+	ListShipmentsByCustomerPhone(ctx context.Context, phone string) ([]ListShipmentsByCustomerPhoneRow, error)
 	// Everything the driver's device should hold: active work, plus recently
 	// finished work so the completed list survives a reinstall. On an incremental
 	// sync anything changed since the cursor is included as well, so a

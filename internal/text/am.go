@@ -114,16 +114,17 @@ var am = map[string]string{
 	"error.slow_down":           "ትንሽ ይቆዩ",
 	"error.slow_down_detail":    "ከእርስዎ ኔትወርክ ብዙ ጥያቄዎች መጥተዋል። ከአንድ ደቂቃ በኋላ እንደገና ይሞክሩ።",
 
-	"sms.created":      "%[1]s: ጭነት %[2]s ከ%[3]s ወደ %[4]s ተመዝግቧል። ይከታተሉ፦ %[5]s",
-	"sms.on_way":       "%[1]s: ጭነት %[2]s ወደ %[3]s በጉዞ ላይ ነው።%[4]s ይከታተሉ፦ %[5]s",
-	"sms.eta":          " %s ይደርሳል ተብሎ ይጠበቃል።",
-	"sms.delayed":      "%[1]s: ጭነት %[2]s ዘግይቷል (%[3]s)። እናሳውቅዎታለን። ይከታተሉ፦ %[4]s",
-	"sms.arrived":      "%[1]s: ጭነት %[2]s %[3]s ደርሷል። ሹፌሩ ለርክክብ ያነጋግርዎታል።",
-	"sms.delivered":    "%[1]s: ጭነት %[2]s %[4]s ርክክቡ ተፈጽሟል።%[3]s መረከብዎን ያረጋግጡ ወይም ችግር ያሳውቁ፦ %[5]s",
-	"sms.delivered_to": " ተረካቢ፦ %s።",
-	"sms.cancelled":    "%[1]s: ጭነት %[2]s ተሰርዟል።%[3]s",
-	"sms.questions":    " ለጥያቄ፦ %s",
-	"sms.lookup_code":  "%[1]s: ጭነቶችዎን ለማየት ኮድዎ %[2]s ነው። በ10 ደቂቃ ውስጥ ጊዜው ያበቃል።",
+	"sms.created":          "%[1]s: ጭነት %[2]s ከ%[3]s ወደ %[4]s ተመዝግቧል። ይከታተሉ፦ %[5]s",
+	"sms.on_way":           "%[1]s: ጭነት %[2]s ወደ %[3]s በጉዞ ላይ ነው።%[4]s ይከታተሉ፦ %[5]s",
+	"sms.eta":              " %s ይደርሳል ተብሎ ይጠበቃል።",
+	"sms.delayed":          "%[1]s: ጭነት %[2]s ዘግይቷል (%[3]s)። እናሳውቅዎታለን። ይከታተሉ፦ %[4]s",
+	"sms.arrived":          "%[1]s: ጭነት %[2]s %[3]s ደርሷል። ሹፌሩ ለርክክብ ያነጋግርዎታል።",
+	"sms.delivered":        "%[1]s: ጭነት %[2]s %[4]s ርክክቡ ተፈጽሟል።%[3]s መረከብዎን ያረጋግጡ ወይም ችግር ያሳውቁ፦ %[5]s",
+	"sms.delivered_to":     " ተረካቢ፦ %s።",
+	"sms.delivered_booker": "%[1]s: ጭነት %[2]s %[4]s ርክክቡ ተፈጽሟል።%[3]s ዝርዝር፦ %[5]s",
+	"sms.cancelled":        "%[1]s: ጭነት %[2]s ተሰርዟል።%[3]s",
+	"sms.questions":        " ለጥያቄ፦ %s",
+	"sms.lookup_code":      "%[1]s: ጭነቶችዎን ለማየት ኮድዎ %[2]s ነው። በ10 ደቂቃ ውስጥ ጊዜው ያበቃል።",
 
 	// Why a shipment is late or stuck: the list in internal/model, which
 	// holds the English.
