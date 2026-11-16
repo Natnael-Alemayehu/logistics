@@ -34,8 +34,10 @@ once it is done: this file should only ever hold what is still ahead.
 
 ## Left from v0.9.0
 
-- [ ] On 2026-11-16 or later, check that GitHub's contributor list no
-      longer shows Claude. GitHub caches the list.
+- [x] On 2026-11-16 or later, check that GitHub's contributor list no
+      longer shows Claude. GitHub caches the list. Checked on 2026-11-16:
+      the API lists one contributor, `Natnael-Alemayehu`, anonymous ones
+      included.
 - [ ] Once the new history has been looked over, delete the mirror backup
       taken before the rewrite.
 
