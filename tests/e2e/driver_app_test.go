@@ -13,10 +13,11 @@ import (
 
 // TestDriverAppInABrowser: the driver app itself, in a browser the size of
 // a phone. The driver signs in with the PIN the office gave them and
-// chooses their own, finds the load, and starts the trip. Then the signal
-// goes. The delivery form half filled in survives the app being loaded
-// again, with no network to load it from, the delivery is recorded with a
-// signature, and the office has it once the signal is back.
+// chooses their own, finds the load, and starts the trip on a slow signal,
+// messaging the office while the start is still being sent. Then the
+// signal goes. The delivery form half filled in survives the app being
+// loaded again, with no network to load it from, the delivery is recorded
+// with a signature, and the office has it once the signal is back.
 func TestDriverAppInABrowser(t *testing.T) {
 	office := signUp(t, "Lakeside Haulage")
 	driverPhone := phoneNumber()
@@ -53,9 +54,24 @@ func TestDriverAppInABrowser(t *testing.T) {
 	c.waitFor("the load on the driver's list", fmt.Sprintf(`document.querySelector(%q)`, card))
 	c.click(card)
 	c.waitFor("the load's page", `document.querySelector(".detail-head .st-assigned")`)
+	// The trip starts on a slow signal, and the driver messages the office
+	// while the start is still being sent. The message goes straight after
+	// it, not with the next regular sync a minute later, which is longer
+	// than waitFor waits.
+	c.slow(2 * time.Second)
 	c.click(".actions button.primary")
 	c.waitFor("the trip to show as started", `document.querySelector(".detail-head .st-in_transit")`)
+	c.waitFor("the start to be on its way", `import("/driver/state.js").then(({ S }) => S.syncing)`)
+	c.click(`a[href$="/message"]`)
+	c.waitFor("the message form", `document.querySelector("form textarea")`)
+	c.fill("form textarea", "Leaving the depot now")
+	c.click(`form button[type="submit"]`)
+	c.waitFor("the start and the message to be sent", outbox+` === 0`)
+	c.slow(0)
 	live.waitFor(t, "shipment", shipmentID, "in_transit")
+	if !strings.Contains(office.get("/app/shipments/"+shipmentID).Body, "Leaving the depot now") {
+		t.Error("the shipment page doesn't show the driver's message")
+	}
 
 	// No signal from here. The service worker holds the app by now.
 	c.waitFor("the service worker to take the page", `navigator.serviceWorker.controller`)

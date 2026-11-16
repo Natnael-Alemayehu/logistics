@@ -66,6 +66,8 @@ export function signaturePad(onChange) {
   };
   canvas.addEventListener("pointerdown", (e) => {
     e.preventDefault();
+    // Signed on before the first frame came to measure the box.
+    if (!box) size();
     if (!box) return;
     canvas.setPointerCapture(e.pointerId);
     drawing = { w: box.width, h: box.height, pts: [pos(e)] };

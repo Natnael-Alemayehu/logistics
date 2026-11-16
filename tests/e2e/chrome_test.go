@@ -392,6 +392,16 @@ func (c *chrome) offline(off bool) {
 	}
 }
 
+// slow gives the page's requests a round trip of at least latency, as on a
+// weak signal; zero takes it away. The service worker's requests keep
+// their speed: the app's calls to the server don't go through it.
+func (c *chrome) slow(latency time.Duration) {
+	c.t.Helper()
+	c.call("Network.emulateNetworkConditions", map[string]any{
+		"offline": false, "latency": latency.Milliseconds(), "downloadThroughput": -1, "uploadThroughput": -1,
+	})
+}
+
 // at puts the phone at a place and lets the app ask where it is.
 func (c *chrome) at(lat, lng float64) {
 	c.t.Helper()
