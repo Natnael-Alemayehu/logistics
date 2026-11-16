@@ -47,6 +47,10 @@ What changed in each release, newest first.
   later or five with battery saver. On a weak signal, where a sync with
   photos can take a minute, that would be often. It now goes as soon as
   the sync under way ends.
+- **The signature box could drop the first stroke.** It measured itself
+  on the first frame after the delivery form opened, and ignored a stroke
+  begun before then. It now measures itself on the first touch if the
+  frame hasn't come yet.
 
 ## 0.9.0 (2026-11-15)
 
