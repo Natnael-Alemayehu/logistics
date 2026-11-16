@@ -39,6 +39,15 @@ What changed in each release, newest first.
   `deployments/secrets/`, in a third file, `kiflet_<time>_settings.tar.gz`,
   so a new machine can be set up from the backup alone.
 
+### Fixed
+
+- **A change made during a sync waited for the next one.** What the
+  driver recorded while a sync was under way, a status, a message or a
+  delivery, stayed on the phone until the next regular sync, a minute
+  later or five with battery saver. On a weak signal, where a sync with
+  photos can take a minute, that would be often. It now goes as soon as
+  the sync under way ends.
+
 ## 0.9.0 (2026-11-15)
 
 The first tagged release. Kiflet isn't live yet: `1.0.0` comes with the

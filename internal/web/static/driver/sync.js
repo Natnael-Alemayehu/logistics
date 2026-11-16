@@ -84,6 +84,7 @@ export async function sync() {
     const statuses = S.outbox.filter((o) => o.kind === "status").map((o) => o.payload);
     const pods = S.outbox.filter((o) => o.kind === "pod").slice(0, S.weak ? 1 : 2).map((o) => o.payload);
     const messages = S.outbox.filter((o) => o.kind === "message").map((o) => o.payload);
+    const sent = new Set([...statuses, ...pods, ...messages].map((p) => p.client_id));
     const locKeys = [];
     const locations = [];
     await tx("locations", "readonly", (s) => {
@@ -123,10 +124,12 @@ export async function sync() {
     S.weak = Date.now() - started > (pods.length ? 60000 : 10000);
     S.lastSync = Date.now();
     await kvSet("lastSync", S.lastSync);
-    // More waiting (PODs go two at a time, or more messages than one
-    // response carries): carry on straight away. Saving battery, the app
-    // syncs every five minutes unless the driver acts.
-    const more = resp.more || S.outbox.some((o) => o.kind === "pod");
+    // More waiting: carry on straight away. PODs go two at a time, a
+    // response carries only so many messages, and what the driver recorded
+    // while this sync ran wasn't in it (enqueue's sync gave way to this
+    // one). Saving battery, the app syncs every five minutes unless the
+    // driver acts.
+    const more = resp.more || S.outbox.some((o) => o.kind === "pod" || !sent.has(o.client_id));
     scheduleSync(more ? 500 : saving() ? 300000 : 60000);
     if (S.blocked) {
       S.blocked = false;
