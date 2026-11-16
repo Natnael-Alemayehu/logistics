@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -102,6 +103,18 @@ func TestDriverBuild(t *testing.T) {
 	for _, p := range named {
 		if _, ok := got.Files[p]; !ok {
 			t.Errorf("%s is named by the app and not installed", p)
+		}
+	}
+
+	// The page names every module in a modulepreload link, so the browser
+	// fetches them together instead of finding each import in turn.
+	preloaded := map[string]bool{"/driver/app.js": true}
+	for _, m := range regexp.MustCompile(`<link rel="modulepreload" href="([^"]+)">`).FindAllSubmatch(page, -1) {
+		preloaded[string(m[1])] = true
+	}
+	for at := range got.Files {
+		if strings.HasSuffix(at, ".js") && !preloaded[at] {
+			t.Errorf("%s is not in a modulepreload link in index.html", at)
 		}
 	}
 }

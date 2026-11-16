@@ -6,6 +6,12 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **The driver app is in modules.** Its 1,686 lines of `app.js` are now 19
+  ES modules: the state, the text in both languages, IndexedDB, the
+  server, the outbox and sync, settings, GPS, the router, the signature
+  box, and one module per screen. They run as written, with no build
+  step, and `index.html` preloads them all so start-up doesn't wait on
+  one import after another. Nothing changes for drivers.
 - **The driver app updates as a whole.** Its service worker used to fetch
   each file afresh whenever there was signal, so an update cut short on a
   weak signal could leave old and new files mixed. Now the server lists

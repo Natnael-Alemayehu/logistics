@@ -113,16 +113,18 @@ One Go binary serves everything:
   and a strict CSP (`script-src 'self'`). When the WebSocket reports a change,
   a page fetches itself again and swaps in its live parts, so the server
   renders everything.
-- **Driver app as a PWA** (`internal/web/static/driver`). A service worker
-  keeps the app's files, one version whole: a new version is downloaded
-  beside the old, each file checked against `/driver/build.json`, and takes
-  over when the app next starts. IndexedDB holds shipments and an outbox,
-  and `POST /api/v1/driver/sync` exchanges everything in one
-  gzip-compressed request. Every change carries a client ID, so a resend
-  after a lost response is harmless. When the phone and the office
-  disagree, the office wins and the driver is told why. The app asks the
-  browser to keep its data (`navigator.storage.persist()`), so unsent
-  deliveries survive a full phone.
+- **Driver app as a PWA** (`internal/web/static/driver`), in ES modules
+  that run as written: `app.js` starts it, and each screen has its own
+  module in `screens/`. A service worker keeps the app's files, one version
+  whole: a new version is downloaded beside the old, each file checked
+  against `/driver/build.json`, and takes over when the app next starts.
+  IndexedDB holds shipments and an outbox, and `POST /api/v1/driver/sync`
+  exchanges everything in one gzip-compressed request. Every change
+  carries a client ID, so a resend after a lost response is harmless. When
+  the phone and the office disagree, the office wins and the driver is
+  told why. The app asks the browser to keep its data
+  (`navigator.storage.persist()`), so unsent deliveries survive a full
+  phone.
 - **SMS and email go through outboxes** in the database, sent by a background
   worker with retries, so a provider outage delays a message rather than
   losing it. Customers can text STOP to opt out.

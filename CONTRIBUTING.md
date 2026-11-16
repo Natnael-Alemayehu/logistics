@@ -108,6 +108,12 @@ the Go release, in CI and the Dockerfile, move by hand.
   rendered. `go test ./internal/web/` parses every page.
 - Every static file a page, script or stylesheet names must be in
   `internal/web/static`. A test checks.
+- The driver app is ES modules, run as written. `app.js` starts it, and
+  each screen is a module in `screens/`. A value that more than one module
+  changes goes in `S` (`state.js`): a module can't assign to another's
+  variables. A new module needs a `<link rel="modulepreload">` in
+  `driver/index.html`, so the phone loads them all at once; a test checks.
+  `make lint` parses them as modules.
 
 ### Outside services
 
