@@ -41,6 +41,7 @@ var auditActions = map[string]string{
 	"vehicle_created":            "Added a vehicle",
 	"vehicle_updated":            "Edited a vehicle",
 	"settings_updated":           "Changed company settings",
+	"shipments_imported":         "Imported shipments from a file",
 	"company_signup":             "Created the company",
 	"password_reset_requested":   "Asked for a password reset link",
 	"password_reset":             "Reset their password by email",

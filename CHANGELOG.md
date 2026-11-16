@@ -31,6 +31,16 @@ What changed in each release, newest first.
 
 ### Added
 
+- **Shipments can be booked from a CSV file** (FR-013). **Import CSV** on
+  the shipment list takes a spreadsheet saved as CSV, up to 200
+  shipments. Every row is checked as the booking form would check it and
+  shown with what is wrong, before anything is booked; a file with a row
+  that can't be booked books nothing, so it can be corrected and sent
+  again whole. The page lists the columns and offers a template, and the
+  list's own export can be edited and sent back: columns the import
+  doesn't know are ignored. Commas or semicolons both work. Each
+  shipment is booked as the form books it, texts included, and the audit
+  log records the import. Drivers are assigned afterwards from the list.
 - **A shipment can name its receiver** (audit W4). The booking form has
   a second, optional person: who takes delivery at the destination, when
   that isn't the customer who booked. Both get the booked, departed,

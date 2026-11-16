@@ -998,10 +998,11 @@ the requirement, what Kiflet does instead, and why.
 
 ### Not built
 
-- **FR-013 (P3)**: CSV import, bulk status updates and the progress
-  indicator (AC-013.1, AC-013.3, AC-013.5) are not built. Bulk assignment
-  (AC-013.2) is part of FR-007, and the shipment list exports to CSV with its
-  filters applied (AC-013.4).
+- **FR-013 (P3)**: bulk status updates and the progress indicator
+  (AC-013.3, AC-013.5) are not built. An import (AC-013.1) is at most 200
+  shipments, checked and booked within one request, so it has nothing to
+  show progress of. Bulk assignment (AC-013.2) is part of FR-007, and the
+  shipment list exports to CSV with its filters applied (AC-013.4).
 - **FR-046 and FR-047 (P3)**: there is no public API or webhooks yet.
 - **FR-025, offline maps**: map tiles are not cached. The driver's detail
   screen shows the distance and compass direction to the drop-off from the

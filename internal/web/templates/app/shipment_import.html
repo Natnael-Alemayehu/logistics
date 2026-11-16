@@ -1,0 +1,71 @@
+{{define "content"}}{{$d := .Data}}{{$e := .Errors}}{{$im := $d.Import}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/shipments">Shipments</a></p>
+    <h1>Import shipments</h1>
+    <p class="muted">Book up to {{$d.Max}} shipments from a spreadsheet saved as CSV.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/app/shipments/import/template.csv" download>{{template "icon" "download"}} Template</a>
+  </div>
+</div>
+
+{{if $im}}
+  {{if $im.Bad}}
+  <p class="banner bad">{{$im.Bad}} of {{len $im.Rows}} {{if eq (len $im.Rows) 1}}row{{else}}rows{{end}} can't be booked, so nothing was. Correct {{if eq $im.Bad 1}}it{{else}}them{{end}} in the spreadsheet, save it as CSV and choose it again.</p>
+  {{else}}
+  <form method="post" action="/app/shipments/import" class="card stack">
+    <p><strong>{{len $im.Rows}} {{if eq (len $im.Rows) 1}}shipment is{{else}}shipments are{{end}} ready to book.</strong> Nothing is booked yet. Check them below.</p>
+    {{if $d.Texts}}<p class="small muted">Each customer, and each receiver, is texted that their shipment is booked. Turn that off under Settings first if you don't want it.</p>{{end}}
+    <textarea name="csv" hidden>{{$d.File}}</textarea>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit" name="confirm" value="1">Book {{len $im.Rows}} {{if eq (len $im.Rows) 1}}shipment{{else}}shipments{{end}}</button>
+      <a class="btn" href="/app/shipments/import">Choose another file</a>
+    </div>
+  </form>
+  {{end}}
+  {{with $im.Ignored}}<p class="small muted">Columns not read: {{range $i, $c := .}}{{if $i}}, {{end}}{{$c}}{{end}}.</p>{{end}}
+  <div class="card card-flush">
+    <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th class="num">Line</th><th>Route</th><th>Customer</th><th>Receiver</th><th>Cargo</th><th>Pickup</th><th></th></tr></thead>
+      <tbody>{{range $im.Rows}}{{$in := .Input}}
+      <tr>
+        <td class="num">{{.Line}}</td>
+        <td>{{$in.OriginCity}} → {{$in.DestinationCity}}{{with $in.DestinationAddress}}<div class="muted small">{{.}}</div>{{end}}</td>
+        <td>{{$in.CustomerName}}<div class="muted small">{{$in.CustomerPhone}}</div></td>
+        <td>{{$in.ConsigneeName}}<div class="muted small">{{$in.ConsigneePhone}}</div></td>
+        <td>{{$in.CargoDescription}}{{if $in.CargoWeightKg}}<div class="muted small">{{kg $in.CargoWeightKg}}</div>{{end}}</td>
+        <td>{{with $in.PlannedPickup}}{{when .}}{{end}}</td>
+        <td>{{if .Error}}<span class="text-bad">{{.Error}}</span>{{else}}<span class="muted">Ready</span>{{end}}</td>
+      </tr>{{end}}
+      </tbody>
+    </table>
+    </div>
+  </div>
+{{end}}
+
+{{if or (not $im) $im.Bad}}
+<form method="post" action="/app/shipments/import" enctype="multipart/form-data" class="card form-narrow stack" novalidate>
+  <label>CSV file
+    <input name="file" type="file" accept=".csv,text/csv" required {{if index $e "file"}}aria-invalid="true"{{end}}>
+    <span class="hint">You see every row and what is wrong with it before anything is booked.</span>
+    {{template "field-error" (index $e "file")}}
+  </label>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Check the file</button></div>
+</form>
+
+<section class="card">
+  <h2>What the file holds</h2>
+  <p class="muted small">The first line names the columns, in any order. Start from the template, or from <strong>Export CSV</strong> on the shipment list: columns that aren't in this list are ignored. A file with any row that can't be booked books nothing, so it can be corrected and sent again whole. Assign drivers afterwards from the shipment list.</p>
+  <div class="table-wrap">
+  <table class="table table-compact">
+    <thead><tr><th>Column</th><th></th><th>What goes in it</th></tr></thead>
+    <tbody>{{range $d.Columns}}
+    <tr><td><strong>{{.Name}}</strong></td><td>{{if .Required}}Required{{end}}</td><td>{{.Help}}</td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{end}}
+{{end}}
