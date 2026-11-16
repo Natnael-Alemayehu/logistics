@@ -8,40 +8,40 @@
     <p class="track-status"><span class="badge s-{{if eq $t.Status "issue"}}delayed{{else}}{{$t.Status}}{{end}} badge-lg">{{$t.StatusLabel}}</span></p>
     <p class="track-route"><strong>{{$t.Origin}}</strong> → <strong>{{$t.Destination}}</strong></p>
     {{if $t.DeliveredAt}}
-      <p>Delivered {{when $t.DeliveredAt}}{{if $t.Confirmed}} · receipt confirmed{{end}}</p>
+      <p>{{$.T "track.delivered" ($.When $t.DeliveredAt)}}{{if $t.Confirmed}} · {{$.T "track.confirmed"}}{{end}}</p>
     {{else if eq $t.Status "cancelled"}}
-      <p class="muted">This shipment was cancelled.{{with $t.CompanyPhone}} Questions? Call <a href="{{telURL .}}">{{.}}</a>.{{end}}</p>
+      <p class="muted">{{$.T "track.cancelled"}}{{with $t.CompanyPhone}} {{$.TH "track.cancelled_call_html" (telURL .) .}}{{end}}</p>
     {{else if $t.ETA}}
-      <p>Expected {{when $t.ETA}}{{if $t.Late}} · <span class="text-warn">running late</span>{{end}}</p>
+      <p>{{$.T "track.expected" ($.When $t.ETA)}}{{if $t.Late}} · <span class="text-warn">{{$.T "track.late"}}</span>{{end}}</p>
     {{end}}
   </header>
 
   {{if ne $t.Status "cancelled"}}
-  <ol class="progress" aria-label="Progress">
+  <ol class="progress" aria-label="{{$.T "track.progress"}}">
     {{range $t.Steps}}<li class="{{if .Done}}done{{end}} {{if .Current}}current{{end}}" {{if .Current}}aria-current="step"{{end}}><span>{{.Label}}</span></li>{{end}}
   </ol>
   {{end}}
 
   <div class="card card-flush">
     <div class="map map-mid" data-map="track" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-source="track-map"></div>
-    <script type="application/json" id="track-map">{"origin":{"lat":{{$t.OriginLat}},"lng":{{$t.OriginLng}},"label":{{$t.Origin}}},"destination":{"lat":{{$t.DestLat}},"lng":{{$t.DestLng}},"label":{{$t.Destination}}}{{with $t.LastSeen}},"current":{"lat":{{.Lat}},"lng":{{.Lng}},"label":{{printf "Last seen %s" .Near}}}{{end}}}</script>
-    {{with $t.LastSeen}}<p class="card-foot small">Last seen <strong>{{.Near}}</strong>, {{ago .At}}.</p>{{end}}
+    <script type="application/json" id="track-map">{"origin":{"lat":{{$t.OriginLat}},"lng":{{$t.OriginLng}},"label":{{$t.Origin}}},"destination":{"lat":{{$t.DestLat}},"lng":{{$t.DestLng}},"label":{{$t.Destination}}}{{with $t.LastSeen}},"current":{"lat":{{.Lat}},"lng":{{.Lng}},"label":{{$.T "track.map_last_seen" .Near}}}{{end}}}</script>
+    {{with $t.LastSeen}}<p class="card-foot small">{{$.TH "track.last_seen_html" .Near ($.Ago .At)}}</p>{{end}}
   </div>
 
   <section class="card">
-    <h2>Updates</h2>
+    <h2>{{$.T "track.updates"}}</h2>
     <ol class="timeline">
       {{range $t.Timeline}}
       <li class="tl"><div class="tl-dot"></div><div class="tl-body">
         <p class="tl-title">{{.Label}}</p>
         {{with .Detail}}<p class="tl-detail">{{.}}</p>{{end}}
-        <p class="tl-meta"><time datetime="{{rfc3339 .At}}">{{when .At}}</time></p>
+        <p class="tl-meta"><time datetime="{{rfc3339 .At}}">{{$.When .At}}</time></p>
       </div></li>
       {{end}}
     </ol>
   </section>
 
-  {{with $t.CompanyPhone}}<p class="center">Questions about this delivery? Call {{$t.CompanyName}} on <a href="{{telURL .}}">{{.}}</a>.</p>{{end}}
-  <p class="center small"><a href="/track">Track another shipment</a> · <a href="/track/phone">All my shipments</a></p>
+  {{with $t.CompanyPhone}}<p class="center">{{$.TH "track.questions_html" $t.CompanyName (telURL .) .}}</p>{{end}}
+  <p class="center small"><a href="/track">{{$.T "track.another"}}</a> · <a href="/track/phone">{{$.T "track.all_mine"}}</a></p>
 </section>
 {{end}}

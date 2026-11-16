@@ -25,6 +25,19 @@ What changed in each release, newest first.
 
 ### Added
 
+- **Customers can be written to in Amharic** (audit W1, the customers'
+  half). Settings has a language for customers, English or Amharic. A
+  company that chooses Amharic sends its customers Amharic texts, and
+  their tracking and confirmation pages open in Amharic. Every customer
+  page has a switch to the other language, and remembers the choice; the
+  pages that belong to no company (`/track`, finding shipments by phone)
+  follow the choice, then the browser's language. Dates stay in the
+  Gregorian calendar, with the months spelled out. A text in Amharic
+  holds 70 characters to a part, so most go as two or three parts of the
+  allowance, and Settings says so. The words are in `internal/text`, one
+  file to a language. **The Amharic was written without a native
+  reviewer and needs one** before a company turns it on. The dashboard,
+  the mail and the drivers' texts are still English only.
 - **Backups leave the machine, encrypted** (audit O1). With `backup.env`
   (`backup.env.example` is the template), `scripts/backup.sh` encrypts each
   backup with age, to public keys whose private keys are kept off the

@@ -101,6 +101,13 @@ the Go release, in CI and the Dockerfile, move by hand.
 - A part of a page that must stay current gets `data-live-region` and an
   `id`. `static/app.js` fetches it again and swaps it in when a WebSocket
   message says something changed. Don't render it in JavaScript.
+- What a customer reads comes from `internal/text`, in English and
+  Amharic: their texts, and the tracking and confirmation pages. Add the
+  words to `en.go` and `am.go` under one key and write `{{.T "key"}}` in
+  the template, or `{{.TH "key_html"}}` when the sentence carries markup.
+  Tests check that the two files hold the same keys filling in the same
+  values, and that templates name only keys that exist. The dashboard is
+  English only for now.
 - A page's own stylesheets (the `head` block) load before `app.css`, so
   `app.css` can restyle vendor widgets such as the map.
 - Templates are reloaded from disk with `DEV_RELOAD=true`, which

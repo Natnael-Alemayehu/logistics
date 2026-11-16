@@ -68,7 +68,10 @@ Still to check, before anything is registered under the name:
       should, and is it easy to say and to type? "Kiflet" writes ቅ with a
       K, as most people would; "Qiflet" is the stricter spelling.
 - [ ] Search the trademark register (EIPA) and the trade name register.
-- [ ] Search the Play Store and the App Store.
+- [x] Search the Play Store and the App Store. Searched on 2026-11-16:
+      the App Store has no app of the name in its Ethiopian, British or
+      American catalogue, and a Play Store search returns only kitchen
+      games, which it offers for a word it doesn't know.
 
 Once those pass:
 
@@ -135,10 +138,15 @@ In order. The first two can run side by side.
    app on a real device. Deliver a load with the camera, on weak signal,
    with the phone locked in between. Fix what it shows before anything
    else in the driver app.
-3. **Amharic for customers, then for the office** (W1). First the tracking
-   page, the confirmation page and the texts customers get; then the
-   dashboard. It needs a native speaker, who should also review the
-   driver app's newest strings.
+3. **A native speaker reads the Amharic, then Amharic for the office**
+   (W1). The texts customers get and their tracking and confirmation
+   pages are in Amharic, drafted without one: `internal/text/am.go` is
+   the whole of it, beside `en.go`. The same reader should go through the
+   driver app's `static/driver/text.js`, and say whether customers expect
+   dates in the Ethiopian calendar, which they are not in. Until then no
+   company should choose Amharic in Settings. The dashboard comes after,
+   through the same catalogue, with each user's own language
+   (`users.language`).
 4. **A pilot with one trucking company**, paying by bank transfer. Before
    it starts, production's backups go off the machine: choose the bucket's
    provider, make two age keys held by two people, fill in `backup.env`,

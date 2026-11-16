@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/natnael-alemayehu/kiflet/internal/config"
 	"github.com/natnael-alemayehu/kiflet/internal/db"
 	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 )
 
 func testServer(t *testing.T) *Server {
@@ -183,5 +185,43 @@ func TestNiceCeil(t *testing.T) {
 		if got := niceCeil(in); got != want {
 			t.Errorf("niceCeil(%d) = %d, want %d", in, got, want)
 		}
+	}
+}
+
+// Every catalogue key a template names exists, and markup comes only
+// through TH: T's result is escaped, so markup through it would show as
+// text.
+func TestTemplateTextKeys(t *testing.T) {
+	tpl, err := fs.Sub(embedded, "templates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	use := regexp.MustCompile(`\.(TH?) "([a-z_.]+)"`)
+	found := 0
+	err = fs.WalkDir(tpl, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(tpl, p)
+		if err != nil {
+			return err
+		}
+		for _, m := range use.FindAllStringSubmatch(string(b), -1) {
+			found++
+			fn, key := m[1], m[2]
+			if !text.Has(key) {
+				t.Errorf("%s: no text for %q", p, key)
+			}
+			if (fn == "TH") != strings.HasSuffix(key, "_html") {
+				t.Errorf("%s: %q goes through %s; keys ending _html take TH, the rest T", p, key, fn)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found < 50 {
+		t.Fatalf("found only %d uses of the catalogue", found)
 	}
 }

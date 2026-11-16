@@ -56,6 +56,13 @@
     <label class="check"><input type="checkbox" name="sms_on_arrived" {{if field $f "sms_on_arrived" ""}}checked{{end}}> When the truck arrives</label>
     <label class="check"><input type="checkbox" name="sms_on_delivered" {{if field $f "sms_on_delivered" ""}}checked{{end}}> When it is delivered, with a link to confirm receipt</label>
     <label class="check"><input type="checkbox" name="sms_on_cancelled" {{if field $f "sms_on_cancelled" ""}}checked{{end}}> If it is cancelled</label>
+    <label>Language
+      <select name="customer_language" {{if index $e "customer_language"}}aria-invalid="true"{{end}}>
+        {{$lang := field $f "customer_language" "en"}}{{range $d.Languages}}<option value="{{.Code}}" lang="{{.Code}}" {{if eq $lang .Code}}selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+      {{template "field-error" (index $e "customer_language")}}
+    </label>
+    <p class="small muted">Customers get their texts in this language, and their tracking and confirmation pages open in it; they can switch on the page. A text in Amharic holds 70 characters to a part where one in English holds 160, so most go as two or three parts of your allowance.</p>
   </fieldset>
 
   <fieldset class="card">

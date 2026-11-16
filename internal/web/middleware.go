@@ -21,6 +21,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 	"github.com/natnael-alemayehu/kiflet/pkg/metrics"
 	"github.com/natnael-alemayehu/kiflet/pkg/payments"
 )
@@ -350,7 +351,8 @@ func (s *Server) tooManyRequests(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests. Wait a minute and try again.")
 		return
 	}
-	s.renderError(w, r, http.StatusTooManyRequests, "Slow down", "Too many requests from your network. Wait a minute and try again.")
+	lang := s.errorLang(r)
+	s.renderError(w, r, http.StatusTooManyRequests, text.T(lang, "error.slow_down"), text.T(lang, "error.slow_down_detail"))
 }
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, token string, persistent time.Time) {

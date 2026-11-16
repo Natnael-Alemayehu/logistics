@@ -241,6 +241,12 @@ or isn't a phone number at all.
    server terminal, and see all of their shipments.
 3. Open the confirmation link from the delivery SMS. Confirm, or report a
    problem with a note. A reported problem raises an alert for the office.
+4. In Amharic: in **Settings**, under "Text messages to customers", choose
+   አማርኛ and save. Book another shipment. The customer's text in the server
+   terminal is in Amharic, and its tracking link opens in Amharic in a
+   private window. **English** at the top switches the page, and the
+   choice holds on `/track` and on the confirmation page. The dashboard
+   stays in English.
 
 ## 8. Running the business
 

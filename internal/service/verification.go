@@ -31,10 +31,10 @@ const (
 )
 
 var (
-	errCodeInvalid  = &Error{Kind: KindInvalid, Field: "code", Message: "That code is wrong or has expired. Request a new one."}
-	errCodeTooMany  = &Error{Kind: KindLimit, Message: "Too many codes requested for this number. Try again in an hour."}
-	errCodeAttempts = &Error{Kind: KindInvalid, Field: "code", Message: "Too many wrong attempts. Request a new code."}
-	errCodeBudget   = &Error{Kind: KindLimit, Message: "We can't send codes right now. Please try again in a few hours."}
+	errCodeInvalid  = &Error{Kind: KindInvalid, Field: "code", Message: "That code is wrong or has expired. Request a new one.", Key: "error.code_invalid"}
+	errCodeTooMany  = &Error{Kind: KindLimit, Message: "Too many codes requested for this number. Try again in an hour.", Key: "error.code_too_many"}
+	errCodeAttempts = &Error{Kind: KindInvalid, Field: "code", Message: "Too many wrong attempts. Request a new code.", Key: "error.code_attempts"}
+	errCodeBudget   = &Error{Kind: KindLimit, Message: "We can't send codes right now. Please try again in a few hours.", Key: "error.code_budget"}
 )
 
 // hashCode keys a code to its phone and purpose with the deployment secret,

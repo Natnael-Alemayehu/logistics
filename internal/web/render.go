@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 )
 
 // renderer holds the parsed templates: one set per page, each combining the
@@ -103,6 +104,11 @@ type View struct {
 	Path  string
 	Query url.Values
 	Now   time.Time
+	// Lang is the page's language. Only the pages customers see are in
+	// more than English (lang.go), and they set Switch to offer the other.
+	Lang   string
+	Switch bool
+	loc    *time.Location
 	// Standing is the company's billing state, for the banner; zero for the
 	// platform operator.
 	Standing service.Standing
@@ -172,6 +178,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 	v := &View{
 		Title: title, Nav: nav, Me: principal(r), Data: data, Path: r.URL.Path, Query: r.URL.Query(),
 		Now:  time.Now(),
+		Lang: text.English, loc: s.cfg.Timezone,
 		Form: url.Values{}, Errors: map[string]string{},
 		App: AppInfo{
 			Name: s.cfg.AppName, Version: s.version, TileURL: s.cfg.MapTileURL, TileCredit: s.cfg.MapTileAttribution,
@@ -218,10 +225,11 @@ func (s *Server) formError(w http.ResponseWriter, r *http.Request, page string, 
 	}
 	_ = r.ParseForm()
 	v.Form = r.PostForm
+	msg := message(v.Lang, de)
 	if de.Field != "" {
-		v.Errors[de.Field] = de.Message
+		v.Errors[de.Field] = msg
 	}
-	v.Error = de.Message
+	v.Error = msg
 	s.render(w, r, de.Kind.HTTPStatus(), page, v)
 	return true
 }
@@ -232,18 +240,36 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, status int,
 		layout = "app/error"
 	}
 	v := s.view(w, r, title, "", map[string]any{"Status": status, "Title": title, "Detail": detail})
+	if customerPage(r) {
+		v.Lang, v.Switch = s.lang(w, r, ""), true
+	}
 	s.render(w, r, status, layout, v)
+}
+
+// errorLang is the language an error page for this request is in.
+func (s *Server) errorLang(r *http.Request) string {
+	if !customerPage(r) {
+		return text.English
+	}
+	if l := chosenLang(r); l != "" {
+		return l
+	}
+	if l := text.Accept(r.Header.Get("Accept-Language")); l != "" {
+		return l
+	}
+	return text.English
 }
 
 // fail reports an error from a page handler: a domain error is shown to the
 // user; anything else is logged and shown as a generic failure.
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
+	lang := s.errorLang(r)
 	if de, ok := service.AsError(err); ok {
-		title := "That didn't work"
+		title := text.T(lang, "error.failed")
 		if de.Kind == service.KindNotFound {
-			title = "Not found"
+			title = text.T(lang, "error.not_found")
 		}
-		s.renderError(w, r, de.Kind.HTTPStatus(), title, de.Message)
+		s.renderError(w, r, de.Kind.HTTPStatus(), title, message(lang, de))
 		return
 	}
 	if errors.Is(err, errBadID) {
@@ -251,11 +277,11 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 	s.log.Error().Err(err).Str("path", r.URL.Path).Msg("request failed")
-	detail := "We couldn't complete that. Please try again."
+	detail := text.T(lang, "error.internal_detail")
 	if p := principal(r); p != nil && !p.IsPlatformAdmin() && strings.HasPrefix(r.URL.Path, "/app") {
 		detail += " If it keeps happening, tell us on the Help page."
 	}
-	s.renderError(w, r, http.StatusInternalServerError, "Something went wrong", detail)
+	s.renderError(w, r, http.StatusInternalServerError, text.T(lang, "error.internal"), detail)
 }
 
 func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +289,8 @@ func (s *Server) notFound(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "NOT_FOUND", "Not found.")
 		return
 	}
-	s.renderError(w, r, http.StatusNotFound, "Page not found", "The page you asked for doesn't exist or has moved.")
+	lang := s.errorLang(r)
+	s.renderError(w, r, http.StatusNotFound, text.T(lang, "error.page_missing"), text.T(lang, "error.page_missing_detail"))
 }
 
 // back redirects after a POST with a flash message: to the form's "back"

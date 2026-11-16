@@ -8,6 +8,7 @@ import (
 	"github.com/natnael-alemayehu/kiflet/internal/db"
 	"github.com/natnael-alemayehu/kiflet/internal/geo"
 	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 )
 
 func (s *Server) settingsData(r *http.Request) (map[string]any, error) {
@@ -23,6 +24,7 @@ func (s *Server) settingsData(r *http.Request) (map[string]any, error) {
 	return map[string]any{
 		"Tenant": tenant, "Usage": usage, "Towns": geo.Places(),
 		"RetainDays": int(s.svc.Data.RetainShipments().Hours() / 24),
+		"Languages":  text.Languages,
 	}, nil
 }
 
@@ -41,6 +43,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		"region_city":           {tenant.RegionCity},
 		"max_active_per_driver": {strconv.Itoa(int(tenant.MaxActivePerDriver))},
 		"tin":                   {deref(tenant.Tin)},
+		"customer_language":     {tenant.CustomerLanguage},
 	}
 	for name, on := range map[string]bool{
 		"sms_on_created": tenant.SmsOnCreated, "sms_on_dispatched": tenant.SmsOnDispatched,
@@ -66,6 +69,7 @@ func (s *Server) settingsUpdate(w http.ResponseWriter, r *http.Request) {
 		SMSOnArrived: on("sms_on_arrived"), SMSOnDelivered: on("sms_on_delivered"),
 		SMSOnCancelled: on("sms_on_cancelled"), SMSOnDelayed: on("sms_on_delayed"),
 		SMSDriverOnAssign: on("sms_driver_on_assign"), AlertOnDelivery: on("alert_on_delivery"),
+		CustomerLanguage: r.PostFormValue("customer_language"),
 	}, clientInfo(r))
 	if err != nil {
 		data, derr := s.settingsData(r)

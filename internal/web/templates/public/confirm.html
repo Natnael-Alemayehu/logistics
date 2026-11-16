@@ -2,49 +2,49 @@
 {{define "content"}}{{$c := .Data.C}}{{$s := $c.Shipment}}{{$tok := .Data.Token}}
 <section class="card auth">
   <p class="muted small">{{$c.CompanyName}}</p>
-  <h1>Your delivery</h1>
+  <h1>{{$.T "confirm.title"}}</h1>
   <p class="mono">{{$s.TrackingNumber}}</p>
   <p>{{str $s.OriginCity}} → {{str $s.DestinationCity}}{{with $s.CargoDescription}} · {{.}}{{end}}</p>
 
   {{if eq $s.Status "delivered"}}
     {{with $c.POD}}
     <dl class="facts">
-      <div><dt>Delivered</dt><dd>{{when .RecordedAt}}</dd></div>
-      <div><dt>Received by</dt><dd>{{.RecipientName}}</dd></div>
+      <div><dt>{{$.T "confirm.delivered"}}</dt><dd>{{$.When .RecordedAt}}</dd></div>
+      <div><dt>{{$.T "confirm.received_by"}}</dt><dd>{{.RecipientName}}</dd></div>
     </dl>
     <div class="pod-media">
-      {{if .SignatureUrl}}<figure><img src="/c/{{$tok}}/media/0" alt="Signature" class="signature"><figcaption>Signature</figcaption></figure>{{end}}
-      {{range $i, $p := .PhotoUrls}}<figure><img src="/c/{{$tok}}/media/{{add $i 1}}" alt="Delivery photo {{add $i 1}}" loading="lazy"></figure>{{end}}
+      {{if .SignatureUrl}}<figure><img src="/c/{{$tok}}/media/0" alt="{{$.T "confirm.signature"}}" class="signature"><figcaption>{{$.T "confirm.signature"}}</figcaption></figure>{{end}}
+      {{range $i, $p := .PhotoUrls}}<figure><img src="/c/{{$tok}}/media/{{add $i 1}}" alt="{{$.T "confirm.photo" (add $i 1)}}" loading="lazy"></figure>{{end}}
     </div>
     {{else}}
-    <p>Delivered {{when $s.ActualDelivery}}.</p>
+    <p>{{$.T "confirm.delivered_at" ($.When $s.ActualDelivery)}}</p>
     {{end}}
 
     {{if $s.CustomerConfirmedAt.Valid}}
       {{if $s.CustomerFeedback}}
-      <p class="callout callout-warn">You reported a problem {{ago $s.CustomerConfirmedAt}}. {{$c.CompanyName}} has been told and will contact you.</p>
+      <p class="callout callout-warn">{{$.T "confirm.problem_reported" ($.Ago $s.CustomerConfirmedAt) $c.CompanyName}}</p>
       {{else}}
-      <p class="callout callout-good">You confirmed receipt {{ago $s.CustomerConfirmedAt}}. Thank you.</p>
+      <p class="callout callout-good">{{$.T "confirm.confirmed" ($.Ago $s.CustomerConfirmedAt)}}</p>
       {{end}}
     {{else}}
     <form method="post" action="/c/{{$tok}}" class="stack">
       <input type="hidden" name="answer" value="ok">
-      <button class="btn btn-primary btn-block btn-lg" type="submit">Yes, I received it in good order</button>
+      <button class="btn btn-primary btn-block btn-lg" type="submit">{{$.T "confirm.yes"}}</button>
     </form>
     <details class="mt-m" id="problem">
-      <summary>There is a problem</summary>
+      <summary>{{$.T "confirm.problem"}}</summary>
       <form method="post" action="/c/{{$tok}}" class="stack">
         <input type="hidden" name="answer" value="problem">
-        <label>What's wrong?
-          <textarea name="feedback" rows="3" maxlength="500" required placeholder="e.g. 3 bags missing, one carton damaged"></textarea>
+        <label>{{$.T "confirm.whats_wrong"}}
+          <textarea name="feedback" rows="3" maxlength="500" required placeholder="{{$.T "confirm.placeholder"}}"></textarea>
         </label>
-        <button class="btn btn-block" type="submit">Report the problem</button>
+        <button class="btn btn-block" type="submit">{{$.T "confirm.report"}}</button>
       </form>
     </details>
     {{end}}
   {{else}}
-  <p>This shipment is <strong>{{lower (statusLabel $s.Status)}}</strong>.</p>
+  <p>{{$.TH "confirm.status_html" (lower ($.Status $s.Status))}}</p>
   {{end}}
-  <p class="small"><a href="/track/{{$s.TrackingNumber}}">See the full tracking page</a></p>
+  <p class="small"><a href="/track/{{$s.TrackingNumber}}">{{$.T "confirm.full"}}</a></p>
 </section>
 {{end}}
