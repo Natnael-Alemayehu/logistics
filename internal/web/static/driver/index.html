@@ -14,7 +14,26 @@
 <link rel="apple-touch-icon" href="/driver/apple-touch-icon.png">
 <link rel="icon" href="/driver/icon-192.png" type="image/png" sizes="192x192">
 <link rel="stylesheet" href="/driver/app.css">
-<script src="/driver/app.js" defer></script>
+<script type="module" src="/driver/app.js"></script>
+<!-- Every module app.js imports, directly or not, so they load together. -->
+<link rel="modulepreload" href="/driver/api.js">
+<link rel="modulepreload" href="/driver/dom.js">
+<link rel="modulepreload" href="/driver/gps.js">
+<link rel="modulepreload" href="/driver/router.js">
+<link rel="modulepreload" href="/driver/settings.js">
+<link rel="modulepreload" href="/driver/signature.js">
+<link rel="modulepreload" href="/driver/state.js">
+<link rel="modulepreload" href="/driver/store.js">
+<link rel="modulepreload" href="/driver/sync.js">
+<link rel="modulepreload" href="/driver/text.js">
+<link rel="modulepreload" href="/driver/screens/deliver.js">
+<link rel="modulepreload" href="/driver/screens/detail.js">
+<link rel="modulepreload" href="/driver/screens/list.js">
+<link rel="modulepreload" href="/driver/screens/login.js">
+<link rel="modulepreload" href="/driver/screens/menu.js">
+<link rel="modulepreload" href="/driver/screens/message.js">
+<link rel="modulepreload" href="/driver/screens/pin.js">
+<link rel="modulepreload" href="/driver/screens/report.js">
 </head>
 <body>
 <div id="app" aria-live="polite">

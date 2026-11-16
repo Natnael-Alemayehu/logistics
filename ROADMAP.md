@@ -15,8 +15,8 @@ once it is done: this file should only ever hold what is still ahead.
 - One Go application, at the repository root: about 25,000 lines of Go and
   12,800 lines of tests (175 unit tests, 96 integration tests, 9 end-to-end
   tests, one of them the driver app in headless Chrome), 53 templates, a
-  1,686-line driver app in plain JavaScript, and the schema in one
-  migration.
+  driver app in plain JavaScript (19 ES modules, no build step), and the
+  schema in one migration.
 - CI runs vet, golangci-lint, unit tests, gofmt, `sqlc diff`, govulncheck,
   shellcheck, `node --check`, a secret scan of the whole history, the
   integration tests and the end-to-end tests against staging. Dependabot
@@ -133,37 +133,23 @@ In order. The first two can run side by side.
    app on a real device. Deliver a load with the camera, on weak signal,
    with the phone locked in between. Fix what it shows before anything
    else in the driver app.
-3. **The driver app in modules.** `internal/web/static/driver/app.js` is
-   1,686 lines in one file. The service worker now installs every file under
-   `static/driver` as one version and switches only once all of it has
-   arrived, so a split can't leave a phone with half an update. Split it
-   into ES modules, which need no build step: `state.js`, `text.js`
-   (English and Amharic), `store.js` (IndexedDB), `api.js`, `sync.js`
-   (outbox and sync), `gps.js`, `signature.js`, and one module per screen.
-   `formOpen` is set by five screens and read by the router and by the
-   update handover, and a module can't assign to another's variable, so it
-   moves into the state object. Name each module in a
-   `<link rel="modulepreload">`, so start-up doesn't wait on a chain of
-   requests; `TestDriverBuild` checks that every file the page names is
-   installed. `TestDriverAppInABrowser` then shows the app still signs in,
-   works offline, keeps its drafts and updates.
-4. **Amharic for customers, then for the office** (W1). First the tracking
+3. **Amharic for customers, then for the office** (W1). First the tracking
    page, the confirmation page and the texts customers get; then the
    dashboard. It needs a native speaker, who should also review the
    driver app's newest strings.
-5. **A pilot with one trucking company**, paying by bank transfer. Before
+4. **A pilot with one trucking company**, paying by bank transfer. Before
    it starts, production's backups go off the machine: choose the bucket's
    provider, make two age keys held by two people, fill in `backup.env`,
    and run the drill in `docs/deploy.md` once. Everything after this point
    should be reordered by what the pilot shows.
-6. **Shipper and consignee as separate people** (W4). A schema change, and
+5. **Shipper and consignee as separate people** (W4). A schema change, and
    the most likely first request from a real customer: today the tracking
    texts, the confirmation link and the driver's Call button all go to one
    phone.
-7. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
+6. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-8. **Later:** CSV import of shipments (FR-013), a last-position table for
+7. **Later:** CSV import of shipments (FR-013), a last-position table for
    the live map (O3), a second app instance (O4), a public API and webhooks
    (FR-046, FR-047), and point-in-time recovery (WAL archiving, the rest of
    O1) if a pilot can't afford to lose a day.
@@ -172,11 +158,10 @@ In order. The first two can run side by side.
 
 - **`v1.0.0` with the first paying customer** (2026-11-15). Until then
   releases are `0.x`; `v0.9.0` is the first.
-- **The driver app stays one file for now** (2026-11-15). Splitting it is
-  item 3 of [Toward the first paying customer](#toward-the-first-paying-customer);
-  the service worker it waited for now updates the app as a whole.
-  Revisit if the file gets in the way of a fix the Android session or the
-  pilot asks for.
+- **The driver app is ES modules with no build step** (2026-11-16): the
+  files in `static/driver` are what the phone runs, and `index.html`
+  preloads every module. Revisit if it needs packages from npm, or types
+  checked before it ships.
 - **The name Kiflet, for now** (2026-11-15). Revisit if one of the checks
   in [Finish the rename](#finish-the-rename) fails. That section has the
   fallbacks and what a second rename takes.

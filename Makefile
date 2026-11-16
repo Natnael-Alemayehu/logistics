@@ -116,11 +116,18 @@ vet:
 	go vet -tags e2e ./tests/...
 
 # golangci-lint over the Go (.golangci.yml); Node parsing each script of our
-# own, which browsers run as written, with no build step to catch a slip; and
+# own, which browsers run as written, with no build step to catch a slip (the
+# driver app's as the ES modules they are, whatever Node's version); and
 # gitleaks over the whole history (.gitleaks.toml).
 lint:
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run
-	@for f in $$(git ls-files '*.js' ':!:*/vendor/*'); do node --check "$$f" || exit 1; done
+	@for f in $$(git ls-files '*.js' ':!:*/vendor/*'); do \
+		case $$f in \
+		internal/web/static/driver/sw.js) node --check "$$f" ;; \
+		internal/web/static/driver/*) node --input-type=module --check <"$$f" || { echo "in $$f"; false; } ;; \
+		*) node --check "$$f" ;; \
+		esac || exit 1; \
+	done
 	go run github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION) git --redact --no-banner .
 
 sqlc:
