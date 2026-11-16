@@ -3,6 +3,9 @@
 package integration
 
 import (
+	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -234,5 +237,95 @@ func TestPositionsKeptAfterReassignment(t *testing.T) {
 	}}})
 	if resp.LocationsStored != 0 {
 		t.Errorf("%d positions stored for someone else's load", resp.LocationsStored)
+	}
+}
+
+// TestFleetMapKeepsTheNewestPosition (O3): the map reads each driver's
+// newest position from its own table, which the positions keep up to date
+// as they arrive, thousands at a time and in any order.
+func TestFleetMapKeepsTheNewestPosition(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Last Seen Logistics")
+	driverID, phone, pin := office.addDriver("Mulugeta Bekele")
+	shipmentID, _ := office.book("Addis Ababa", "Adama", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), shipmentID, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+	pin1 := func() (lat float64, at time.Time, n int) {
+		t.Helper()
+		var m struct {
+			Drivers []struct {
+				ID  string    `json:"id"`
+				Lat float64   `json:"lat"`
+				At  time.Time `json:"at"`
+			} `json:"drivers"`
+		}
+		p := office.get("/app/api/map")
+		if err := json.Unmarshal([]byte(p.Body), &m); err != nil {
+			t.Fatalf("map data: %v\n%s", err, p.Body)
+		}
+		for _, dr := range m.Drivers {
+			if dr.ID == driverID {
+				return dr.Lat, dr.At, len(m.Drivers)
+			}
+		}
+		return 0, time.Time{}, len(m.Drivers)
+	}
+	if _, _, n := pin1(); n != 0 {
+		t.Fatalf("%d drivers on the map before any position", n)
+	}
+
+	// A phone back from a day without signal: 2,500 fixes a minute apart,
+	// heading south-east, more than one statement's worth.
+	start := time.Now().Add(-2500 * time.Minute)
+	fixes := make([]service.SyncLocation, 2500)
+	battery := 61
+	for i := range fixes {
+		fixes[i] = service.SyncLocation{
+			ClientID: fmt.Sprintf("fix-%d", i), ShipmentID: shipmentID,
+			Lat: 9.0 - float64(i)*0.0001, Lng: 38.74 + float64(i)*0.0001, RecordedAt: start.Add(time.Duration(i) * time.Minute),
+		}
+	}
+	fixes[2499].Battery = &battery
+	resp, code := d.sync(service.SyncRequest{Locations: fixes})
+	if code != http.StatusOK || resp.LocationsStored != 2500 {
+		t.Fatalf("sync: status %d, %d positions stored, want 2500", code, resp.LocationsStored)
+	}
+	if n := scalar[int64](t, `SELECT count(*) FROM tracking_events WHERE shipment_id = $1`, shipmentID); n != 2500 {
+		t.Fatalf("%d positions kept, want 2500", n)
+	}
+	lat, at, _ := pin1()
+	if math.Abs(lat-(9.0-2499*0.0001)) > 1e-6 || at.Sub(fixes[2499].RecordedAt).Abs() > time.Second {
+		t.Errorf("the map shows %.4f at %s, want the newest fix", lat, at)
+	}
+	if b := scalar[int32](t, `SELECT battery_level FROM driver_positions WHERE driver_id = $1`, driverID); b != 61 {
+		t.Errorf("battery %d, want 61", b)
+	}
+
+	// The same batch again, as after a lost response, adds nothing; nor do
+	// older fixes that arrive late move the pin back.
+	d.sync(service.SyncRequest{Locations: fixes[:1200]})
+	d.sync(service.SyncRequest{Locations: []service.SyncLocation{{
+		ClientID: clientID(), ShipmentID: shipmentID, Lat: 9.5, Lng: 38.74, RecordedAt: start.Add(-time.Hour),
+	}}})
+	if n := scalar[int64](t, `SELECT count(*) FROM tracking_events WHERE shipment_id = $1`, shipmentID); n != 2501 {
+		t.Errorf("%d positions kept, want 2501", n)
+	}
+	if lat, _, _ := pin1(); math.Abs(lat-(9.0-2499*0.0001)) > 1e-6 {
+		t.Errorf("an older fix moved the pin to %.4f", lat)
+	}
+	// A newer one does.
+	d.sync(service.SyncRequest{Locations: []service.SyncLocation{{
+		ClientID: clientID(), ShipmentID: shipmentID, Lat: 8.6, Lng: 39.2, RecordedAt: time.Now(),
+	}}})
+	if lat, _, _ := pin1(); math.Abs(lat-8.6) > 1e-6 {
+		t.Errorf("the pin is at %.4f, want 8.6", lat)
+	}
+
+	// The map still shows only the last week, and only active drivers.
+	exec(t, `UPDATE driver_positions SET recorded_at = NOW() - INTERVAL '8 days' WHERE driver_id = $1`, driverID)
+	if _, _, n := pin1(); n != 0 {
+		t.Error("a position more than a week old should be off the map")
 	}
 }

@@ -27,65 +27,70 @@ func (q *Queries) CountTrackingEventsByShipment(ctx context.Context, arg CountTr
 	return count, err
 }
 
-const createTrackingEvent = `-- name: CreateTrackingEvent :one
+const createTrackingEvents = `-- name: CreateTrackingEvents :exec
 INSERT INTO tracking_events (
     tenant_id, shipment_id, driver_id,
     coordinates, accuracy_meters, speed_kph, heading,
-    event_type, status, note,
-    recorded_at, synced_at, device_id, battery_level, client_id
-) VALUES (
-    $1, $2, $3,
-    ST_SetSRID(ST_MakePoint($4::float8, $5::float8), 4326),
-    $6, $7, $8,
-    $9, $10, $11,
-    $12, NOW(), $13, $14, $15
+    event_type, recorded_at, synced_at, device_id, battery_level, client_id
 )
+SELECT $1, p.shipment_id, $2,
+       ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326),
+       NULLIF(p.accuracy_meters, -1), NULLIF(p.speed_kph, -1), NULLIF(p.heading, -1),
+       'gps_ping', p.recorded_at, NOW(), $3, NULLIF(p.battery_level, -1), NULLIF(p.client_id, '')
+FROM (
+    -- Set-returning functions side by side in one SELECT run in step.
+    SELECT unnest($4::uuid[]) AS shipment_id,
+           unnest($5::float8[]) AS longitude,
+           unnest($6::float8[]) AS latitude,
+           unnest($7::float8[]) AS accuracy_meters,
+           unnest($8::float8[]) AS speed_kph,
+           unnest($9::float8[]) AS heading,
+           unnest($10::int[]) AS battery_level,
+           unnest($11::timestamptz[]) AS recorded_at,
+           unnest($12::text[]) AS client_id
+) p
 ON CONFLICT (device_id, client_id) WHERE client_id IS NOT NULL AND device_id IS NOT NULL DO NOTHING
-RETURNING id
 `
 
-type CreateTrackingEventParams struct {
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	Longitude      float64            `db:"longitude" json:"longitude"`
-	Latitude       float64            `db:"latitude" json:"latitude"`
-	AccuracyMeters pgtype.Numeric     `db:"accuracy_meters" json:"accuracy_meters"`
-	SpeedKph       pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
-	Heading        pgtype.Numeric     `db:"heading" json:"heading"`
-	EventType      string             `db:"event_type" json:"event_type"`
-	Status         *string            `db:"status" json:"status"`
-	Note           *string            `db:"note" json:"note"`
-	RecordedAt     pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	DeviceID       *string            `db:"device_id" json:"device_id"`
-	BatteryLevel   *int32             `db:"battery_level" json:"battery_level"`
-	ClientID       *string            `db:"client_id" json:"client_id"`
+type CreateTrackingEventsParams struct {
+	TenantID    pgtype.UUID          `db:"tenant_id" json:"tenant_id"`
+	DriverID    pgtype.UUID          `db:"driver_id" json:"driver_id"`
+	DeviceID    *string              `db:"device_id" json:"device_id"`
+	ShipmentIds []pgtype.UUID        `db:"shipment_ids" json:"shipment_ids"`
+	Longitudes  []float64            `db:"longitudes" json:"longitudes"`
+	Latitudes   []float64            `db:"latitudes" json:"latitudes"`
+	Accuracies  []float64            `db:"accuracies" json:"accuracies"`
+	Speeds      []float64            `db:"speeds" json:"speeds"`
+	Headings    []float64            `db:"headings" json:"headings"`
+	Batteries   []int32              `db:"batteries" json:"batteries"`
+	Recorded    []pgtype.Timestamptz `db:"recorded" json:"recorded"`
+	ClientIds   []string             `db:"client_ids" json:"client_ids"`
 }
 
+// A batch of a driver's GPS fixes in one statement: a phone back from a day
+// without signal sends thousands. The arrays run in parallel, one element
+// a fix, with -1 standing for a missing number and ” for a missing client
+// ID, since an array here can't hold NULL.
+//
 // client_id carries the offline client's own row identifier. Paired with
 // device_id it is what a retried batch conflicts on, so replaying a batch whose
 // response was lost cannot duplicate telemetry.
-func (q *Queries) CreateTrackingEvent(ctx context.Context, arg CreateTrackingEventParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, createTrackingEvent,
+func (q *Queries) CreateTrackingEvents(ctx context.Context, arg CreateTrackingEventsParams) error {
+	_, err := q.db.Exec(ctx, createTrackingEvents,
 		arg.TenantID,
-		arg.ShipmentID,
 		arg.DriverID,
-		arg.Longitude,
-		arg.Latitude,
-		arg.AccuracyMeters,
-		arg.SpeedKph,
-		arg.Heading,
-		arg.EventType,
-		arg.Status,
-		arg.Note,
-		arg.RecordedAt,
 		arg.DeviceID,
-		arg.BatteryLevel,
-		arg.ClientID,
+		arg.ShipmentIds,
+		arg.Longitudes,
+		arg.Latitudes,
+		arg.Accuracies,
+		arg.Speeds,
+		arg.Headings,
+		arg.Batteries,
+		arg.Recorded,
+		arg.ClientIds,
 	)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
+	return err
 }
 
 const deleteOldTrackingEvents = `-- name: DeleteOldTrackingEvents :exec
@@ -138,23 +143,21 @@ func (q *Queries) GetLatestDriverLocation(ctx context.Context, arg GetLatestDriv
 }
 
 const getLatestDriverLocations = `-- name: GetLatestDriverLocations :many
-SELECT DISTINCT ON (t.driver_id)
-       t.driver_id,
+SELECT p.driver_id,
        u.full_name AS driver_name,
        u.phone AS driver_phone,
-       ST_Y(t.coordinates)::float8 AS latitude,
-       ST_X(t.coordinates)::float8 AS longitude,
-       t.speed_kph, t.battery_level, t.recorded_at,
+       ST_Y(p.coordinates)::float8 AS latitude,
+       ST_X(p.coordinates)::float8 AS longitude,
+       p.speed_kph, p.battery_level, p.recorded_at,
        sm.last_sync_at, sm.tracking_paused,
        COALESCE(sm.power_saving, false)::bool AS power_saving
-FROM tracking_events t
-JOIN users u ON u.id = t.driver_id
-LEFT JOIN sync_metadata sm ON sm.driver_id = t.driver_id
-WHERE t.tenant_id = $1
-  AND t.driver_id IS NOT NULL
+FROM driver_positions p
+JOIN users u ON u.id = p.driver_id
+LEFT JOIN sync_metadata sm ON sm.driver_id = p.driver_id
+WHERE p.tenant_id = $1
   AND u.is_active
-  AND t.recorded_at > NOW() - INTERVAL '7 days'
-ORDER BY t.driver_id, t.recorded_at DESC
+  AND p.recorded_at > NOW() - INTERVAL '7 days'
+ORDER BY p.driver_id
 `
 
 type GetLatestDriverLocationsRow struct {
@@ -171,6 +174,7 @@ type GetLatestDriverLocationsRow struct {
 	PowerSaving    bool               `db:"power_saving" json:"power_saving"`
 }
 
+// The fleet map: where each active driver was last seen, within a week.
 func (q *Queries) GetLatestDriverLocations(ctx context.Context, tenantID pgtype.UUID) ([]GetLatestDriverLocationsRow, error) {
 	rows, err := q.db.Query(ctx, getLatestDriverLocations, tenantID)
 	if err != nil {
@@ -329,4 +333,42 @@ func (q *Queries) ListShipmentRoute(ctx context.Context, arg ListShipmentRoutePa
 		return nil, err
 	}
 	return items, nil
+}
+
+const setDriverPosition = `-- name: SetDriverPosition :exec
+INSERT INTO driver_positions (driver_id, tenant_id, coordinates, speed_kph, battery_level, recorded_at)
+VALUES (
+    $1, $2,
+    ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326),
+    $5, $6, $7
+)
+ON CONFLICT (driver_id) DO UPDATE
+SET tenant_id = EXCLUDED.tenant_id, coordinates = EXCLUDED.coordinates, speed_kph = EXCLUDED.speed_kph,
+    battery_level = EXCLUDED.battery_level, recorded_at = EXCLUDED.recorded_at
+WHERE EXCLUDED.recorded_at > driver_positions.recorded_at
+`
+
+type SetDriverPositionParams struct {
+	DriverID     pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	TenantID     pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Longitude    float64            `db:"longitude" json:"longitude"`
+	Latitude     float64            `db:"latitude" json:"latitude"`
+	SpeedKph     pgtype.Numeric     `db:"speed_kph" json:"speed_kph"`
+	BatteryLevel *int32             `db:"battery_level" json:"battery_level"`
+	RecordedAt   pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
+// Keeps the driver's newest position for the fleet map. An older fix,
+// from a phone sending what it saved while offline, changes nothing.
+func (q *Queries) SetDriverPosition(ctx context.Context, arg SetDriverPositionParams) error {
+	_, err := q.db.Exec(ctx, setDriverPosition,
+		arg.DriverID,
+		arg.TenantID,
+		arg.Longitude,
+		arg.Latitude,
+		arg.SpeedKph,
+		arg.BatteryLevel,
+		arg.RecordedAt,
+	)
+	return err
 }
