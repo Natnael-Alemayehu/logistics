@@ -381,6 +381,7 @@ type Tenant struct {
 	AlertOnDelivery       bool               `db:"alert_on_delivery" json:"alert_on_delivery"`
 	BillingAnchorDay      *int32             `db:"billing_anchor_day" json:"billing_anchor_day"`
 	RenewalCancelledAt    pgtype.Timestamptz `db:"renewal_cancelled_at" json:"renewal_cancelled_at"`
+	CustomerLanguage      string             `db:"customer_language" json:"customer_language"`
 }
 
 type TrackingEvent struct {

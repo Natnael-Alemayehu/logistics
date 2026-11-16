@@ -14,6 +14,7 @@ import (
 	"github.com/natnael-alemayehu/kiflet/internal/geo"
 	"github.com/natnael-alemayehu/kiflet/internal/model"
 	"github.com/natnael-alemayehu/kiflet/internal/service"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 )
 
 func (s *Server) landing(w http.ResponseWriter, r *http.Request) {
@@ -399,25 +400,32 @@ func (s *Server) trackForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/track/"+url.PathEscape(strings.ToUpper(n)), http.StatusSeeOther)
 		return
 	}
-	s.render(w, r, http.StatusOK, "public/track_form", s.view(w, r, "Track a shipment", "", nil))
+	lang := s.lang(w, r, "")
+	s.render(w, r, http.StatusOK, "public/track_form", s.customerView(w, r, lang, text.T(lang, "form.title"), nil))
 }
 
 func (s *Server) trackSubmit(w http.ResponseWriter, r *http.Request) {
 	n := strings.ToUpper(strings.Join(strings.Fields(r.PostFormValue("number")), ""))
 	if n == "" {
-		v := s.view(w, r, "Track a shipment", "", nil)
-		_ = s.formError(w, r, "public/track_form", v, &service.Error{Kind: service.KindInvalid, Field: "number", Message: "Enter your tracking number."})
+		lang := s.lang(w, r, "")
+		v := s.customerView(w, r, lang, text.T(lang, "form.title"), nil)
+		_ = s.formError(w, r, "public/track_form", v, &service.Error{
+			Kind: service.KindInvalid, Field: "number", Key: "error.number_required", Message: text.T(text.English, "error.number_required"),
+		})
 		return
 	}
 	http.Redirect(w, r, "/track/"+url.PathEscape(n), http.StatusSeeOther)
 }
 
 func (s *Server) trackPage(w http.ResponseWriter, r *http.Request) {
-	t, err := s.svc.Shipments.Track(r.Context(), chi.URLParam(r, "number"))
+	// The page is in the language the visitor chose, or else the one the
+	// shipment's company writes to its customers in.
+	t, err := s.svc.Shipments.Track(r.Context(), chi.URLParam(r, "number"), chosenLang(r))
 	if service.IsNotFound(err) {
-		v := s.view(w, r, "Track a shipment", "", nil)
+		lang := s.lang(w, r, "")
+		v := s.customerView(w, r, lang, text.T(lang, "form.title"), nil)
 		v.Form = url.Values{"number": {chi.URLParam(r, "number")}}
-		v.Errors["number"] = "We couldn't find that tracking number. Check it and try again."
+		v.Errors["number"] = text.T(lang, "error.number_unknown")
 		s.render(w, r, http.StatusNotFound, "public/track_form", v)
 		return
 	}
@@ -425,33 +433,38 @@ func (s *Server) trackPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	v := s.view(w, r, t.TrackingNumber, "", t)
+	v := s.customerView(w, r, s.lang(w, r, t.Lang), t.TrackingNumber, t)
 	s.render(w, r, http.StatusOK, "public/track", v)
 }
 
 const lookupCookie = "lookup"
 
 func (s *Server) trackPhonePage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, http.StatusOK, "public/track_phone", s.view(w, r, "Find my shipments", "", map[string]any{"Step": "phone"}))
+	s.render(w, r, http.StatusOK, "public/track_phone", s.lookupView(w, r, map[string]any{"Step": "phone"}))
+}
+
+func (s *Server) lookupView(w http.ResponseWriter, r *http.Request, data any) *View {
+	lang := s.lang(w, r, "")
+	return s.customerView(w, r, lang, text.T(lang, "phone.title"), data)
 }
 
 func (s *Server) trackPhoneRequest(w http.ResponseWriter, r *http.Request) {
-	p, err := s.svc.Shipments.RequestLookupCode(r.Context(), r.PostFormValue("phone"))
+	p, err := s.svc.Shipments.RequestLookupCode(r.Context(), r.PostFormValue("phone"), s.lang(w, r, ""))
 	if err != nil {
-		v := s.view(w, r, "Find my shipments", "", map[string]any{"Step": "phone"})
+		v := s.lookupView(w, r, map[string]any{"Step": "phone"})
 		if !s.formError(w, r, "public/track_phone", v, err) {
 			s.fail(w, r, err)
 		}
 		return
 	}
-	v := s.view(w, r, "Find my shipments", "", map[string]any{"Step": "code", "Phone": p})
+	v := s.lookupView(w, r, map[string]any{"Step": "code", "Phone": p})
 	s.render(w, r, http.StatusOK, "public/track_phone", v)
 }
 
 func (s *Server) trackPhoneVerify(w http.ResponseWriter, r *http.Request) {
 	token, err := s.svc.Shipments.VerifyLookupCode(r.Context(), r.PostFormValue("phone"), r.PostFormValue("code"))
 	if err != nil {
-		v := s.view(w, r, "Find my shipments", "", map[string]any{"Step": "code", "Phone": r.PostFormValue("phone")})
+		v := s.lookupView(w, r, map[string]any{"Step": "code", "Phone": r.PostFormValue("phone")})
 		if !s.formError(w, r, "public/track_phone", v, err) {
 			s.fail(w, r, err)
 		}
@@ -480,7 +493,8 @@ func (s *Server) trackMine(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	v := s.view(w, r, "Your shipments", "", map[string]any{"Phone": p, "Shipments": rows})
+	lang := s.lang(w, r, "")
+	v := s.customerView(w, r, lang, text.T(lang, "mine.title"), map[string]any{"Phone": p, "Shipments": rows})
 	s.render(w, r, http.StatusOK, "public/track_mine", v)
 }
 
@@ -494,16 +508,22 @@ func (s *Server) confirmPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	v := s.view(w, r, "Your delivery", "", map[string]any{"C": cv, "Token": chi.URLParam(r, "token")})
+	lang := s.lang(w, r, cv.Language)
+	v := s.customerView(w, r, lang, text.T(lang, "confirm.title"), map[string]any{"C": cv, "Token": chi.URLParam(r, "token")})
 	s.render(w, r, http.StatusOK, "public/confirm", v)
 }
 
 func (s *Server) confirmSubmit(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	ok := r.PostFormValue("answer") == "ok"
+	// The answer is in the language the page was in.
+	lang := chosenLang(r)
+	if cv, err := s.svc.Shipments.ByConfirmToken(r.Context(), token); err == nil {
+		lang = s.lang(w, r, cv.Language)
+	}
 	if err := s.svc.Shipments.CustomerRespond(r.Context(), token, ok, r.PostFormValue("feedback")); err != nil {
 		if de, isDomain := service.AsError(err); isDomain && de.Kind == service.KindInvalid {
-			s.setFlash(w, "error", de.Message)
+			s.setFlash(w, "error", message(lang, de))
 			http.Redirect(w, r, "/c/"+token+"#problem", http.StatusSeeOther)
 			return
 		}
@@ -511,9 +531,9 @@ func (s *Server) confirmSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok {
-		s.setFlash(w, "success", "Thank you for confirming.")
+		s.setFlash(w, "success", text.T(lang, "confirm.thanks"))
 	} else {
-		s.setFlash(w, "success", "Thank you. The company has been told and will contact you.")
+		s.setFlash(w, "success", text.T(lang, "confirm.thanks_problem"))
 	}
 	http.Redirect(w, r, "/c/"+token, http.StatusSeeOther)
 }

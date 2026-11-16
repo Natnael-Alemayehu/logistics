@@ -28,6 +28,7 @@ SET name = $2,
     sms_driver_on_assign = $13,
     tin = $14,
     alert_on_delivery = $15,
+    customer_language = $16,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;

@@ -4,6 +4,6 @@
   <p class="error-code">{{$d.Status}}</p>
   <h1>{{$d.Title}}</h1>
   <p class="muted">{{$d.Detail}}</p>
-  <p><a class="btn btn-primary" href="/">Home</a> <a class="btn" href="/track">Track a shipment</a></p>
+  <p><a class="btn btn-primary" href="/">{{.T "error.home"}}</a> <a class="btn" href="/track">{{.T "nav.track"}}</a></p>
 </section>
 {{end}}

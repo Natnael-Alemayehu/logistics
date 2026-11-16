@@ -15,6 +15,9 @@ type Error struct {
 	// Field names the input field at fault, when there is one, so a form can
 	// show the message next to it.
 	Field string
+	// Key is the message's key in internal/text, set on the errors a
+	// customer can meet, so that their pages can say it in Amharic.
+	Key string
 }
 
 func (e *Error) Error() string { return e.Message }

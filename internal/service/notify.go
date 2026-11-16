@@ -8,6 +8,7 @@ import (
 
 	"github.com/natnael-alemayehu/kiflet/internal/db"
 	"github.com/natnael-alemayehu/kiflet/internal/model"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 )
 
 // The texts customers and drivers receive. They are kept short — a single
@@ -33,8 +34,12 @@ func place(city *string, address string) string {
 	return address
 }
 
+// The customer's texts are written in the language the company chose for
+// its customers (tenants.customer_language), from the catalogue in
+// internal/text.
+
 func (s *ShipmentService) customerCreatedText(t db.Tenant, sh db.Shipment) string {
-	return fmt.Sprintf("%s: shipment %s from %s to %s is booked. Track it: %s",
+	return text.T(t.CustomerLanguage, "sms.created",
 		t.Name, sh.TrackingNumber, place(sh.OriginCity, sh.OriginAddress),
 		place(sh.DestinationCity, sh.DestinationAddress), s.trackURL(sh))
 }
@@ -42,6 +47,7 @@ func (s *ShipmentService) customerCreatedText(t db.Tenant, sh db.Shipment) strin
 // customerStatusText is the customer's message for a status change, if the
 // tenant sends one for it.
 func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status string, firstDeparture bool, reason, recipient string) (string, bool) {
+	lang := t.CustomerLanguage
 	dest := place(sh.DestinationCity, sh.DestinationAddress)
 	switch status {
 	case model.StatusInTransit:
@@ -50,29 +56,27 @@ func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status
 		}
 		eta := ""
 		if sh.EstimatedDelivery.Valid {
-			eta = " Expected " + s.formatWhen(sh.EstimatedDelivery.Time) + "."
+			eta = text.T(lang, "sms.eta", text.ShortWhen(lang, sh.EstimatedDelivery.Time.In(s.cfg.Location)))
 		}
-		return fmt.Sprintf("%s: shipment %s is on its way to %s.%s Track: %s",
-			t.Name, sh.TrackingNumber, dest, eta, s.trackURL(sh)), true
+		return text.T(lang, "sms.on_way", t.Name, sh.TrackingNumber, dest, eta, s.trackURL(sh)), true
 	case model.StatusDelayed:
 		if !t.SmsOnDelayed {
 			return "", false
 		}
-		return fmt.Sprintf("%s: shipment %s is delayed (%s). We'll update you. Track: %s",
-			t.Name, sh.TrackingNumber, strings.ToLower(model.ReasonLabel(reason)), s.trackURL(sh)), true
+		return text.T(lang, "sms.delayed",
+			t.Name, sh.TrackingNumber, strings.ToLower(text.Reason(lang, reason)), s.trackURL(sh)), true
 	case model.StatusArrived:
 		if !t.SmsOnArrived {
 			return "", false
 		}
-		return fmt.Sprintf("%s: shipment %s has arrived in %s. The driver will contact you for handover.",
-			t.Name, sh.TrackingNumber, dest), true
+		return text.T(lang, "sms.arrived", t.Name, sh.TrackingNumber, dest), true
 	case model.StatusDelivered:
 		if !t.SmsOnDelivered {
 			return "", false
 		}
 		who := ""
 		if recipient != "" {
-			who = " to " + recipient
+			who = text.T(lang, "sms.delivered_to", recipient)
 		}
 		at := s.now()
 		if sh.ActualDelivery.Valid {
@@ -82,8 +86,8 @@ func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status
 		if sh.ConfirmToken != nil {
 			link = s.confirmURL(*sh.ConfirmToken)
 		}
-		return fmt.Sprintf("%s: shipment %s was delivered%s on %s. Confirm receipt or report a problem: %s",
-			t.Name, sh.TrackingNumber, who, s.formatWhen(at), link), true
+		return text.T(lang, "sms.delivered",
+			t.Name, sh.TrackingNumber, who, text.ShortWhen(lang, at.In(s.cfg.Location)), link), true
 	}
 	return "", false
 }
@@ -91,9 +95,9 @@ func (s *ShipmentService) customerStatusText(t db.Tenant, sh db.Shipment, status
 func (s *ShipmentService) customerCancelledText(t db.Tenant, sh db.Shipment) string {
 	contact := ""
 	if t.ContactPhone != nil && *t.ContactPhone != "" {
-		contact = " Questions: " + *t.ContactPhone
+		contact = text.T(t.CustomerLanguage, "sms.questions", *t.ContactPhone)
 	}
-	return fmt.Sprintf("%s: shipment %s has been cancelled.%s", t.Name, sh.TrackingNumber, contact)
+	return text.T(t.CustomerLanguage, "sms.cancelled", t.Name, sh.TrackingNumber, contact)
 }
 
 func (s *ShipmentService) notifyCustomer(ctx context.Context, q *db.Queries, after *afterCommit, t db.Tenant, sh db.Shipment, body string) {

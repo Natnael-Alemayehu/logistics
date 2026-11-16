@@ -1,30 +1,30 @@
 {{define "bodyclass"}}narrow{{end}}
 {{define "content"}}{{$e := .Errors}}
 <section class="card auth">
-  <h1>Find my shipments</h1>
+  <h1>{{.T "phone.title"}}</h1>
   {{if eq .Data.Step "code"}}
-  <p class="muted">If {{maskPhone .Data.Phone}} has shipments with us, a 6-digit code is on its way by SMS.</p>
+  <p class="muted">{{.T "phone.code_sent" (maskPhone .Data.Phone)}}</p>
   {{template "form-error" .}}
   <form method="post" action="/track/phone/verify" class="stack" novalidate>
     <input type="hidden" name="phone" value="{{.Data.Phone}}">
-    <label>Code
+    <label>{{.T "phone.code"}}
       <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required autofocus class="mono code-input" {{if index $e "code"}}aria-invalid="true"{{end}}>
       {{template "field-error" (index $e "code")}}
     </label>
-    <button class="btn btn-primary btn-block" type="submit">Show my shipments</button>
+    <button class="btn btn-primary btn-block" type="submit">{{.T "phone.show"}}</button>
   </form>
-  <p class="small"><a href="/track/phone">Use a different number</a></p>
+  <p class="small"><a href="/track/phone">{{.T "phone.other"}}</a></p>
   {{else}}
-  <p class="muted">Enter the phone number the company has for you. We'll text you a code.</p>
+  <p class="muted">{{.T "phone.help"}}</p>
   {{template "form-error" .}}
   <form method="post" action="/track/phone" class="stack" novalidate>
-    <label>Mobile number
+    <label>{{.T "phone.number"}}
       <input name="phone" type="tel" inputmode="tel" value="{{field .Form "phone" ""}}" placeholder="09… or +251…" autocomplete="tel" required autofocus {{if index $e "phone"}}aria-invalid="true"{{end}}>
       {{template "field-error" (index $e "phone")}}
     </label>
-    <button class="btn btn-primary btn-block" type="submit">Send code</button>
+    <button class="btn btn-primary btn-block" type="submit">{{.T "phone.send"}}</button>
   </form>
-  <p class="small"><a href="/track">I have a tracking number</a></p>
+  <p class="small"><a href="/track">{{.T "phone.have_number"}}</a></p>
   {{end}}
 </section>
 {{end}}

@@ -1,5 +1,5 @@
 {{define "public"}}<!doctype html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,9 +16,10 @@
   <a class="brand" href="/">{{template "logo"}}<span>{{.App.Name}}</span></a>
   <span class="spacer"></span>
   <nav class="public-nav" aria-label="Site">
-    <a href="/track">Track a shipment</a>
-    {{if .Me}}<a class="btn btn-sm" href="/app">Open dashboard</a>
-    {{else}}<a href="/login">Sign in</a>{{end}}
+    <a href="/track">{{.T "nav.track"}}</a>
+    {{if .Switch}}{{range .OtherLangs}}<a href="{{$.SwitchPath}}?lang={{.Code}}" lang="{{.Code}}" hreflang="{{.Code}}" rel="nofollow">{{.Name}}</a>{{end}}{{end}}
+    {{if .Me}}<a class="btn btn-sm" href="/app">{{.T "nav.dashboard"}}</a>
+    {{else}}<a href="/login">{{.T "nav.signin"}}</a>{{end}}
   </nav>
 </header>
 <main id="main" class="public-main">
@@ -26,7 +27,7 @@
   {{template "content" .}}
 </main>
 <footer class="public-foot">
-  <p>{{.App.Name}} · Built for Ethiopian freight · <a href="/track">Track</a> · <a href="/driver/">Driver app</a></p>
+  <p>{{.App.Name}} · {{.T "foot.tagline"}} · <a href="/track">{{.T "foot.track"}}</a> · <a href="/driver/">{{.T "foot.driver"}}</a></p>
 </footer>
 {{block "scripts" .}}{{end}}
 </body>

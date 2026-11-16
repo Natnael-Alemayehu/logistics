@@ -1,0 +1,134 @@
+package text
+
+// The English words. A key ending in _html holds markup of ours, and its
+// arguments are escaped before they are filled in.
+var en = map[string]string{
+	// The page around every public page.
+	"nav.track":     "Track a shipment",
+	"nav.signin":    "Sign in",
+	"nav.dashboard": "Open dashboard",
+	"foot.tagline":  "Built for Ethiopian freight",
+	"foot.track":    "Track",
+	"foot.driver":   "Driver app",
+
+	// A shipment's state as a customer is told it.
+	"status.pending":    "Booked",
+	"status.assigned":   "Preparing",
+	"status.in_transit": "In transit",
+	"status.delayed":    "Delayed",
+	"status.issue":      "Delayed",
+	"status.arrived":    "Arrived",
+	"status.delivered":  "Delivered",
+	"status.cancelled":  "Cancelled",
+
+	"step.booked":     "Booked",
+	"step.preparing":  "Preparing",
+	"step.on_the_way": "On the way",
+	"step.arrived":    "Arrived",
+	"step.delivered":  "Delivered",
+
+	"event.booked":    "Shipment booked",
+	"event.assigned":  "Driver assigned",
+	"event.confirmed": "Receipt confirmed by customer",
+	"event.contact":   "Contact %s for details",
+
+	"place.near":    "near %s",
+	"place.km_from": "%[1]d km from %[2]s",
+	"place.on_road": "on the road",
+
+	"ago.now":       "just now",
+	"ago.minutes":   "%d min ago",
+	"ago.hours":     "%d h ago",
+	"ago.yesterday": "yesterday",
+	"ago.days":      "%d days ago",
+
+	// The tracking page.
+	"track.delivered":           "Delivered %s",
+	"track.confirmed":           "receipt confirmed",
+	"track.cancelled":           "This shipment was cancelled.",
+	"track.cancelled_call_html": `Questions? Call <a href="%[1]s">%[2]s</a>.`,
+	"track.expected":            "Expected %s",
+	"track.late":                "running late",
+	"track.progress":            "Progress",
+	"track.last_seen_html":      "Last seen <strong>%[1]s</strong>, %[2]s.",
+	"track.map_last_seen":       "Last seen %s",
+	"track.updates":             "Updates",
+	"track.questions_html":      `Questions about this delivery? Call %[1]s on <a href="%[2]s">%[3]s</a>.`,
+	"track.another":             "Track another shipment",
+	"track.all_mine":            "All my shipments",
+
+	// Looking a shipment up by its number.
+	"form.title":  "Track a shipment",
+	"form.help":   "Enter the tracking number from your SMS or waybill.",
+	"form.number": "Tracking number",
+	"form.track":  "Track",
+	"form.lost":   "Lost the number? Find your shipments with your phone number",
+
+	// Looking shipments up by phone.
+	"phone.title":       "Find my shipments",
+	"phone.code_sent":   "If %s has shipments with us, a 6-digit code is on its way by SMS.",
+	"phone.code":        "Code",
+	"phone.show":        "Show my shipments",
+	"phone.other":       "Use a different number",
+	"phone.help":        "Enter the phone number the company has for you. We'll text you a code.",
+	"phone.number":      "Mobile number",
+	"phone.send":        "Send code",
+	"phone.have_number": "I have a tracking number",
+
+	"mine.title":   "Your shipments",
+	"mine.sent_to": "Sent to %s in the last 90 days.",
+	"mine.booked":  "booked %s",
+	"mine.none":    "No shipments found for this number.",
+
+	// The confirmation page.
+	"confirm.title":            "Your delivery",
+	"confirm.delivered":        "Delivered",
+	"confirm.received_by":      "Received by",
+	"confirm.signature":        "Signature",
+	"confirm.photo":            "Delivery photo %d",
+	"confirm.delivered_at":     "Delivered %s.",
+	"confirm.problem_reported": "You reported a problem %[1]s. %[2]s has been told and will contact you.",
+	"confirm.confirmed":        "You confirmed receipt %s. Thank you.",
+	"confirm.yes":              "Yes, I received it in good order",
+	"confirm.problem":          "There is a problem",
+	"confirm.whats_wrong":      "What's wrong?",
+	"confirm.placeholder":      "e.g. 3 bags missing, one carton damaged",
+	"confirm.report":           "Report the problem",
+	"confirm.status_html":      "This shipment is <strong>%s</strong>.",
+	"confirm.full":             "See the full tracking page",
+	"confirm.thanks":           "Thank you for confirming.",
+	"confirm.thanks_problem":   "Thank you. The company has been told and will contact you.",
+
+	// What can go wrong on those pages.
+	"error.home":                "Home",
+	"error.number_required":     "Enter your tracking number.",
+	"error.number_unknown":      "We couldn't find that tracking number. Check it and try again.",
+	"error.link_gone":           "This link has expired or is not valid.",
+	"error.feedback_required":   "Tell us what went wrong.",
+	"error.phone":               "Enter an Ethiopian mobile number, for example 0911234567.",
+	"error.code_invalid":        "That code is wrong or has expired. Request a new one.",
+	"error.code_too_many":       "Too many codes requested for this number. Try again in an hour.",
+	"error.code_attempts":       "Too many wrong attempts. Request a new code.",
+	"error.code_budget":         "We can't send codes right now. Please try again in a few hours.",
+	"error.not_found":           "Not found",
+	"error.failed":              "That didn't work",
+	"error.page_missing":        "Page not found",
+	"error.page_missing_detail": "The page you asked for doesn't exist or has moved.",
+	"error.internal":            "Something went wrong",
+	"error.internal_detail":     "We couldn't complete that. Please try again.",
+	"error.slow_down":           "Slow down",
+	"error.slow_down_detail":    "Too many requests from your network. Wait a minute and try again.",
+
+	// The texts. Each names the company first, since the sender ID is the
+	// platform's, and is kept to as few parts as it can be.
+	"sms.created":      "%[1]s: shipment %[2]s from %[3]s to %[4]s is booked. Track it: %[5]s",
+	"sms.on_way":       "%[1]s: shipment %[2]s is on its way to %[3]s.%[4]s Track: %[5]s",
+	"sms.eta":          " Expected %s.",
+	"sms.delayed":      "%[1]s: shipment %[2]s is delayed (%[3]s). We'll update you. Track: %[4]s",
+	"sms.arrived":      "%[1]s: shipment %[2]s has arrived in %[3]s. The driver will contact you for handover.",
+	"sms.delivered":    "%[1]s: shipment %[2]s was delivered%[3]s on %[4]s. Confirm receipt or report a problem: %[5]s",
+	"sms.delivered_to": " to %s",
+	"sms.cancelled":    "%[1]s: shipment %[2]s has been cancelled.%[3]s",
+	"sms.questions":    " Questions: %s",
+	"sms.lookup_code":  "%[1]s: your code to see your shipments is %[2]s. It expires in 10 minutes.",
+}

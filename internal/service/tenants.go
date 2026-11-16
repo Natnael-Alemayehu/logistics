@@ -15,6 +15,7 @@ import (
 	"github.com/natnael-alemayehu/kiflet/internal/geo"
 	"github.com/natnael-alemayehu/kiflet/internal/model"
 	"github.com/natnael-alemayehu/kiflet/internal/phone"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 	"github.com/natnael-alemayehu/kiflet/pkg/hash"
 )
 
@@ -350,6 +351,8 @@ type SettingsInput struct {
 	SMSDriverOnAssign  bool
 	// AlertOnDelivery raises an alert for every delivery.
 	AlertOnDelivery bool
+	// CustomerLanguage is the language customers are written to in.
+	CustomerLanguage string
 }
 
 // UpdateSettings saves the company profile and notification preferences.
@@ -390,12 +393,20 @@ func (s *TenantService) UpdateSettings(ctx context.Context, p *Principal, in Set
 	if err != nil {
 		return db.Tenant{}, err
 	}
+	// A form without the field leaves the language as it is.
+	if in.CustomerLanguage == "" {
+		in.CustomerLanguage = cur.CustomerLanguage
+	}
+	if !text.Valid(in.CustomerLanguage) {
+		return db.Tenant{}, invalid("customer_language", "Choose English or Amharic.")
+	}
 	t, err := s.q.UpdateTenantSettings(ctx, db.UpdateTenantSettingsParams{
 		ID: p.TenantID, Name: name, ContactPhone: contactPhone, ContactEmail: contactEmail,
 		RegionCity: city.Name, MaxActivePerDriver: int32(in.MaxActivePerDriver),
 		SmsOnCreated: in.SMSOnCreated, SmsOnDispatched: in.SMSOnDispatched, SmsOnArrived: in.SMSOnArrived,
 		SmsOnDelivered: in.SMSOnDelivered, SmsOnCancelled: in.SMSOnCancelled, SmsOnDelayed: in.SMSOnDelayed,
 		SmsDriverOnAssign: in.SMSDriverOnAssign, Tin: toText(tin), AlertOnDelivery: in.AlertOnDelivery,
+		CustomerLanguage: in.CustomerLanguage,
 	})
 	if err != nil {
 		return t, err

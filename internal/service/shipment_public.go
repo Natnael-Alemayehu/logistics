@@ -13,6 +13,7 @@ import (
 	"github.com/natnael-alemayehu/kiflet/internal/geo"
 	"github.com/natnael-alemayehu/kiflet/internal/model"
 	"github.com/natnael-alemayehu/kiflet/internal/phone"
+	"github.com/natnael-alemayehu/kiflet/internal/text"
 )
 
 // PublicTracking is what anyone holding a tracking number may see (FR-029).
@@ -36,6 +37,9 @@ type PublicTracking struct {
 	Steps          []TrackingStep
 	Timeline       []PublicEvent
 	Confirmed      bool
+	// Lang is the language the labels are in: the one asked for, or the
+	// one the company writes to its customers in.
+	Lang string
 }
 
 // PublicPosition is a coarse last-known location.
@@ -60,26 +64,14 @@ type PublicEvent struct {
 	Detail string
 }
 
-// customerStatusLabel softens internal states for customers: they see a
-// problem on the road as a delay while the company deals with it.
-func customerStatusLabel(status string) string {
-	switch status {
-	case model.StatusIssue:
-		return "Delayed"
-	case model.StatusAssigned:
-		return "Preparing"
-	case model.StatusPending:
-		return "Booked"
-	}
-	return model.StatusLabel(status)
-}
-
-// Track looks a shipment up by its tracking number.
-func (s *ShipmentService) Track(ctx context.Context, number string) (*PublicTracking, error) {
+// Track looks a shipment up by its tracking number. Its labels are in lang,
+// or, when lang is empty, in the language the company writes to its
+// customers in.
+func (s *ShipmentService) Track(ctx context.Context, number, lang string) (*PublicTracking, error) {
 	number = strings.ToUpper(strings.TrimSpace(number))
 	sh, err := s.q.GetShipmentByTrackingNumber(ctx, number)
 	if isNoRows(err) {
-		return nil, notFound("We couldn't find that tracking number. Check it and try again.")
+		return nil, &Error{Kind: KindNotFound, Key: "error.number_unknown", Message: text.T(text.English, "error.number_unknown")}
 	}
 	if err != nil {
 		return nil, err
@@ -88,11 +80,14 @@ func (s *ShipmentService) Track(ctx context.Context, number string) (*PublicTrac
 	if err != nil {
 		return nil, err
 	}
+	if !text.Valid(lang) {
+		lang = tenant.CustomerLanguage
+	}
 
 	t := &PublicTracking{
 		TrackingNumber: sh.TrackingNumber,
 		Status:         sh.Status,
-		StatusLabel:    customerStatusLabel(sh.Status),
+		StatusLabel:    text.Status(lang, sh.Status),
 		CompanyName:    tenant.Name,
 		CompanyPhone:   deref(tenant.ContactPhone),
 		Origin:         place(sh.OriginCity, sh.OriginAddress),
@@ -100,6 +95,7 @@ func (s *ShipmentService) Track(ctx context.Context, number string) (*PublicTrac
 		ETA:            timePtr(sh.EstimatedDelivery),
 		DeliveredAt:    timePtr(sh.ActualDelivery),
 		Confirmed:      sh.CustomerConfirmedAt.Valid,
+		Lang:           lang,
 	}
 	// The map shows towns, not the customer's gate.
 	if o, ok := geo.Lookup(deref(sh.OriginCity)); ok {
@@ -118,11 +114,11 @@ func (s *ShipmentService) Track(ctx context.Context, number string) (*PublicTrac
 			TenantID: sh.TenantID, ShipmentID: sh.ID, DriverID: sh.DriverID, WindowStart: toTimestamp(start),
 		})
 		if err == nil {
-			t.LastSeen = coarsePosition(pos.Latitude, pos.Longitude, pos.RecordedAt.Time)
+			t.LastSeen = coarsePosition(lang, pos.Latitude, pos.Longitude, pos.RecordedAt.Time)
 		}
 	}
 
-	t.Steps = trackingSteps(sh.Status)
+	t.Steps = trackingSteps(lang, sh.Status)
 
 	events, err := s.q.ListPublicShipmentEvents(ctx, sh.ID)
 	if err != nil {
@@ -132,23 +128,23 @@ func (s *ShipmentService) Track(ctx context.Context, number string) (*PublicTrac
 		pe := PublicEvent{At: e.OccurredAt.Time}
 		switch e.EventType {
 		case "created":
-			pe.Label = "Shipment booked"
+			pe.Label = text.T(lang, "event.booked")
 		case "assigned":
-			pe.Label = "Driver assigned"
+			pe.Label = text.T(lang, "event.assigned")
 		case "customer_confirmed":
-			pe.Label = "Receipt confirmed by customer"
+			pe.Label = text.T(lang, "event.confirmed")
 		case "status_changed", "status_updated":
 			to := deref(e.ToStatus)
-			pe.Label = customerStatusLabel(to)
+			pe.Label = text.Status(lang, to)
 			if to == model.StatusDelayed && e.Reason != nil {
-				pe.Detail = model.ReasonLabel(*e.Reason)
+				pe.Detail = text.Reason(lang, *e.Reason)
 			}
 			if to == model.StatusCancelled {
-				pe.Detail = "Contact " + tenant.Name + " for details"
+				pe.Detail = text.T(lang, "event.contact", tenant.Name)
 			}
 			if e.Latitude != nil && e.Longitude != nil && to != model.StatusDelivered {
 				if near, d := geo.Nearest(*e.Latitude, *e.Longitude); d < 50000 {
-					pe.Detail = strings.TrimPrefix(strings.Join([]string{pe.Detail, "near " + near.Name}, " · "), " · ")
+					pe.Detail = strings.TrimPrefix(strings.Join([]string{pe.Detail, text.T(lang, "place.near", near.Name)}, " · "), " · ")
 				}
 			}
 		default:
@@ -159,7 +155,7 @@ func (s *ShipmentService) Track(ctx context.Context, number string) (*PublicTrac
 	return t, nil
 }
 
-func coarsePosition(lat, lng float64, at time.Time) *PublicPosition {
+func coarsePosition(lang string, lat, lng float64, at time.Time) *PublicPosition {
 	p := &PublicPosition{
 		Lat: math.Round(lat*20) / 20, // ~5 km
 		Lng: math.Round(lng*20) / 20,
@@ -168,17 +164,17 @@ func coarsePosition(lat, lng float64, at time.Time) *PublicPosition {
 	near, d := geo.Nearest(lat, lng)
 	switch {
 	case d < 10000:
-		p.Near = "near " + near.Name
+		p.Near = text.T(lang, "place.near", near.Name)
 	case d < 80000:
-		p.Near = fmt.Sprintf("%.0f km from %s", d/1000, near.Name)
+		p.Near = text.T(lang, "place.km_from", int(math.Round(d/1000)), near.Name)
 	default:
-		p.Near = "on the road"
+		p.Near = text.T(lang, "place.on_road")
 	}
 	return p
 }
 
-func trackingSteps(status string) []TrackingStep {
-	labels := []string{"Booked", "Preparing", "On the way", "Arrived", "Delivered"}
+func trackingSteps(lang, status string) []TrackingStep {
+	labels := []string{"step.booked", "step.preparing", "step.on_the_way", "step.arrived", "step.delivered"}
 	reached := map[string]int{
 		model.StatusPending: 0, model.StatusAssigned: 1,
 		model.StatusInTransit: 2, model.StatusDelayed: 2, model.StatusIssue: 2,
@@ -190,7 +186,7 @@ func trackingSteps(status string) []TrackingStep {
 	}
 	steps := make([]TrackingStep, len(labels))
 	for i, l := range labels {
-		steps[i] = TrackingStep{Label: l, Done: i <= at, Current: i == at}
+		steps[i] = TrackingStep{Label: text.T(lang, l), Done: i <= at, Current: i == at}
 	}
 	return steps
 }
@@ -206,12 +202,14 @@ const ConfirmLinkTTL = 30 * 24 * time.Hour
 type ConfirmView struct {
 	Shipment    db.Shipment
 	CompanyName string
-	POD         *db.GetPODByShipmentIDRow
+	// Language is the one the company writes to its customers in.
+	Language string
+	POD      *db.GetPODByShipmentIDRow
 }
 
 // ByConfirmToken loads the shipment a confirmation link refers to.
 func (s *ShipmentService) ByConfirmToken(ctx context.Context, token string) (*ConfirmView, error) {
-	gone := notFound("This link has expired or is not valid.")
+	gone := &Error{Kind: KindNotFound, Key: "error.link_gone", Message: text.T(text.English, "error.link_gone")}
 	if len(token) < 20 {
 		return nil, gone
 	}
@@ -229,7 +227,7 @@ func (s *ShipmentService) ByConfirmToken(ctx context.Context, token string) (*Co
 	if err != nil {
 		return nil, err
 	}
-	v := &ConfirmView{Shipment: sh, CompanyName: tenant.Name}
+	v := &ConfirmView{Shipment: sh, CompanyName: tenant.Name, Language: tenant.CustomerLanguage}
 	if pod, err := s.q.GetPODByShipmentID(ctx, db.GetPODByShipmentIDParams{ShipmentID: sh.ID, TenantID: sh.TenantID}); err == nil {
 		v.POD = &pod
 	}
@@ -245,7 +243,7 @@ func (s *ShipmentService) CustomerRespond(ctx context.Context, token string, ok 
 	}
 	feedback = strings.TrimSpace(truncate(feedback, 1000))
 	if !ok && feedback == "" {
-		return invalid("feedback", "Tell us what went wrong.")
+		return &Error{Kind: KindInvalid, Field: "feedback", Key: "error.feedback_required", Message: text.T(text.English, "error.feedback_required")}
 	}
 	sh := v.Shipment
 	a := Actor{TenantID: sh.TenantID, Name: sh.CustomerName, Source: SourceCustomer}
@@ -277,13 +275,16 @@ func (s *ShipmentService) CustomerRespond(ctx context.Context, token string, ok 
 // the shipments were booked under.
 // ---------------------------------------------------------------------------
 
+var errLookupPhone = &Error{Kind: KindInvalid, Field: "phone", Key: "error.phone", Message: text.T(text.English, "error.phone")}
+
 // RequestLookupCode texts a code to a phone that has shipments. It answers
 // the same whether or not any exist, limit included, so the form reveals
-// nothing about a number.
-func (s *ShipmentService) RequestLookupCode(ctx context.Context, rawPhone string) (string, error) {
+// nothing about a number. The text is in lang, the language of the page
+// that asked.
+func (s *ShipmentService) RequestLookupCode(ctx context.Context, rawPhone, lang string) (string, error) {
 	p, err := phone.Normalize(rawPhone)
 	if err != nil {
-		return "", invalid("phone", err.Error())
+		return "", errLookupPhone
 	}
 	rows, err := s.q.ListShipmentsByCustomerPhone(ctx, p)
 	if err != nil {
@@ -291,13 +292,13 @@ func (s *ShipmentService) RequestLookupCode(ctx context.Context, rawPhone string
 	}
 	// A number without shipments gets no text, but its code is recorded all
 	// the same, so it reaches the hourly limit like any other number.
-	var text func(string) string
+	var body func(string) string
 	if len(rows) > 0 {
-		text = func(code string) string {
-			return fmt.Sprintf("%s: your code to see your shipments is %s. It expires in 10 minutes.", s.cfg.AppName, code)
+		body = func(code string) string {
+			return text.T(lang, "sms.lookup_code", s.cfg.AppName, code)
 		}
 	}
-	return p, s.issueCode(ctx, toUUID(""), p, codePurposeTrackLookup, text)
+	return p, s.issueCode(ctx, toUUID(""), p, codePurposeTrackLookup, body)
 }
 
 // VerifyLookupCode checks the code and returns a token proving the phone was
@@ -305,7 +306,7 @@ func (s *ShipmentService) RequestLookupCode(ctx context.Context, rawPhone string
 func (s *ShipmentService) VerifyLookupCode(ctx context.Context, rawPhone, code string) (string, error) {
 	p, err := phone.Normalize(rawPhone)
 	if err != nil {
-		return "", invalid("phone", err.Error())
+		return "", errLookupPhone
 	}
 	if err := s.checkCode(ctx, p, codePurposeTrackLookup, strings.TrimSpace(code)); err != nil {
 		return "", err

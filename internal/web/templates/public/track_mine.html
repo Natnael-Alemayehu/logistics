@@ -1,7 +1,7 @@
 {{define "content"}}
 <section class="track">
-  <h1>Your shipments</h1>
-  <p class="muted">Sent to {{maskPhone .Data.Phone}} in the last 90 days.</p>
+  <h1>{{.T "mine.title"}}</h1>
+  <p class="muted">{{.T "mine.sent_to" (maskPhone .Data.Phone)}}</p>
   {{if .Data.Shipments}}
   <ul class="ship-cards">
     {{range .Data.Shipments}}
@@ -9,14 +9,14 @@
       <a href="/track/{{.TrackingNumber}}" class="ship-card">
         <span class="mono">{{.TrackingNumber}}</span>
         <span>{{str .OriginCity}} → {{str .DestinationCity}}</span>
-        <span class="muted small">{{.CompanyName}} · booked {{date .CreatedAt}}</span>
-        <span>{{template "status" .Status}}</span>
+        <span class="muted small">{{.CompanyName}} · {{$.T "mine.booked" ($.Date .CreatedAt)}}</span>
+        <span><span class="badge s-{{if eq .Status "issue"}}delayed{{else}}{{.Status}}{{end}}">{{$.Status .Status}}</span></span>
       </a>
     </li>
     {{end}}
   </ul>
   {{else}}
-  <div class="card empty"><p>No shipments found for this number.</p></div>
+  <div class="card empty"><p>{{.T "mine.none"}}</p></div>
   {{end}}
 </section>
 {{end}}

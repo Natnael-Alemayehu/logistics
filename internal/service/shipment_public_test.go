@@ -8,11 +8,11 @@ import (
 )
 
 func TestTrackingSteps(t *testing.T) {
-	steps := trackingSteps(model.StatusArrived)
+	steps := trackingSteps("en", model.StatusArrived)
 	if !steps[3].Current || !steps[2].Done || steps[4].Done {
 		t.Errorf("arrived steps = %+v", steps)
 	}
-	for _, s := range trackingSteps(model.StatusCancelled) {
+	for _, s := range trackingSteps("en", model.StatusCancelled) {
 		if s.Done {
 			t.Error("a cancelled shipment has no progress")
 		}
@@ -20,7 +20,7 @@ func TestTrackingSteps(t *testing.T) {
 }
 
 func TestCoarsePositionHidesExactLocation(t *testing.T) {
-	p := coarsePosition(8.5432, 39.2701, time.Now())
+	p := coarsePosition("en", 8.5432, 39.2701, time.Now())
 	if p.Near != "near Adama" {
 		t.Errorf("near = %q, want %q", p.Near, "near Adama")
 	}

@@ -1,15 +1,15 @@
 {{define "bodyclass"}}narrow{{end}}
 {{define "content"}}{{$e := .Errors}}
 <section class="card auth">
-  <h1>Track a shipment</h1>
-  <p class="muted">Enter the tracking number from your SMS or waybill.</p>
+  <h1>{{.T "form.title"}}</h1>
+  <p class="muted">{{.T "form.help"}}</p>
   <form method="post" action="/track" class="stack" novalidate>
-    <label>Tracking number
+    <label>{{.T "form.number"}}
       <input name="number" value="{{field .Form "number" ""}}" placeholder="ET-20261028-…" autocapitalize="characters" autocomplete="off" required autofocus class="mono" {{if index $e "number"}}aria-invalid="true"{{end}}>
       {{template "field-error" (index $e "number")}}
     </label>
-    <button class="btn btn-primary btn-block" type="submit">Track</button>
+    <button class="btn btn-primary btn-block" type="submit">{{.T "form.track"}}</button>
   </form>
-  <p class="small"><a href="/track/phone">Lost the number? Find your shipments with your phone number</a></p>
+  <p class="small"><a href="/track/phone">{{.T "form.lost"}}</a></p>
 </section>
 {{end}}
