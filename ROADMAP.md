@@ -4,11 +4,9 @@ What to do next, in order. Written on 2026-11-14 from a survey of the
 repository at `f540720`. Tick the boxes as work lands, and delete a section
 once it is done: this file should only ever hold what is still ahead.
 
-1. [Left from v0.9.0](#left-from-v090): two checks after the history
-   rewrite.
-2. [Finish the rename](#finish-the-rename): the checks and registrations
+1. [Finish the rename](#finish-the-rename): the checks and registrations
    that make the name final.
-3. [Toward the first paying customer](#toward-the-first-paying-customer).
+2. [Toward the first paying customer](#toward-the-first-paying-customer).
 
 ## Where things stand
 
@@ -31,15 +29,6 @@ once it is done: this file should only ever hold what is still ahead.
 - The product and the repository were renamed Kiflet on 2026-11-15. The
   checks and registrations that make the name final are still open: see
   [Finish the rename](#finish-the-rename).
-
-## Left from v0.9.0
-
-- [x] On 2026-11-16 or later, check that GitHub's contributor list no
-      longer shows Claude. GitHub caches the list. Checked on 2026-11-16:
-      the API lists one contributor, `Natnael-Alemayehu`, anonymous ones
-      included.
-- [ ] Once the new history has been looked over, delete the mirror backup
-      taken before the rewrite.
 
 ## Finish the rename
 
@@ -150,15 +139,16 @@ In order. The first two can run side by side.
 4. **A pilot with one trucking company**, paying by bank transfer. Before
    it starts, production's backups go off the machine: choose the bucket's
    provider, make two age keys held by two people, fill in `backup.env`,
-   and run the drill in `docs/deploy.md` once. Everything after this point
+   and run the drill in `docs/deploy.md` once. Decide whether to turn on
+   `WAL_ARCHIVE` and add `ship-wal.sh` to cron. Everything after this point
    should be reordered by what the pilot shows.
 5. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-6. **Later:** point-in-time recovery (WAL archiving, the rest of O1) if a
-   pilot can't afford to lose a day. The public API and webhooks (FR-046,
-   FR-047) are built, and the app can run as two instances (O4,
-   `APP_REPLICAS`).
+6. **Built ahead of need:** the public API and webhooks (FR-046, FR-047),
+   two app instances (O4, `APP_REPLICAS`) and restoring to the minute
+   (`WAL_ARCHIVE`, the rest of O1). Turn the last two on for the pilot if
+   it can't afford a restart's gap or a lost day.
 
 ## Decided, and when to revisit
 

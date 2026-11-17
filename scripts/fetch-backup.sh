@@ -7,6 +7,9 @@
 #   scripts/fetch-backup.sh                    # the newest
 #   scripts/fetch-backup.sh 20261104_020000    # kiflet_20261104_020000…
 #
+# With WAL archiving, it also fetches the base backup made at that time and
+# the bucket's WAL (into BACKUP_DIR/wal), for scripts/restore-pitr.sh.
+#
 # The files go to /var/backups/kiflet (BACKUP_DIR), still encrypted. It
 # needs neither .env nor a running stack, only Docker and backup.env
 # (BACKUP_ENV_FILE names another).
@@ -44,15 +47,26 @@ fi
 db="$BACKUP_DIR/kiflet_${stamp}.dump.age"
 files="$BACKUP_DIR/kiflet_${stamp}_files.tar.gz.age"
 settings="$BACKUP_DIR/kiflet_${stamp}_settings.tar.gz.age"
+base="$BACKUP_DIR/kiflet_${stamp}_base.tar.gz.age"
 
 offsite copy --include "${db##*/}" --include "${files##*/}" --include "${settings##*/}" \
-  "offsite:$bucket" /backups
+  --include "${base##*/}" "offsite:$bucket" /backups
 for f in "$db" "$files" "$settings"; do
   [ -f "$f" ] || { echo "$bucket has no $(basename "$f")." >&2; exit 1; }
 done
 chmod 600 "$db" "$files" "$settings"
+if [ -f "$base" ]; then
+  chmod 600 "$base"
+  mkdir -p "$BACKUP_DIR/wal"
+  offsite copy "offsite:$bucket/wal" /backups/wal
+fi
 
 echo "Database: $db"
 echo "Files:    $files"
 echo "Settings: $settings"
+if [ -f "$base" ]; then
+  echo "Base:     $base"
+  echo "WAL:      $BACKUP_DIR/wal"
+  echo "Or to a moment since: AGE_IDENTITY=<private key file> BACKUP_DIR=$BACKUP_DIR scripts/restore-pitr.sh $base '<time>'"
+fi
 echo "Restore with: AGE_IDENTITY=<private key file> scripts/restore.sh $db $files"

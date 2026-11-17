@@ -7,6 +7,14 @@
 #   kiflet_<time>_settings.tar.gz   this machine's settings: .env,
 #                                   backup.env and deployments/secrets/
 #
+# and with WAL archiving on (WAL_ARCHIVE=on in .env), a fourth:
+#
+#   kiflet_<time>_base.tar.gz       the database's files as they are
+#                                   (pg_basebackup), which the archived
+#                                   WAL brings forward to any moment since:
+#                                   see scripts/ship-wal.sh and
+#                                   scripts/restore-pitr.sh
+#
 # With backup.env (backup.env.example is the template), each is encrypted
 # with age as it is written, and named with .age at the end, then copied to a
 # bucket off the machine. A backup leaves the machine only encrypted. Two
@@ -76,9 +84,13 @@ stamp="$(date +%Y%m%d_%H%M%S)"
 db="$BACKUP_DIR/kiflet_${stamp}.dump$ext"
 files="$BACKUP_DIR/kiflet_${stamp}_files.tar.gz$ext"
 settings="$BACKUP_DIR/kiflet_${stamp}_settings.tar.gz$ext"
+base=""
+if [ "$(compose exec -T postgres psql -U logistics -d logistics -tAc 'SHOW archive_mode')" = on ]; then
+  base="$BACKUP_DIR/kiflet_${stamp}_base.tar.gz$ext"
+fi
 # Written under a temporary name, so a failed run leaves nothing that looks
 # like a backup.
-trap 'rm -f "$db.partial" "$files.partial" "$settings.partial"' EXIT
+trap 'rm -f "$db.partial" "$files.partial" "$settings.partial" ${base:+"$base.partial"}' EXIT
 
 compose exec -T postgres pg_dump -U logistics -Fc logistics | seal >"$db.partial"
 mv "$db.partial" "$db"
@@ -88,11 +100,17 @@ keep=("$ENV_FILE" deployments/secrets)
 if [ -f "$settings_file" ]; then keep+=("$settings_file"); fi
 tar -czf - "${keep[@]}" | seal >"$settings.partial"
 mv "$settings.partial" "$settings"
+if [ -n "$base" ]; then
+  # One tar of the data directory with the WAL it needs to be consistent,
+  # over the socket. A checkpoint first, so it starts at once.
+  compose exec -T postgres pg_basebackup -U logistics -D - -Ft -X fetch -c fast | gzip | seal >"$base.partial"
+  mv "$base.partial" "$base"
+fi
 
 if [ -n "$bucket" ]; then
   # rclone checks each file's size and checksum once it is in the bucket.
   offsite copy --include "${db##*/}" --include "${files##*/}" --include "${settings##*/}" \
-    /backups "offsite:$bucket"
+    ${base:+--include "${base##*/}"} /backups "offsite:$bucket"
   keep_days="${BACKUP_S3_KEEP_DAYS:-90}"
   if [ "$keep_days" != 0 ]; then
     offsite delete --include 'kiflet_*' --min-age "${keep_days}d" "offsite:$bucket"
@@ -103,5 +121,6 @@ find "$BACKUP_DIR" -name 'kiflet_*' -mtime "+${KEEP_DAYS}" -delete
 echo "Database: $db"
 echo "Files:    $files"
 echo "Settings: $settings"
+if [ -n "$base" ]; then echo "Base:     $base"; fi
 if [ -n "$bucket" ]; then echo "Off-site: $bucket"; fi
 echo "Restore with: ${ext:+AGE_IDENTITY=<private key file> }scripts/restore.sh $db $files"

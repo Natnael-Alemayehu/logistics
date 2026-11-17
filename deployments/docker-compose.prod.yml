@@ -76,14 +76,31 @@ services:
       POSTGRES_USER: logistics
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
       POSTGRES_DB: logistics
+    # With WAL_ARCHIVE=on, every change is kept as it is made, in the
+    # wal-archive volume, compressed: scripts/ship-wal.sh takes it off the
+    # machine, and with a base backup it restores the database to any
+    # moment (docs/deploy.md, "To the minute"). A segment is closed at
+    # least every WAL_ARCHIVE_TIMEOUT seconds when there are changes.
+    command:
+      - postgres
+      - -c
+      - archive_mode=${WAL_ARCHIVE:-off}
+      - -c
+      - archive_command=[ -f /wal-archive/%f.gz ] || { gzip -c %p > /wal-archive/%f.gz.part && mv /wal-archive/%f.gz.part /wal-archive/%f.gz; }
+      - -c
+      - archive_timeout=${WAL_ARCHIVE_TIMEOUT:-300}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - wal-archive:/wal-archive
     # Docker's 64 MB is too little for parallel queries.
     shm_size: 256m
     security_opt: [no-new-privileges:true]
     # Time for the shutdown checkpoint, so the next start needs no recovery.
     stop_grace_period: 60s
     logging: *logging
+    depends_on:
+      wal-archive:
+        condition: service_completed_successfully
     healthcheck:
       # Over TCP: on first start the image's set-up server answers on the
       # socket only, and the app connects over the network.
@@ -92,6 +109,19 @@ services:
       timeout: 5s
       retries: 10
 
+
+  # Gives the WAL archive's volume to the database's user, once: a new
+  # volume belongs to root.
+  wal-archive:
+    image: postgis/postgis:15-3.3-alpine
+    entrypoint: ["sh", "-c", "chown postgres:postgres /wal-archive && chmod 700 /wal-archive"]
+    volumes:
+      - wal-archive:/wal-archive
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped
@@ -163,6 +193,7 @@ services:
 volumes:
   app-data:
   postgres-data:
+  wal-archive:
   caddy-data:
   caddy-config:
   prometheus-data:

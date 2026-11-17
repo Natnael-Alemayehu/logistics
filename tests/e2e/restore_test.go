@@ -110,6 +110,87 @@ func TestBackupAndRestore(t *testing.T) {
 	}
 }
 
+// TestPointInTimeRestore is the drill for WAL archiving (staging has
+// WAL_ARCHIVE=on): a base backup, WAL shipped encrypted to the bucket, the
+// machine lost, and the database brought back from the bucket to a moment
+// between two sign-ups. The company from before that moment is back, and
+// the one from after it is gone.
+//
+// It replaces staging's data, after TestBackupAndRestore.
+func TestPointInTimeRestore(t *testing.T) {
+	key, recipient := ageKey(t)
+	dir := t.TempDir()
+	env := []string{
+		"BACKUP_ENV_FILE=" + setting("E2E_BACKUP_ENV_FILE", "deployments/staging/backup.env"),
+		"BACKUP_AGE_RECIPIENTS=" + recipient, "BACKUP_DIR=" + dir,
+	}
+
+	out := script(t, "backup.sh", env)
+	m := regexp.MustCompile(`(?m)^Base: +(\S+kiflet_(\d{8}_\d{6})_base\.tar\.gz\.age)$`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatal("backup.sh made no base backup, with WAL archiving on")
+	}
+	stamp := m[2]
+
+	kept := signUp(t, "Before The Mistake Freight")
+	time.Sleep(2 * time.Second)
+	moment := time.Now().UTC().Format("2006-01-02 15:04:05.000") + "+00"
+	time.Sleep(2 * time.Second)
+	lost := signUp(t, "After The Mistake Freight")
+
+	// The segment holding both sign-ups is closed, archived and shipped.
+	compose(t, "exec", "-T", "postgres", "psql", "-U", "logistics", "-d", "postgres", "-qtAc", "SELECT pg_switch_wal()")
+	shipped := regexp.MustCompile(`Shipped ([1-9]\d*) WAL file\(s\) to kiflet-backups/wal\.`)
+	within(t, time.Minute, "WAL to be shipped", func() bool {
+		return shipped.MatchString(script(t, "ship-wal.sh", env))
+	})
+
+	// The machine is lost: the base backup and the WAL come from the bucket.
+	fresh := t.TempDir()
+	fetched := script(t, "fetch-backup.sh", []string{env[0], "BACKUP_DIR=" + fresh}, stamp)
+	base := filepath.Join(fresh, "kiflet_"+stamp+"_base.tar.gz.age")
+	if !strings.Contains(fetched, "\nBase:     "+base+"\n") {
+		t.Fatalf("fetch-backup.sh didn't fetch the base backup %s", base)
+	}
+	if wal, _ := filepath.Glob(filepath.Join(fresh, "wal", "*.gz.age")); len(wal) == 0 {
+		t.Fatal("fetch-backup.sh fetched no WAL")
+	}
+
+	script(t, "restore-pitr.sh", []string{"CONFIRM=yes", "AGE_IDENTITY=" + key, "BACKUP_DIR=" + fresh}, base, moment)
+	within(t, 2*time.Minute, "the app to be ready again", func() bool {
+		res, err := newClient(nil).Get(appURL + "/readyz")
+		if err != nil {
+			return false
+		}
+		res.Body.Close()
+		return res.StatusCode == http.StatusOK
+	})
+
+	if p := kept.get("/app"); p.Status != http.StatusOK || !strings.Contains(p.Body, kept.company) {
+		t.Errorf("the company from before the moment: status %d", p.Status)
+	}
+	// Signing in writes a session: the database takes changes again.
+	if p := newBrowser(t).post("/login", url.Values{"identifier": {kept.email}, "password": {password}}); p.Status >= 400 {
+		t.Errorf("the company from before the moment signing in: status %d", p.Status)
+	}
+	if p := newBrowser(t).post("/login", url.Values{"identifier": {lost.email}, "password": {password}}); p.Status != http.StatusUnauthorized {
+		t.Errorf("the company from after the moment signing in: status %d, want it unknown", p.Status)
+	}
+}
+
+// compose runs docker compose on staging's stack.
+func compose(t *testing.T, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("docker", append([]string{"compose", "--env-file", setting("E2E_ENV_FILE", "deployments/staging/staging.env")}, args...)...)
+	cmd.Dir = filepath.Join("..", "..")
+	cmd.Env = append(os.Environ(), "COMPOSE_FILE="+setting("E2E_COMPOSE_FILE", "deployments/docker-compose.prod.yml:deployments/staging/compose.yml"))
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker compose %v: %v\n%s", args, err, b)
+	}
+	return string(b)
+}
+
 var backupFileRe = regexp.MustCompile(`(?m)^(Database|Files|Settings): +(\S+)$`)
 
 // backupFiles reads the files a script named: Database, Files and Settings.
