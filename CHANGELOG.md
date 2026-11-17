@@ -31,6 +31,16 @@ What changed in each release, newest first.
 
 ### Added
 
+- **A public API** (FR-046). A company's own systems can book, list,
+  change, assign and cancel its shipments, read each one's history and
+  where its truck was last seen, and list its drivers, in JSON at
+  `/api/v1`. An admin makes keys under **Settings → API keys**, named after
+  what uses them; a key shows once, only its SHA-256 is kept, and revoking
+  it stops it at once. A key acts for the whole company under the
+  dashboard's rules, texts included, and the shipment's history and the
+  audit log record what it did under its name. Each key may make 300
+  requests a minute. `/api/v1/openapi.json` describes every endpoint and
+  field, and a test keeps it true to the code. Every plan has it.
 - **Shipments can be booked from a CSV file** (FR-013). **Import CSV** on
   the shipment list takes a spreadsheet saved as CSV, up to 200
   shipments. Every row is checked as the booking form would check it and

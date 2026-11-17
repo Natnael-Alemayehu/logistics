@@ -155,9 +155,10 @@ In order. The first two can run side by side.
 5. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-6. **Later:** a second app instance (O4), a public API and webhooks
-   (FR-046, FR-047), and point-in-time recovery (WAL archiving, the rest of
-   O1) if a pilot can't afford to lose a day.
+6. **Later:** a second app instance (O4), webhooks (FR-047), and
+   point-in-time recovery (WAL archiving, the rest of O1) if a pilot can't
+   afford to lose a day. The public API (FR-046) is built: a pilot that
+   wants its own system to book shipments can start with it.
 
 ## Decided, and when to revisit
 
@@ -179,8 +180,9 @@ In order. The first two can run side by side.
   mobile repositories was considered and set aside: about 96 routes render
   pages and 8 return JSON, so a separate web app means rebuilding the
   dashboard and an API for all of it. Revisit when dedicated web or mobile
-  developers join, when the product needs screens that server-rendered
-  pages can't deliver, or when a public API is being built anyway.
+  developers join, or when the product needs screens that server-rendered
+  pages can't deliver. The public API (2026-11-17) didn't change this: it
+  calls the same services as the dashboard, from the same binary.
 
 ## Considered and not planned
 

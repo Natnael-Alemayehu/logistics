@@ -1003,7 +1003,14 @@ the requirement, what Kiflet does instead, and why.
   shipments, checked and booked within one request, so it has nothing to
   show progress of. Bulk assignment (AC-013.2) is part of FR-007, and the
   shipment list exports to CSV with its filters applied (AC-013.4).
-- **FR-046 and FR-047 (P3)**: there is no public API or webhooks yet.
+- **FR-046 (P3)**: the public API is built, at `/api/v1` beside the driver
+  app's, and described in `/api/v1/openapi.json`. Every plan has it, not
+  Enterprise alone (AC-046.6): every plan has the whole product, and plans
+  differ in drivers and texts. Its endpoints are shipments, their history
+  and last position, and drivers (AC-046.4); webhooks wait for FR-047. Keys
+  are made and revoked by a company admin, kept only as a SHA-256, and at
+  most ten a company. What a key does is recorded under its name.
+- **FR-047 (P3)**: there are no webhooks yet.
 - **FR-025, offline maps**: map tiles are not cached. The driver's detail
   screen shows the distance and compass direction to the drop-off from the
   last GPS fix, which works without signal, and shows a map only when there

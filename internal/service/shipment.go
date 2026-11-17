@@ -774,6 +774,46 @@ func (s *ShipmentService) Get(ctx context.Context, tenantID, id pgtype.UUID) (db
 	return sh, err
 }
 
+// ByNumber finds a company's shipment by its tracking number.
+func (s *ShipmentService) ByNumber(ctx context.Context, tenantID pgtype.UUID, number string) (db.Shipment, error) {
+	sh, err := s.q.GetShipmentByTrackingNumber(ctx, strings.ToUpper(strings.TrimSpace(number)))
+	// Another company's shipment is no more to be found than one that
+	// doesn't exist.
+	if isNoRows(err) || (err == nil && sh.TenantID != tenantID) {
+		return db.Shipment{}, notFound("Shipment not found.")
+	}
+	return sh, err
+}
+
+// InputOf is a shipment as the booking form would submit it unchanged, for
+// a caller that changes part of it: Update replaces every editable field.
+// A place keeps its coordinates only where they were pinned, so that
+// changing a town moves the shipment to that town's centre.
+func InputOf(sh db.Shipment) ShipmentInput {
+	in := ShipmentInput{
+		Priority:   sh.Priority,
+		OriginCity: deref(sh.OriginCity), OriginAddress: sh.OriginAddress,
+		DestinationCity: deref(sh.DestinationCity), DestinationAddress: sh.DestinationAddress,
+		CustomerName: sh.CustomerName, CustomerPhone: sh.CustomerPhone,
+		ConsigneeName: deref(sh.ConsigneeName), ConsigneePhone: deref(sh.ConsigneePhone),
+		CargoDescription: deref(sh.CargoDescription), CargoWeightKg: numericOr(sh.CargoWeight), CargoValueETB: numericOr(sh.CargoValue),
+		SpecialInstructions: deref(sh.SpecialInstructions),
+		PlannedPickup:       timePtr(sh.PlannedPickupAt),
+	}
+	if sh.DestinationPrecise {
+		in.DestinationLat, in.DestinationLng = sh.DestinationLat, sh.DestinationLng
+	}
+	if sh.OriginLat != nil && sh.OriginLng != nil {
+		if p, ok := geo.Lookup(deref(sh.OriginCity)); !ok || p.Lat != *sh.OriginLat || p.Lng != *sh.OriginLng {
+			in.OriginLat, in.OriginLng = sh.OriginLat, sh.OriginLng
+		}
+	}
+	if sh.EtaManual {
+		in.EstimatedDelivery = timePtr(sh.EstimatedDelivery)
+	}
+	return in
+}
+
 // ShipmentDetail is everything the shipment page shows.
 type ShipmentDetail struct {
 	Shipment db.Shipment

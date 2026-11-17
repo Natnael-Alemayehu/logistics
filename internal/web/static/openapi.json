@@ -1,0 +1,340 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Kiflet API",
+    "version": "1",
+    "description": "Book and follow a company's shipments from its own systems. Every request sends one of the company's API keys, made under Settings → API keys: `Authorization: Bearer kf_…`. A key acts for the whole company with the dashboard's rules, and what it does is recorded under the key's name in each shipment's history.\n\nEach key may make 300 requests a minute; past that, requests are answered 429 until the minute is over. Times are RFC 3339 and answered in UTC. Weights are in kilograms and values in birr.\n\nAn error is answered with its HTTP status and `{\"error\": {\"code\": …, \"message\": …, \"field\": …}}`. `message` is written to be shown to a person; `field` names the field at fault, when there is one."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "security": [{ "apiKey": [] }],
+  "paths": {
+    "/shipments": {
+      "get": {
+        "operationId": "listShipments",
+        "summary": "List shipments, newest first unless sorted otherwise",
+        "parameters": [
+          { "name": "status", "in": "query", "description": "One status, or several separated by commas.", "schema": { "type": "string", "examples": ["in_transit,delayed"] } },
+          { "name": "driver_id", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "priority", "in": "query", "schema": { "$ref": "#/components/schemas/Priority" } },
+          { "name": "q", "in": "query", "description": "Searches the tracking number, the customer's and receiver's names and phones, and the driver's name.", "schema": { "type": "string" } },
+          { "name": "created_from", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "created_to", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["created_desc", "created_asc", "updated_desc", "eta_asc", "eta_desc", "status", "priority", "customer", "tracking"], "default": "created_desc" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "per_page", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of shipments",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["data", "page", "per_page", "total"],
+              "properties": {
+                "data": { "type": "array", "items": { "$ref": "#/components/schemas/Shipment" } },
+                "page": { "type": "integer" },
+                "per_page": { "type": "integer" },
+                "total": { "type": "integer", "description": "How many shipments match, on every page." }
+              }
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "operationId": "createShipment",
+        "summary": "Book a shipment",
+        "description": "Checked as the booking form checks it, and the customer is texted as from the form. With `driver_id`, the shipment is assigned at once. Without `estimated_delivery`, the arrival is estimated from the route.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShipmentBooking" } } } },
+        "responses": {
+          "201": { "description": "Booked. `Location` is the shipment's address in the API.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Shipment" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "402": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/shipments/{ref}": {
+      "parameters": [{ "$ref": "#/components/parameters/Ref" }],
+      "get": {
+        "operationId": "getShipment",
+        "summary": "One shipment",
+        "responses": {
+          "200": { "description": "The shipment", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Shipment" } } } },
+          "401": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "patch": {
+        "operationId": "updateShipment",
+        "summary": "Change a booking",
+        "description": "A field left out stays as it is. An object that is sent replaces the whole of what it names: send a destination's city and address together. `receiver`, `planned_pickup` and `estimated_delivery` can be sent as null to remove them; a null `estimated_delivery` goes back to the estimate from the route. The driver is changed with `/assign`.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShipmentChange" } } } },
+        "responses": {
+          "200": { "description": "The shipment as changed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Shipment" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/shipments/{ref}/assign": {
+      "parameters": [{ "$ref": "#/components/parameters/Ref" }],
+      "post": {
+        "operationId": "assignShipment",
+        "summary": "Assign a driver, change the driver, or take the driver off",
+        "description": "The driver is texted as from the dashboard. Without `vehicle_id`, the driver's usual vehicle goes. A null or empty `driver_id` takes the shipment back to pending, if it hasn't left.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "driver_id": { "type": ["string", "null"], "format": "uuid" },
+            "vehicle_id": { "type": "string", "format": "uuid" }
+          }
+        } } } },
+        "responses": {
+          "200": { "description": "The shipment as assigned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Shipment" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "402": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/shipments/{ref}/cancel": {
+      "parameters": [{ "$ref": "#/components/parameters/Ref" }],
+      "post": {
+        "operationId": "cancelShipment",
+        "summary": "Cancel a shipment",
+        "description": "Before it leaves, the reasons are customer_request, duplicate, address_problem, cargo_unavailable, payment_problem and other. On the road, they are recipient_refused, returned_to_origin, cargo_lost_damaged, customer_request, address_problem, payment_problem and other.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": {
+            "reason": { "type": "string", "enum": ["customer_request", "duplicate", "address_problem", "cargo_unavailable", "payment_problem", "recipient_refused", "returned_to_origin", "cargo_lost_damaged", "other"] },
+            "note": { "type": "string", "maxLength": 1000 }
+          }
+        } } } },
+        "responses": {
+          "200": { "description": "The shipment, cancelled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Shipment" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/shipments/{ref}/events": {
+      "parameters": [{ "$ref": "#/components/parameters/Ref" }],
+      "get": {
+        "operationId": "shipmentEvents",
+        "summary": "A shipment's history, oldest first, and where its truck was last seen",
+        "responses": {
+          "200": {
+            "description": "The history",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["data", "last_position"],
+              "properties": {
+                "data": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } },
+                "last_position": {
+                  "oneOf": [
+                    { "type": "null" },
+                    { "type": "object", "required": ["lat", "lng", "recorded_at"], "properties": {
+                      "lat": { "type": "number" }, "lng": { "type": "number" }, "recorded_at": { "type": "string", "format": "date-time" }
+                    } }
+                  ]
+                }
+              }
+            } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/drivers": {
+      "get": {
+        "operationId": "listDrivers",
+        "summary": "List the company's drivers",
+        "parameters": [
+          { "name": "active", "in": "query", "description": "false lists deactivated drivers too.", "schema": { "type": "boolean", "default": true } },
+          { "name": "q", "in": "query", "description": "Searches names and phones.", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "The drivers",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["data"],
+              "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Driver" } } }
+            } } }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "429": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKey": { "type": "http", "scheme": "bearer", "description": "A key from Settings → API keys. It starts with kf_." }
+    },
+    "parameters": {
+      "Ref": { "name": "ref", "in": "path", "required": true, "description": "The shipment's tracking number or its id.", "schema": { "type": "string" } }
+    },
+    "responses": {
+      "Error": {
+        "description": "An error. 400: the request is wrong (VALIDATION_ERROR). 401: no working key (UNAUTHORIZED). 402: a plan limit (PLAN_LIMIT). 403: the company is suspended or read-only until an invoice is paid (FORBIDDEN). 404: no such shipment for this company (NOT_FOUND). 409: the shipment is in a status that doesn't allow it (CONFLICT). 429: too many requests (RATE_LIMITED).",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "enum": ["VALIDATION_ERROR", "UNAUTHORIZED", "PLAN_LIMIT", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "INTERNAL"] },
+              "message": { "type": "string" },
+              "field": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Status": { "type": "string", "enum": ["pending", "assigned", "in_transit", "delayed", "arrived", "delivered", "issue", "cancelled"] },
+      "Priority": { "type": "string", "enum": ["normal", "high", "urgent"] },
+      "Place": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["city", "address"],
+        "properties": {
+          "city": { "type": "string", "description": "A town the service knows, such as Addis Ababa or Adama." },
+          "address": { "type": "string" },
+          "lat": { "type": ["number", "null"], "description": "Sent with lng to pin the place; otherwise the town's centre." },
+          "lng": { "type": ["number", "null"] }
+        }
+      },
+      "Party": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "phone"],
+        "properties": {
+          "name": { "type": "string" },
+          "phone": { "type": "string", "description": "An Ethiopian mobile number, 09… or +251…" }
+        }
+      },
+      "Cargo": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "description": { "type": "string" },
+          "weight_kg": { "type": "number", "minimum": 0 },
+          "value_etb": { "type": "number", "minimum": 0 }
+        }
+      },
+      "Shipment": {
+        "type": "object",
+        "required": ["id", "tracking_number", "status", "priority", "origin", "destination", "customer", "receiver", "cargo", "tracking_url", "created_at", "updated_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "tracking_number": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/Status" },
+          "status_reason": { "type": "string", "description": "Why it is delayed, has an issue or was cancelled." },
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "origin": { "$ref": "#/components/schemas/Place" },
+          "destination": { "$ref": "#/components/schemas/Place" },
+          "customer": { "$ref": "#/components/schemas/Party" },
+          "receiver": { "description": "Who takes delivery, when that isn't the customer.", "oneOf": [{ "type": "null" }, { "$ref": "#/components/schemas/Party" }] },
+          "cargo": { "$ref": "#/components/schemas/Cargo" },
+          "instructions": { "type": "string" },
+          "driver_id": { "type": ["string", "null"], "format": "uuid" },
+          "vehicle_id": { "type": ["string", "null"], "format": "uuid" },
+          "planned_pickup": { "type": ["string", "null"], "format": "date-time" },
+          "estimated_delivery": { "type": ["string", "null"], "format": "date-time" },
+          "picked_up_at": { "type": ["string", "null"], "format": "date-time" },
+          "delivered_at": { "type": ["string", "null"], "format": "date-time" },
+          "receipt_confirmed": { "type": "boolean", "description": "The receiver confirmed the delivery from the link they were texted." },
+          "tracking_url": { "type": "string", "format": "uri", "description": "The public tracking page." },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ShipmentChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "priority": { "$ref": "#/components/schemas/Priority" },
+          "origin": { "$ref": "#/components/schemas/Place" },
+          "destination": { "$ref": "#/components/schemas/Place" },
+          "customer": { "$ref": "#/components/schemas/Party" },
+          "receiver": { "oneOf": [{ "type": "null" }, { "$ref": "#/components/schemas/Party" }] },
+          "cargo": { "$ref": "#/components/schemas/Cargo" },
+          "instructions": { "type": "string" },
+          "planned_pickup": { "type": ["string", "null"], "format": "date-time" },
+          "estimated_delivery": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "ShipmentBooking": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ShipmentChange" },
+          {
+            "type": "object",
+            "required": ["origin", "destination", "customer"],
+            "properties": {
+              "driver_id": { "type": "string", "format": "uuid", "description": "Assign at once." },
+              "vehicle_id": { "type": "string", "format": "uuid" }
+            }
+          }
+        ]
+      },
+      "Event": {
+        "type": "object",
+        "required": ["type", "source", "actor", "at"],
+        "properties": {
+          "type": { "type": "string", "description": "created, edited, assigned, unassigned, status_changed, note, message, pod_recorded, pod_held, pod_accepted, pod_dismissed, customer_confirmed, customer_issue and others." },
+          "from_status": { "type": "string" },
+          "to_status": { "type": "string" },
+          "reason": { "type": "string" },
+          "note": { "type": "string" },
+          "source": { "type": "string", "enum": ["dashboard", "app", "sms", "system", "customer", "api"] },
+          "actor": { "type": "string", "description": "Who did it: a person, \"System\", or \"API: \" and a key's name." },
+          "lat": { "type": ["number", "null"] },
+          "lng": { "type": ["number", "null"] },
+          "at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Driver": {
+        "type": "object",
+        "required": ["id", "name", "phone", "active", "vehicle_plate", "active_shipments", "last_sync_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "phone": { "type": "string" },
+          "active": { "type": "boolean" },
+          "vehicle_plate": { "type": "string" },
+          "active_shipments": { "type": "integer" },
+          "last_sync_at": { "type": ["string", "null"], "format": "date-time", "description": "When the driver's app last reached the server." }
+        }
+      }
+    }
+  }
+}
