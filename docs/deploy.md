@@ -25,9 +25,18 @@ gives those in progress, and the text or email being sent, 30 seconds to
 finish. Messages it hadn't started are left for the next start to send at
 once.
 
-Run one app container per database. Live updates (the WebSocket hub) and
-rate limits are kept in memory, so a second instance would split them. The
-background jobs take a Postgres advisory lock, so they never run twice.
+`APP_REPLICAS=2` runs two instances of the app, so that one carries on
+while the other restarts or is busy; staging runs two. Caddy finds them by
+name and sends each client address to the same one, so the rate limits,
+which each instance keeps in memory, still hold per address. An API key's
+allowance is per instance, so a key used from several addresses may get up
+to that many times 300 requests a minute. Live updates pass between the
+instances through Postgres (`LISTEN`/`NOTIFY`), so a dashboard sees every
+change whichever instance made it. Instances starting together take turns
+at the migrations, and the background jobs take a Postgres advisory lock,
+so they never run twice. Each instance holds up to 20 database
+connections. `docker compose up -d` still replaces every instance at once,
+so a deploy has the same short gap as with one.
 
 Add `--profile monitoring` for Prometheus and Grafana: set `METRICS_TOKEN`, and
 put the same value in `deployments/prometheus/metrics_token`. Grafana listens

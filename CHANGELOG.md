@@ -6,6 +6,12 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **The app can run as two instances** (audit O4). `APP_REPLICAS=2`
+  starts two behind Caddy, which keeps each client address on one of them
+  so that the rate limits hold, and tries the other when one is down. Live
+  updates now pass through Postgres, so a dashboard sees a change whichever
+  instance made it, and instances starting together take turns at the
+  migrations. Staging runs two. With one, nothing changes.
 - **Dependencies updated**: the Go modules Dependabot proposed (pgx 5.13,
   chi 5.5, httprate 0.16, goose 3.30 and others), Alpine 3.24, and
   Prometheus 3.16, Grafana 13.3, rclone 1.76, Mailpit 1.33 and

@@ -22,7 +22,7 @@ once it is done: this file should only ever hold what is still ahead.
   integration tests and the end-to-end tests against staging. Dependabot
   proposes updates weekly.
 - The audit in `docs/audit-2026-11.md` is fixed except for W1 on the
-  dashboard, O4 and O6.
+  dashboard and O6.
 - The repository is public and all rights are reserved (`LICENSE`), with
   private vulnerability reporting on and `main` protected so CI must pass.
   The first release is `v0.9.0`, of 2026-11-15. History was rewritten that
@@ -155,10 +155,10 @@ In order. The first two can run side by side.
 5. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-6. **Later:** a second app instance (O4), and point-in-time recovery (WAL
-   archiving, the rest of O1) if a pilot can't afford to lose a day. The
-   public API and webhooks (FR-046, FR-047) are built: a pilot that wants
-   its own system to book or follow shipments can start with them.
+6. **Later:** point-in-time recovery (WAL archiving, the rest of O1) if a
+   pilot can't afford to lose a day. The public API and webhooks (FR-046,
+   FR-047) are built, and the app can run as two instances (O4,
+   `APP_REPLICAS`).
 
 ## Decided, and when to revisit
 

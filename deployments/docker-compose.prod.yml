@@ -43,6 +43,10 @@ services:
     # The app gives requests in progress and the text or email being sent
     # 30 seconds to finish.
     stop_grace_period: 45s
+    # More than one instance shares the work: Caddy spreads requests by
+    # client address, and live updates pass between them through Postgres.
+    deploy:
+      replicas: ${APP_REPLICAS:-1}
     logging: *logging
     depends_on:
       postgres:

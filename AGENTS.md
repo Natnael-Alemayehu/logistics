@@ -90,6 +90,10 @@ make lint                          # golangci-lint, node --check, gitleaks over 
   `static/driver` as one version, listed in `/driver/build.json`
   (`internal/web/driver.go`), so a new file needs no list there. A deploy
   reaches a phone the next time the app starts after downloading it.
+- The app may run as several instances (`APP_REPLICAS`). Keep state that
+  must be shared in Postgres, not in memory: live updates already cross
+  instances through `LISTEN`/`NOTIFY` (`internal/app/live.go`), and the
+  rate limits hold because Caddy keeps a client address on one instance.
 - Live updates: an element with `data-live-region` and an `id` is fetched
   again and swapped in when a WebSocket message says something changed
   (`static/app.js`). Mark new live parts of a page that way instead of
