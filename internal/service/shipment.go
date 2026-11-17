@@ -319,9 +319,9 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 			break
 		}
 
-		s.event(ctx, q, a, out, shipmentEvent{Type: "created", To: model.StatusPending, Public: true})
+		s.event(ctx, q, after, a, out, shipmentEvent{Type: "created", To: model.StatusPending, Public: true})
 		if driver != nil {
-			s.event(ctx, q, a, out, shipmentEvent{Type: "assigned", To: model.StatusAssigned, DriverID: driver.ID, Public: true})
+			s.event(ctx, q, after, a, out, shipmentEvent{Type: "assigned", To: model.StatusAssigned, DriverID: driver.ID, Public: true})
 		}
 
 		if tenant.SmsOnCreated {
@@ -416,7 +416,7 @@ func (s *ShipmentService) Update(ctx context.Context, a Actor, id pgtype.UUID, i
 			ev.VisibleToDriver = true
 			ev.Note = "Shipment details updated: " + strings.Join(changed, ", ")
 		}
-		s.event(ctx, q, a, out, ev)
+		s.event(ctx, q, after, a, out, ev)
 		// A new drop-off matters enough to text as well (FR-011 AC-011.4):
 		// the driver may be on the road with the app closed.
 		if cur.DriverID.Valid && contains(changed, "destination") {
@@ -542,7 +542,7 @@ func (s *ShipmentService) Assign(ctx context.Context, a Actor, id pgtype.UUID, d
 		if v, err := q.GetVehicleByID(ctx, db.GetVehicleByIDParams{ID: vid, TenantID: a.TenantID}); err == nil {
 			ev.Details = map[string]any{"vehicle": v.PlateNumber}
 		}
-		s.event(ctx, q, a, out, ev)
+		s.event(ctx, q, after, a, out, ev)
 
 		if cur.DriverID != driver.ID && tenant.SmsDriverOnAssign {
 			s.notifyDriverAssigned(ctx, q, after, tenant, out, driver)
@@ -582,7 +582,7 @@ func (s *ShipmentService) Unassign(ctx context.Context, a Actor, id pgtype.UUID)
 		if err != nil {
 			return err
 		}
-		s.event(ctx, q, a, out, shipmentEvent{
+		s.event(ctx, q, after, a, out, shipmentEvent{
 			Type: "unassigned", From: cur.Status, To: model.StatusPending, PreviousDriverID: cur.DriverID,
 		})
 		after.do(func() { s.publishShipment(out, "unassigned") })
@@ -945,7 +945,10 @@ type shipmentEvent struct {
 
 // event appends to a shipment's timeline. It reports false when the event is
 // a replay of one already recorded (same client_id).
-func (s *ShipmentService) event(ctx context.Context, q *db.Queries, a Actor, sh db.Shipment, e shipmentEvent) bool {
+//
+// Webhooks are written with it, for the endpoints that asked for what
+// happened; sh is the shipment as it is after the change.
+func (s *ShipmentService) event(ctx context.Context, q *db.Queries, after *afterCommit, a Actor, sh db.Shipment, e shipmentEvent) bool {
 	occurred := e.OccurredAt
 	if occurred.IsZero() {
 		occurred = s.now()
@@ -982,6 +985,7 @@ func (s *ShipmentService) event(ctx context.Context, q *db.Queries, a Actor, sh 
 		s.log.Error().Err(err).Str("type", e.Type).Msg("record shipment event")
 		return false
 	}
+	s.enqueueWebhooks(ctx, q, after, a, sh, e, occurred)
 	return true
 }
 

@@ -70,6 +70,12 @@ var auditActions = map[string]string{
 	"tenant_deleted":             "Deleted a company",
 	"api_key_created":            "Made an API key",
 	"api_key_revoked":            "Revoked an API key",
+	"webhook_created":            "Added a webhook",
+	"webhook_updated":            "Changed a webhook",
+	"webhook_paused":             "Paused a webhook",
+	"webhook_resumed":            "Resumed a webhook",
+	"webhook_secret_rolled":      "Gave a webhook a new secret",
+	"webhook_deleted":            "Removed a webhook",
 }
 
 func (s *Server) userNames(ctx context.Context, tenantID pgtype.UUID) map[pgtype.UUID]string {

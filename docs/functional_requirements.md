@@ -1010,7 +1010,16 @@ the requirement, what Kiflet does instead, and why.
   and last position, and drivers (AC-046.4); webhooks wait for FR-047. Keys
   are made and revoked by a company admin, kept only as a SHA-256, and at
   most ten a company. What a key does is recorded under its name.
-- **FR-047 (P3)**: there are no webhooks yet.
+  Webhooks are managed on the dashboard, not through the API.
+- **FR-047 (P3)**: webhooks follow the Standard Webhooks specification
+  (headers `webhook-id`, `webhook-timestamp`, `webhook-signature`, and a
+  `whsec_` secret) rather than a scheme of our own, so a receiver can check
+  signatures with an existing library (AC-047.5). The four events are
+  AC-047.1's; a delivery or a driver's problem is sent as a status change
+  as well. A company has at most five endpoints. Messages are kept 30 days
+  for the log (AC-047.4), and retried six times over about a day
+  (AC-047.3). In production an endpoint must be HTTPS on a public address,
+  checked again as each message connects.
 - **FR-025, offline maps**: map tiles are not cached. The driver's detail
   screen shows the distance and compass direction to the drop-off from the
   last GPS fix, which works without signal, and shows a map only when there

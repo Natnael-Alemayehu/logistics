@@ -1,0 +1,14 @@
+{{/* The fields of a webhook, on the list's form and on its own page. */}}
+{{define "webhook-fields"}}{{$f := .Form}}{{$e := .Errors}}
+<label>Address
+  <input name="url" type="url" value="{{field $f "url" ""}}" maxlength="500" required autocomplete="off" placeholder="https://example.com/kiflet" {{if index $e "url"}}aria-invalid="true"{{end}}>
+  {{template "field-error" (index $e "url")}}
+</label>
+<fieldset class="stack" {{if index $e "events"}}aria-invalid="true"{{end}}>
+  <legend>Send it when</legend>
+  {{range .Data.Events}}
+  <label class="check"><input type="checkbox" name="events" value="{{.Code}}" {{if has $f "events" .Code}}checked{{end}}> {{.Label}} <code class="small muted">{{.Code}}</code></label>
+  {{end}}
+  {{template "field-error" (index $e "events")}}
+</fieldset>
+{{end}}

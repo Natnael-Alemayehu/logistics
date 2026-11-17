@@ -31,6 +31,18 @@ What changed in each release, newest first.
 
 ### Added
 
+- **Webhooks** (FR-047). An admin adds an address under **Settings →
+  Webhooks** and chooses what it is told: a shipment booked, a status
+  changed, a delivery, or a problem reported by the driver or the
+  receiver. Each message is the shipment as the API sends it and what
+  happened, signed as the Standard Webhooks specification describes, so
+  any of its libraries can check it. A receiver that doesn't answer 2xx is
+  tried again six times over about a day. Each webhook's page lists the
+  last 30 days of messages with their answers, and can send a test, send
+  one again, pause, take a new secret or remove the webhook. In
+  production a webhook must be HTTPS on a public address, checked again
+  as each message connects (`WEBHOOK_PRIVATE_TARGETS` allows others, for
+  development).
 - **A public API** (FR-046). A company's own systems can book, list,
   change, assign and cancel its shipments, read each one's history and
   where its truck was last seen, and list its drivers, in JSON at

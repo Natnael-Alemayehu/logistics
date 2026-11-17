@@ -48,6 +48,10 @@ type Settings struct {
 	// CodesPerDay is how many verification codes the platform texts in 24
 	// hours at most; zero means no limit.
 	CodesPerDay int
+	// PrivateWebhooks lets webhooks go to private and loopback addresses
+	// and over plain HTTP, for development and tests. Off, they reach only
+	// the public internet over HTTPS.
+	PrivateWebhooks bool
 }
 
 // Publisher delivers live updates to dashboards. The WebSocket hub
@@ -92,6 +96,7 @@ type Services struct {
 	Support   *SupportService
 	Health    *HealthService
 	API       *APIService
+	Webhooks  *WebhookService
 }
 
 // New wires the services together.
@@ -116,6 +121,8 @@ func New(d Deps) *Services {
 	c.sms = s.SMS
 	s.Mail = newMailService(c, d.Mail)
 	c.mail = s.Mail
+	s.Webhooks = newWebhookService(c)
+	c.webhooks = s.Webhooks
 	s.Alerts = &AlertService{core: c}
 	c.alerts = s.Alerts
 	s.Media = &MediaService{core: c, store: d.Storage, pod: podStorage(d.Storage)}
@@ -139,15 +146,16 @@ func New(d Deps) *Services {
 
 // core is the state every service embeds.
 type core struct {
-	pool   *pgxpool.Pool
-	q      *db.Queries
-	log    zerolog.Logger
-	pub    Publisher
-	now    func() time.Time
-	cfg    Settings
-	sms    *SMSService
-	mail   *MailService
-	alerts *AlertService
+	pool     *pgxpool.Pool
+	q        *db.Queries
+	log      zerolog.Logger
+	pub      Publisher
+	now      func() time.Time
+	cfg      Settings
+	sms      *SMSService
+	mail     *MailService
+	alerts   *AlertService
+	webhooks *WebhookService
 }
 
 // tx runs fn in a transaction, committing if it returns nil. Work that must

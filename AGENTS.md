@@ -75,6 +75,10 @@ make lint                          # golangci-lint, node --check, gitleaks over 
   through the same services as the dashboard; it has no rules of its own.
   `static/openapi.json` describes it, and `TestOpenAPIMatchesTheAPI` checks
   that the two have the same routes and fields: change them together.
+- Webhooks are written in `ShipmentService.event`, with the shipment's
+  history: a new kind of event reaches them by adding it to
+  `webhookTypes` in `internal/service/webhooks.go`. Their payload is the
+  API's `ShipmentJSON` and `EventJSON` (`internal/service/api_json.go`).
 - The driver app's status rules come from `/api/v1/driver/config`, which is
   derived from `model.AllowedTransitions`. Change the rules there, not in JS.
 - The driver app is ES modules with no build step. `app.js` starts it;
