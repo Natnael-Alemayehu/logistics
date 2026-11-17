@@ -76,11 +76,12 @@ It deletes those older than two weeks (`KEEP_DAYS`). Run it nightly:
 
 ```
 MAILTO=you@example.et
-15 2 * * *  cd /srv/kiflet && scripts/backup.sh >>/var/log/kiflet-backup.log 2>&1
+15 2 * * *  cd /srv/kiflet && { scripts/backup.sh >>/var/log/kiflet-backup.log 2>&1 || tail -n 20 /var/log/kiflet-backup.log; }
 ```
 
 It exits with an error when any step fails, the copy off the machine
-included, and cron emails `MAILTO` when it does. Photos kept in S3 aren't
+included. Cron emails `MAILTO` only what a job prints, so the line above
+prints the end of the log when it fails. Photos kept in S3 aren't
 included: use the store's versioning or replication.
 
 ### Off the machine, encrypted
@@ -135,6 +136,54 @@ On a new machine, the old one gone:
    and `_files.tar.gz.age` files that `fetch-backup.sh` printed.
 5. Point the domain at the new machine, and delete the private key from it.
 
+### To the minute
+
+A nightly backup loses the day's work since. With `WAL_ARCHIVE=on` in
+`.env`, Postgres keeps every change as it is made (its WAL), so the database
+can be restored to any moment: just before a mistake, or to the last few
+minutes before the machine was lost.
+
+1. Set `WAL_ARCHIVE=on` and run `docker compose up -d` (the database
+   restarts). Postgres writes each closed segment of WAL, compressed, to the
+   `wal-archive` volume, at least every five minutes while there are
+   changes (`WAL_ARCHIVE_TIMEOUT`, in seconds).
+2. `backup.sh` now also writes `kiflet_<time>_base.tar.gz`: the database's
+   files as they are, which the WAL brings forward.
+3. Ship the WAL every five minutes:
+
+   ```
+   */5 * * * *  cd /srv/kiflet && { scripts/ship-wal.sh >>/var/log/kiflet-wal.log 2>&1 || tail -n 20 /var/log/kiflet-wal.log; }
+   ```
+
+   It encrypts each file to the same keys, keeps it in
+   `/var/backups/kiflet/wal`, copies it to the bucket under `wal/`, and
+   only then removes it from the volume. WAL is kept two weeks, here
+   (`KEEP_DAYS`) and in the bucket (`BACKUP_WAL_KEEP_DAYS`): that is how
+   far back a restore to the minute reaches. Before that, the nightly
+   dumps remain.
+
+If shipping stops, the WAL piles up in the volume and fills the disk.
+Grafana's disk alert measures the app's volume, which is on the same disk
+as the others in Docker's usual set-up, and cron emails `MAILTO` when
+`ship-wal.sh` fails.
+
+To restore, pick the newest base backup from before the moment, and a time
+with its offset:
+
+```bash
+AGE_IDENTITY=kiflet-backup.key scripts/restore-pitr.sh \
+  /var/backups/kiflet/kiflet_20261117_021500_base.tar.gz.age '2026-11-17 14:04:00+03'
+```
+
+It decrypts what it needs first, asks for the stack's name, stops the app,
+replaces the database with the base backup, and replays the WAL (from
+`/var/backups/kiflet/wal` and whatever the volume holds not yet shipped) up
+to that moment. Without a time it replays all there is. The app's files
+aren't touched. Afterwards the database is on a new timeline: run
+`backup.sh` at once, so the next restore has a base. On a new machine,
+`fetch-backup.sh <time>` brings back the base backup and the bucket's WAL
+along with the rest.
+
 ### The drill
 
 A backup nobody has restored may not restore. Once a quarter, and whenever
@@ -142,7 +191,8 @@ A backup nobody has restored may not restore. Once a quarter, and whenever
 private key from where it is kept, and check that the newest data is there.
 `make test-e2e` runs the same round trip on staging for every change: an
 encrypted backup copied to a bucket, the copies on the machine lost, and
-the backup fetched and restored.
+the backup fetched and restored, and a restore to a moment between two
+sign-ups from a base backup and WAL fetched from the bucket.
 
 ## Staging
 

@@ -6,6 +6,13 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **Restoring to the minute** (the rest of audit O1). With
+  `WAL_ARCHIVE=on`, Postgres archives every change; `scripts/ship-wal.sh`,
+  from cron, encrypts it and copies it to the backup bucket, `backup.sh`
+  adds a base backup, and `scripts/restore-pitr.sh` restores the database
+  to any moment of the last two weeks. `fetch-backup.sh` brings the base
+  and WAL back on a new machine. Staging archives, and the end-to-end
+  tests restore to a moment between two sign-ups.
 - **The app can run as two instances** (audit O4). `APP_REPLICAS=2`
   starts two behind Caddy, which keeps each client address on one of them
   so that the rate limits hold, and tries the other when one is down. Live
