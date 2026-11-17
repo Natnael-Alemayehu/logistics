@@ -110,8 +110,11 @@ echo "Replaying the WAL…"
 while :; do
   state="$(compose exec -T postgres psql -U logistics -d postgres -qtAc 'SELECT pg_is_in_recovery()' 2>/dev/null || true)"
   [ "$state" = f ] && break
-  if compose logs --no-log-prefix --since "$started" postgres 2>&1 | grep -q 'FATAL:'; then
-    compose logs --no-log-prefix --since "$started" postgres 2>&1 | grep -E 'FATAL|LOG:  (recovery|redo|last completed)' | tail -n 8 >&2
+  # A failure, not the connections refused while it replays (ours among
+  # them).
+  failed() { grep -E 'FATAL:|PANIC:' | grep -vE 'the database system is (starting up|not yet accepting connections|in recovery mode|shutting down)'; }
+  if compose logs --no-log-prefix --since "$started" postgres 2>&1 | failed | grep -q .; then
+    compose logs --no-log-prefix --since "$started" postgres 2>&1 | failed | tail -n 8 >&2
     compose stop postgres
     echo "The database couldn't be brought to ${target:-the end of the WAL}, and is stopped. Try an earlier time, a base backup from before it, or restore.sh with a nightly dump." >&2
     exit 1
