@@ -4,5 +4,18 @@
 	# Metrics are for Prometheus on the internal network only.
 	respond /metrics 404
 
-	reverse_proxy app:8080
+	# Every instance of the app, found by name as Compose starts them
+	# (APP_REPLICAS). A client address always goes to the same one while
+	# it is up, so the rate limits each keeps in memory hold. A request
+	# that finds one down, being restarted, tries another.
+	reverse_proxy {
+		dynamic a {
+			name app
+			port 8080
+			refresh 5s
+		}
+		lb_policy ip_hash
+		lb_try_duration 10s
+		fail_duration 30s
+	}
 }

@@ -43,10 +43,31 @@ services:
     # The app gives requests in progress and the text or email being sent
     # 30 seconds to finish.
     stop_grace_period: 45s
+    # More than one instance shares the work: Caddy spreads requests by
+    # client address, and live updates pass between them through Postgres.
+    deploy:
+      replicas: ${APP_REPLICAS:-1}
     logging: *logging
     depends_on:
       postgres:
         condition: service_healthy
+      app-data:
+        condition: service_completed_successfully
+
+  # Mounts the app's volume once, before any instance does: Docker fills a
+  # new volume from the image (its folders, owned by the app's user), and
+  # two instances doing that at once collide.
+  app-data:
+    build:
+      context: ..
+    entrypoint: ["true"]
+    volumes:
+      - app-data:/data
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
 
   postgres:
     image: postgis/postgis:15-3.3-alpine

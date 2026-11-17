@@ -121,7 +121,22 @@ func withPool(ctx context.Context, cfg *config.Config, log zerolog.Logger, fn fu
 	return fn(pool)
 }
 
+// migrateLockKey is the advisory lock instances starting together take in
+// turn, so that only the first applies the migrations. Arbitrary, and
+// unlike the jobs' key.
+const migrateLockKey = 7_311_043
+
 func migrate(ctx context.Context, pool *pgxpool.Pool, log zerolog.Logger) error {
+	lock, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	defer lock.Release()
+	if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock($1)", migrateLockKey); err != nil {
+		return fmt.Errorf("migrate: wait for another instance: %w", err)
+	}
+	defer lock.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", migrateLockKey) //nolint:errcheck // the session's end frees it anyway
+
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 	goose.SetBaseFS(migrations.FS)

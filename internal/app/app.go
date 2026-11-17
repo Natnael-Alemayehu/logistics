@@ -43,6 +43,7 @@ type Options struct {
 type App struct {
 	Services *service.Services
 	web      *web.Server
+	live     *liveRelay
 	noJobs   bool
 }
 
@@ -92,8 +93,11 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log zerolog.Logger, opts Option
 
 	hub := websocket.NewHub(log.With().Str("component", "live").Logger())
 	go hub.Run()
+	// Updates reach the hub through Postgres, so that every instance's
+	// dashboards get them.
+	live := &liveRelay{pool: pool, hub: hub, log: log.With().Str("component", "live").Logger()}
 	svc := service.New(service.Deps{
-		Pool: pool, Log: log, Publisher: hub, Storage: store, SMS: smsSender{provider}, Mail: mailSender{mailer},
+		Pool: pool, Log: log, Publisher: live, Storage: store, SMS: smsSender{provider}, Mail: mailSender{mailer},
 		Payments: providers,
 		Settings: service.Settings{
 			AppName: cfg.AppName, BaseURL: cfg.PublicURL, Location: cfg.Timezone,
@@ -108,19 +112,20 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log zerolog.Logger, opts Option
 	if err != nil {
 		return nil, err
 	}
-	return &App{Services: svc, web: srv, noJobs: opts.NoJobs}, nil
+	return &App{Services: svc, web: srv, live: live, noJobs: opts.NoJobs}, nil
 }
 
 // Handler serves the dashboard, the public pages, the driver app and the
 // APIs.
 func (a *App) Handler() http.Handler { return a.web.Handler() }
 
-// Run does the background work until ctx ends: sending texts, email and
-// webhooks, and the periodic jobs. It returns once each worker has finished what it had in
+// Run does the background work until ctx ends: passing live updates
+// between instances, sending texts, email and webhooks, and the periodic
+// jobs. It returns once each worker has finished what it had in
 // hand. Texts and email it had taken but not started are handed back, for
 // the next start to send at once.
 func (a *App) Run(ctx context.Context) {
-	workers := []func(context.Context){a.Services.SMS.Run, a.Services.Mail.Run, a.Services.Webhooks.Run}
+	workers := []func(context.Context){a.live.Run, a.Services.SMS.Run, a.Services.Mail.Run, a.Services.Webhooks.Run}
 	if !a.noJobs {
 		workers = append(workers, a.Services.Jobs.Run)
 	}

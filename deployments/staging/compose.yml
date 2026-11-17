@@ -35,6 +35,9 @@ x-hardened: &hardened
 
 services:
   app:
+    # Two, so that the end-to-end tests cross instances as production can.
+    deploy:
+      replicas: 2
     env_file: !override
       - staging/staging.env
     volumes:

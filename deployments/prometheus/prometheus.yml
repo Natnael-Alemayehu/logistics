@@ -7,5 +7,11 @@ scrape_configs:
     authorization:
       type: Bearer
       credentials_file: /etc/prometheus/metrics_token
-    static_configs:
-      - targets: ["app:8080"]
+    # Each instance of the app, however many Compose runs. The final dot
+    # keeps the host's search domains out of the lookup: one that fails
+    # makes Prometheus give up on the name.
+    dns_sd_configs:
+      - names: ["app."]
+        type: A
+        port: 8080
+        refresh_interval: 30s
