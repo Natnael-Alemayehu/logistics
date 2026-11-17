@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/kiflet ./cmd/serve
 FROM build AS sandbox-build
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/kiflet-sandbox ./cmd/sandbox
 
-FROM alpine:3.22 AS sandbox
+FROM alpine:3.24 AS sandbox
 # /keys belongs to the sandbox, so a new volume there takes its owner and
 # `kiflet-sandbox keys` can write the key pairs into it.
 RUN apk add --no-cache ca-certificates tzdata \
@@ -33,7 +33,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
 ENTRYPOINT ["kiflet-sandbox"]
 CMD ["serve"]
 
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata \
  && adduser -D -H -u 10001 kiflet \
  && mkdir -p /data/uploads /data/keys \

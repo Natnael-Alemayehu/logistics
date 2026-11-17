@@ -6,6 +6,10 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **Dependencies updated**: the Go modules Dependabot proposed (pgx 5.13,
+  chi 5.5, httprate 0.16, goose 3.30 and others), Alpine 3.24, and
+  Prometheus 3.16, Grafana 13.3, rclone 1.76, Mailpit 1.33 and
+  SeaweedFS 4.53 in the deployments.
 - **The live map reads one row a driver** (audit O3). Each driver's
   newest position is kept in its own table as positions arrive, where
   the map used to search a week of them on every load. The migration

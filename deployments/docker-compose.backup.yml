@@ -9,7 +9,7 @@ name: kiflet-backup
 
 services:
   offsite:
-    image: rclone/rclone:1.75.2
+    image: rclone/rclone:1.76.0
     environment:
       # Settings from the environment only: no rclone.conf.
       RCLONE_CONFIG: ""

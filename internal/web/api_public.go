@@ -54,11 +54,10 @@ var publicAPI = []apiRoute{
 // mountPublicAPI adds the public API's routes to the /api/v1 router.
 func (s *Server) mountPublicAPI(r chi.Router) {
 	r.Get("/openapi.json", s.apiSpec)
-	perKey := httprate.Limit(apiRequestsPerMinute, time.Minute, httprate.WithLimitHandler(s.tooManyRequests),
-		httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
-			sum := sha256.Sum256([]byte(r.Header.Get("Authorization")))
-			return hex.EncodeToString(sum[:8]), nil
-		}))
+	perKey := httprate.LimitBy(apiRequestsPerMinute, time.Minute, func(r *http.Request) (string, error) {
+		sum := sha256.Sum256([]byte(r.Header.Get("Authorization")))
+		return hex.EncodeToString(sum[:8]), nil
+	}, httprate.WithLimitHandler(s.tooManyRequests))
 	r.Group(func(r chi.Router) {
 		r.Use(perKey)
 		r.Use(s.requireAPIKey)
