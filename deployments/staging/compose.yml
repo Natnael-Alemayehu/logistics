@@ -103,7 +103,7 @@ services:
   # Copies Caddy's root certificate where the sandbox can read it: Caddy
   # keeps its authority readable by root only.
   caddy-ca:
-    image: caddy:2.10-alpine
+    image: caddy:2.11-alpine
     entrypoint: ["sh", "-c", "install -m 0644 /data/caddy/pki/authorities/local/root.crt /ca/root.crt"]
     volumes:
       - caddy-data:/data:ro
