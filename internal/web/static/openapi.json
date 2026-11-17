@@ -3,7 +3,7 @@
   "info": {
     "title": "Kiflet API",
     "version": "1",
-    "description": "Book and follow a company's shipments from its own systems. Every request sends one of the company's API keys, made under Settings → API keys: `Authorization: Bearer kf_…`. A key acts for the whole company with the dashboard's rules, and what it does is recorded under the key's name in each shipment's history.\n\nEach key may make 300 requests a minute; past that, requests are answered 429 until the minute is over. Times are RFC 3339 and answered in UTC. Weights are in kilograms and values in birr.\n\nAn error is answered with its HTTP status and `{\"error\": {\"code\": …, \"message\": …, \"field\": …}}`. `message` is written to be shown to a person; `field` names the field at fault, when there is one."
+    "description": "Book and follow a company's shipments from its own systems. Every request sends one of the company's API keys, made under Settings → API keys: `Authorization: Bearer kf_…`. A key acts for the whole company with the dashboard's rules, and what it does is recorded under the key's name in each shipment's history.\n\nEach key may make 300 requests a minute; past that, requests are answered 429 until the minute is over. Times are RFC 3339 and answered in UTC. Weights are in kilograms and values in birr.\n\nAn error is answered with its HTTP status and `{\"error\": {\"code\": …, \"message\": …, \"field\": …}}`. `message` is written to be shown to a person; `field` names the field at fault, when there is one.\n\nWebhooks tell a company's system when its shipments change, without asking: an admin adds an address and the events it wants under Settings → Webhooks. Each is a POST of a `WebhookMessage`, signed as Standard Webhooks (https://www.standardwebhooks.com) describes: `webhook-id` (the same when a message is sent again), `webhook-timestamp` and `webhook-signature`. Answer 2xx within 10 seconds; anything else is tried again after 1 and 5 minutes, 30 minutes, then 2, 6 and 12 hours."
   },
   "servers": [{ "url": "/api/v1" }],
   "security": [{ "apiKey": [] }],
@@ -191,6 +191,36 @@
       }
     }
   },
+  "webhooks": {
+    "shipment.created": {
+      "post": {
+        "summary": "A shipment is booked, from the dashboard, a CSV file or the API",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookMessage" } } } },
+        "responses": { "2XX": { "description": "Received. Anything else is tried again." } }
+      }
+    },
+    "shipment.status_changed": {
+      "post": {
+        "summary": "A shipment's status changes; data.event has from_status and to_status",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookMessage" } } } },
+        "responses": { "2XX": { "description": "Received. Anything else is tried again." } }
+      }
+    },
+    "shipment.delivered": {
+      "post": {
+        "summary": "A shipment is delivered; sent as well as its status change",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookMessage" } } } },
+        "responses": { "2XX": { "description": "Received. Anything else is tried again." } }
+      }
+    },
+    "shipment.issue_reported": {
+      "post": {
+        "summary": "The driver reports a problem (as well as the status change), or the receiver does on the confirmation page (event type customer_issue)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookMessage" } } } },
+        "responses": { "2XX": { "description": "Received. Anything else is tried again." } }
+      }
+    }
+  },
   "components": {
     "securitySchemes": {
       "apiKey": { "type": "http", "scheme": "bearer", "description": "A key from Settings → API keys. It starts with kf_." }
@@ -320,6 +350,22 @@
           "lat": { "type": ["number", "null"] },
           "lng": { "type": ["number", "null"] },
           "at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WebhookMessage": {
+        "type": "object",
+        "required": ["type", "timestamp", "data"],
+        "properties": {
+          "type": { "type": "string", "enum": ["shipment.created", "shipment.status_changed", "shipment.delivered", "shipment.issue_reported", "test"] },
+          "timestamp": { "type": "string", "format": "date-time", "description": "When it happened." },
+          "data": {
+            "type": "object",
+            "description": "The shipment just after the change, and what happened. A test carries a message instead.",
+            "properties": {
+              "shipment": { "$ref": "#/components/schemas/Shipment" },
+              "event": { "$ref": "#/components/schemas/Event" }
+            }
+          }
         }
       },
       "Driver": {

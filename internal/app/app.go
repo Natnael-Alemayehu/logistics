@@ -101,6 +101,7 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log zerolog.Logger, opts Option
 			SupportEmail: cfg.SupportEmail, BankDetails: cfg.BankDetails,
 			RetainShipments: time.Duration(cfg.RetainShipmentDays) * 24 * time.Hour,
 			CodesPerDay:     cfg.CodesPerDay,
+			PrivateWebhooks: cfg.PrivateWebhooks,
 		},
 	})
 	srv, err := web.New(cfg, svc, pool, hub, log)
@@ -114,12 +115,12 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log zerolog.Logger, opts Option
 // APIs.
 func (a *App) Handler() http.Handler { return a.web.Handler() }
 
-// Run does the background work until ctx ends: sending texts and email, and
-// the periodic jobs. It returns once each worker has finished what it had in
+// Run does the background work until ctx ends: sending texts, email and
+// webhooks, and the periodic jobs. It returns once each worker has finished what it had in
 // hand. Texts and email it had taken but not started are handed back, for
 // the next start to send at once.
 func (a *App) Run(ctx context.Context) {
-	workers := []func(context.Context){a.Services.SMS.Run, a.Services.Mail.Run}
+	workers := []func(context.Context){a.Services.SMS.Run, a.Services.Mail.Run, a.Services.Webhooks.Run}
 	if !a.noJobs {
 		workers = append(workers, a.Services.Jobs.Run)
 	}

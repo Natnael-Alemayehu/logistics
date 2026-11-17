@@ -95,7 +95,7 @@ func (j *Jobs) once(ctx context.Context, retention, usage bool) (ran bool, err e
 	run("pickup_check", j.CheckPickups)
 	run("route_check", j.CheckRoutes)
 	run("outbox_requeue", func(ctx context.Context) error {
-		if err := errors.Join(j.q.RequeueStuckSMS(ctx), j.q.RequeueStuckEmails(ctx)); err != nil {
+		if err := errors.Join(j.q.RequeueStuckSMS(ctx), j.q.RequeueStuckEmails(ctx), j.q.RequeueStuckWebhooks(ctx)); err != nil {
 			return err
 		}
 		return j.observeOutbox(ctx)
@@ -226,6 +226,9 @@ func (j *Jobs) Retention(ctx context.Context) error {
 		return err
 	}
 	if err := j.q.DeleteOldEmails(ctx, toTimestamp(now.Add(-retainEmail))); err != nil {
+		return err
+	}
+	if err := j.q.DeleteOldWebhookDeliveries(ctx, toTimestamp(now.Add(-retainWebhooks))); err != nil {
 		return err
 	}
 	if err := j.q.DeleteOldEmailTokens(ctx, toTimestamp(now.Add(-retainLinks))); err != nil {

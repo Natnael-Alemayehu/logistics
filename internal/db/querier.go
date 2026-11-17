@@ -51,6 +51,9 @@ type Querier interface {
 	// The claim is a five-minute lease: next_attempt_at moves to when the row may
 	// be reclaimed if this process dies before recording the outcome.
 	ClaimQueuedSMS(ctx context.Context, limit int32) ([]SmsMessage, error)
+	// The five-minute lease of ClaimQueuedEmails. A paused endpoint's messages
+	// wait for it.
+	ClaimQueuedWebhooks(ctx context.Context, limit int32) ([]WebhookDelivery, error)
 	ClearVehicleFromDrivers(ctx context.Context, arg ClearVehicleFromDriversParams) error
 	ConsumeVerificationCode(ctx context.Context, id pgtype.UUID) (int64, error)
 	CountActiveAPIKeys(ctx context.Context, tenantID pgtype.UUID) (int64, error)
@@ -86,6 +89,7 @@ type Querier interface {
 	CountVerificationAttempt(ctx context.Context, arg CountVerificationAttemptParams) (int32, error)
 	CountVerificationCodesSince(ctx context.Context, arg CountVerificationCodesSinceParams) (int64, error)
 	CountWaitingTickets(ctx context.Context) (int64, error)
+	CountWebhookEndpoints(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	// The public API's keys (FR-046).
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	// An open alert for the same subject and type already covers this one, and
@@ -119,6 +123,9 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error)
 	CreateVerificationCode(ctx context.Context, arg CreateVerificationCodeParams) (VerificationCode, error)
+	// Webhooks (FR-047): a company's endpoints, and the outbox of messages to
+	// them.
+	CreateWebhookEndpoint(ctx context.Context, arg CreateWebhookEndpointParams) (WebhookEndpoint, error)
 	DeleteExpiredPendingSignups(ctx context.Context, expiresAt pgtype.Timestamptz) error
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteExpiredVerificationCodes(ctx context.Context) error
@@ -130,14 +137,21 @@ type Querier interface {
 	DeleteOldEmails(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldSMS(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeleteOldTrackingEvents(ctx context.Context, recordedAt pgtype.Timestamptz) error
+	DeleteOldWebhookDeliveries(ctx context.Context, createdAt pgtype.Timestamptz) error
 	DeletePendingSignup(ctx context.Context, id pgtype.UUID) error
 	DeletePersonDeviceData(ctx context.Context, driverID pgtype.UUID) error
 	DeleteSavedFilter(ctx context.Context, arg DeleteSavedFilterParams) (int64, error)
 	DeleteShipmentTexts(ctx context.Context, ids []pgtype.UUID) error
 	DeleteTenant(ctx context.Context, id pgtype.UUID) error
 	DeleteTenantAuditLogs(ctx context.Context, tenantID pgtype.UUID) error
+	DeleteWebhookEndpoint(ctx context.Context, arg DeleteWebhookEndpointParams) (WebhookEndpoint, error)
 	EnqueueEmail(ctx context.Context, arg EnqueueEmailParams) (Email, error)
 	EnqueueSMS(ctx context.Context, arg EnqueueSMSParams) (SmsMessage, error)
+	// A message to one endpoint, whatever it asked for: a test.
+	EnqueueWebhookTo(ctx context.Context, arg EnqueueWebhookToParams) (WebhookDelivery, error)
+	// One message to each of the company's endpoints that asked for this
+	// event. A paused endpoint's wait for it to be resumed.
+	EnqueueWebhooks(ctx context.Context, arg EnqueueWebhooksParams) (int64, error)
 	// Once a reset link is used, the others sent to that person stop working.
 	ExpireEmailTokens(ctx context.Context, arg ExpireEmailTokensParams) error
 	// A prompt nobody answered. A late approval is still honoured.
@@ -216,6 +230,10 @@ type Querier interface {
 	// What a vehicle carries already: the weight of its active shipments other
 	// than this one, and another driver on any of them.
 	GetVehicleLoad(ctx context.Context, arg GetVehicleLoadParams) (GetVehicleLoadRow, error)
+	GetWebhookEndpoint(ctx context.Context, arg GetWebhookEndpointParams) (WebhookEndpoint, error)
+	// Where a claimed message goes, read as it is sent: a changed address or
+	// secret applies to messages still waiting.
+	GetWebhookTarget(ctx context.Context, id pgtype.UUID) (GetWebhookTargetRow, error)
 	IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error)
 	IsPhoneOptedOut(ctx context.Context, phone string) (bool, error)
 	ListAPIKeys(ctx context.Context, tenantID pgtype.UUID) ([]ApiKey, error)
@@ -348,6 +366,8 @@ type Querier interface {
 	ListTrialsEnding(ctx context.Context, trialEndsAt pgtype.Timestamptz) ([]Tenant, error)
 	ListUsersByTenant(ctx context.Context, arg ListUsersByTenantParams) ([]User, error)
 	ListVehiclesWithDrivers(ctx context.Context, tenantID pgtype.UUID) ([]ListVehiclesWithDriversRow, error)
+	ListWebhookDeliveries(ctx context.Context, arg ListWebhookDeliveriesParams) ([]ListWebhookDeliveriesRow, error)
+	ListWebhookEndpoints(ctx context.Context, tenantID pgtype.UUID) ([]ListWebhookEndpointsRow, error)
 	LockInvoice(ctx context.Context, arg LockInvoiceParams) (Invoice, error)
 	LockInvoiceByNumber(ctx context.Context, number string) (Invoice, error)
 	LockPayment(ctx context.Context, id pgtype.UUID) (LockPaymentRow, error)
@@ -373,6 +393,9 @@ type Querier interface {
 	MarkSMSRetry(ctx context.Context, arg MarkSMSRetryParams) error
 	MarkSMSSent(ctx context.Context, arg MarkSMSSentParams) error
 	MarkSMSSkipped(ctx context.Context, arg MarkSMSSkippedParams) error
+	MarkWebhookDelivered(ctx context.Context, arg MarkWebhookDeliveredParams) error
+	MarkWebhookFailed(ctx context.Context, arg MarkWebhookFailedParams) error
+	MarkWebhookRetry(ctx context.Context, arg MarkWebhookRetryParams) error
 	// Moves the year's counter within the caller's transaction, so numbers have
 	// no gaps.
 	NextInvoiceNumber(ctx context.Context, year int32) (int32, error)
@@ -397,6 +420,8 @@ type Querier interface {
 	// Hands back messages claimed but not yet attempted when the process stops,
 	// so the next one sends them at once instead of after the lease.
 	ReleaseSMS(ctx context.Context, ids []pgtype.UUID) error
+	// As ReleaseEmails.
+	ReleaseWebhooks(ctx context.Context, ids []pgtype.UUID) error
 	RemoveSMSOptOut(ctx context.Context, phone string) error
 	// Why shipments were cancelled, and how many of them after the cargo had
 	// left: a refused or returned load cost a trip.
@@ -418,6 +443,9 @@ type Querier interface {
 	RequeueStuckEmails(ctx context.Context) error
 	// A process that died mid-send leaves rows in 'sending' past their lease.
 	RequeueStuckSMS(ctx context.Context) error
+	RequeueStuckWebhooks(ctx context.Context) error
+	// Sends a message again, from the start of its retries.
+	ResendWebhook(ctx context.Context, arg ResendWebhookParams) (WebhookDelivery, error)
 	// Following a reset link proves the address, and ends any lockout.
 	ResetUserPassword(ctx context.Context, arg ResetUserPasswordParams) error
 	ReviewPOD(ctx context.Context, arg ReviewPODParams) error
@@ -480,6 +508,8 @@ type Querier interface {
 	SetTrialEnd(ctx context.Context, arg SetTrialEndParams) error
 	SetUserActive(ctx context.Context, arg SetUserActiveParams) error
 	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
+	SetWebhookEndpointActive(ctx context.Context, arg SetWebhookEndpointActiveParams) (WebhookEndpoint, error)
+	SetWebhookSecret(ctx context.Context, arg SetWebhookSecretParams) (WebhookEndpoint, error)
 	SumPaidSince(ctx context.Context, completedAt pgtype.Timestamptz) (int64, error)
 	TenantForDeletion(ctx context.Context, id pgtype.UUID) (TenantForDeletionRow, error)
 	// At most one write a minute, however busy the key.
@@ -494,6 +524,7 @@ type Querier interface {
 	// A changed email address has to be confirmed again.
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error)
+	UpdateWebhookEndpoint(ctx context.Context, arg UpdateWebhookEndpointParams) (WebhookEndpoint, error)
 	UpsertSyncMetadata(ctx context.Context, arg UpsertSyncMetadataParams) error
 	VoidInvoice(ctx context.Context, arg VoidInvoiceParams) (int64, error)
 	// For the billing job, across companies: a plan invoice left unpaid past

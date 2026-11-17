@@ -104,46 +104,16 @@ func apiActor(r *http.Request) service.Actor {
 // What the API sends and takes
 // ---------------------------------------------------------------------------
 
-type apiPlace struct {
-	City    string   `json:"city"`
-	Address string   `json:"address"`
-	Lat     *float64 `json:"lat"`
-	Lng     *float64 `json:"lng"`
-}
+type (
+	apiPlace    = service.PlaceJSON
+	apiParty    = service.PartyJSON
+	apiCargo    = service.CargoJSON
+	apiShipment = service.ShipmentJSON
+	apiEvent    = service.EventJSON
+)
 
-type apiParty struct {
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
-}
-
-type apiCargo struct {
-	Description string  `json:"description"`
-	WeightKg    float64 `json:"weight_kg"`
-	ValueETB    float64 `json:"value_etb"`
-}
-
-type apiShipment struct {
-	ID                string     `json:"id"`
-	TrackingNumber    string     `json:"tracking_number"`
-	Status            string     `json:"status"`
-	StatusReason      string     `json:"status_reason"`
-	Priority          string     `json:"priority"`
-	Origin            apiPlace   `json:"origin"`
-	Destination       apiPlace   `json:"destination"`
-	Customer          apiParty   `json:"customer"`
-	Receiver          *apiParty  `json:"receiver"`
-	Cargo             apiCargo   `json:"cargo"`
-	Instructions      string     `json:"instructions"`
-	DriverID          *string    `json:"driver_id"`
-	VehicleID         *string    `json:"vehicle_id"`
-	PlannedPickup     *time.Time `json:"planned_pickup"`
-	EstimatedDelivery *time.Time `json:"estimated_delivery"`
-	PickedUpAt        *time.Time `json:"picked_up_at"`
-	DeliveredAt       *time.Time `json:"delivered_at"`
-	ReceiptConfirmed  bool       `json:"receipt_confirmed"`
-	TrackingURL       string     `json:"tracking_url"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+func (s *Server) toAPIShipment(sh db.Shipment) apiShipment {
+	return service.AsJSON(sh, s.cfg.PublicURL)
 }
 
 func timeOf(t pgtype.Timestamptz) *time.Time {
@@ -152,34 +122,6 @@ func timeOf(t pgtype.Timestamptz) *time.Time {
 	}
 	u := t.Time.UTC()
 	return &u
-}
-
-func idOf(u pgtype.UUID) *string {
-	if !u.Valid {
-		return nil
-	}
-	s := u.String()
-	return &s
-}
-
-func (s *Server) toAPIShipment(sh db.Shipment) apiShipment {
-	out := apiShipment{
-		ID: sh.ID.String(), TrackingNumber: sh.TrackingNumber, Status: sh.Status, StatusReason: deref(sh.StatusReason), Priority: sh.Priority,
-		Origin:       apiPlace{City: deref(sh.OriginCity), Address: sh.OriginAddress, Lat: sh.OriginLat, Lng: sh.OriginLng},
-		Destination:  apiPlace{City: deref(sh.DestinationCity), Address: sh.DestinationAddress, Lat: sh.DestinationLat, Lng: sh.DestinationLng},
-		Customer:     apiParty{Name: sh.CustomerName, Phone: sh.CustomerPhone},
-		Cargo:        apiCargo{Description: deref(sh.CargoDescription), WeightKg: toFloat(sh.CargoWeight), ValueETB: toFloat(sh.CargoValue)},
-		Instructions: deref(sh.SpecialInstructions), DriverID: idOf(sh.DriverID), VehicleID: idOf(sh.VehicleID),
-		PlannedPickup: timeOf(sh.PlannedPickupAt), EstimatedDelivery: timeOf(sh.EstimatedDelivery),
-		PickedUpAt: timeOf(sh.PickedUpAt), DeliveredAt: timeOf(sh.ActualDelivery),
-		ReceiptConfirmed: sh.CustomerConfirmedAt.Valid,
-		TrackingURL:      s.cfg.PublicURL + "/track/" + sh.TrackingNumber,
-		CreatedAt:        sh.CreatedAt.Time.UTC(), UpdatedAt: sh.UpdatedAt.Time.UTC(),
-	}
-	if sh.ConsigneePhone != nil {
-		out.Receiver = &apiParty{Name: deref(sh.ConsigneeName), Phone: *sh.ConsigneePhone}
-	}
-	return out
 }
 
 // optional is a JSON field that tells "absent" from "null" from a value,
@@ -424,19 +366,6 @@ func (s *Server) apiShipmentCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.toAPIShipment(out))
-}
-
-type apiEvent struct {
-	Type       string    `json:"type"`
-	FromStatus string    `json:"from_status"`
-	ToStatus   string    `json:"to_status"`
-	Reason     string    `json:"reason"`
-	Note       string    `json:"note"`
-	Source     string    `json:"source"`
-	Actor      string    `json:"actor"`
-	Lat        *float64  `json:"lat"`
-	Lng        *float64  `json:"lng"`
-	At         time.Time `json:"at"`
 }
 
 type apiPosition struct {

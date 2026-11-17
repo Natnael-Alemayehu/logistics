@@ -239,7 +239,7 @@ func (s *ShipmentService) RecordPOD(ctx context.Context, a Actor, id pgtype.UUID
 
 		if held != "" {
 			details["pod_id"], details["reason"] = podID.String(), held
-			s.event(ctx, q, a, cur, shipmentEvent{
+			s.event(ctx, q, after, a, cur, shipmentEvent{
 				Type: "pod_held", Lat: in.Lat, Lng: in.Lng, OccurredAt: recorded, DriverID: driverID,
 				Note: "Received by " + in.RecipientName, Details: details,
 			})
@@ -257,7 +257,7 @@ func (s *ShipmentService) RecordPOD(ctx context.Context, a Actor, id pgtype.UUID
 			return nil
 		}
 
-		s.event(ctx, q, a, cur, shipmentEvent{
+		s.event(ctx, q, after, a, cur, shipmentEvent{
 			Type: "pod_recorded", Lat: in.Lat, Lng: in.Lng, OccurredAt: recorded,
 			Note: "Received by " + in.RecipientName, Details: details,
 		})
@@ -339,7 +339,7 @@ func (s *ShipmentService) AcceptHeldPOD(ctx context.Context, a Actor, id, podID 
 				return err
 			}
 			// The previous driver's app drops the shipment on its next sync.
-			s.event(ctx, q, a, cur, shipmentEvent{
+			s.event(ctx, q, after, a, cur, shipmentEvent{
 				Type: "assigned", DriverID: pod.DriverID, PreviousDriverID: previous,
 				Note: "Credited with the delivery",
 			})
@@ -347,7 +347,7 @@ func (s *ShipmentService) AcceptHeldPOD(ctx context.Context, a Actor, id, podID 
 		if err := q.ReviewPOD(ctx, db.ReviewPODParams{Status: PODAccepted, ReviewedBy: a.UserID, ID: podID, TenantID: a.TenantID}); err != nil {
 			return err
 		}
-		s.event(ctx, q, a, cur, shipmentEvent{
+		s.event(ctx, q, after, a, cur, shipmentEvent{
 			Type: "pod_accepted", DriverID: pod.DriverID,
 			Note:    "Received by " + pod.RecipientName,
 			Details: map[string]any{"pod_id": podID.String(), "driver": pod.DriverName},
@@ -393,7 +393,7 @@ func (s *ShipmentService) DismissHeldPOD(ctx context.Context, a Actor, id, podID
 		if err := q.ReviewPOD(ctx, db.ReviewPODParams{Status: PODDismissed, ReviewedBy: a.UserID, ID: podID, TenantID: a.TenantID}); err != nil {
 			return err
 		}
-		s.event(ctx, q, a, cur, shipmentEvent{
+		s.event(ctx, q, after, a, cur, shipmentEvent{
 			Type: "pod_dismissed", DriverID: pod.DriverID,
 			Note:    "Received by " + pod.RecipientName,
 			Details: map[string]any{"pod_id": podID.String(), "driver": pod.DriverName},

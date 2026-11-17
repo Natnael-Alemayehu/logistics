@@ -446,6 +446,9 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 }
 .pop-right .pop-panel { left: auto; right: 0; }
 .pop-panel p { font-size: 0.9rem; }
+/* A webhook message's body and its answer. */
+.pop-panel.webhook-detail { width: 560px; }
+.webhook-detail pre { max-height: 320px; overflow: auto; margin: 0; padding: 8px; background: var(--bg); border-radius: var(--radius); }
 
 /* ---------- alerts ---------- */
 .alert-list { list-style: none; margin: 0; padding: 0; }

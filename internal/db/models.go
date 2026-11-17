@@ -473,3 +473,33 @@ type VerificationCode struct {
 	ConsumedAt pgtype.Timestamptz `db:"consumed_at" json:"consumed_at"`
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
+
+type WebhookDelivery struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	EndpointID     pgtype.UUID        `db:"endpoint_id" json:"endpoint_id"`
+	EventID        pgtype.UUID        `db:"event_id" json:"event_id"`
+	EventType      string             `db:"event_type" json:"event_type"`
+	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	Payload        []byte             `db:"payload" json:"payload"`
+	Status         string             `db:"status" json:"status"`
+	Attempts       int32              `db:"attempts" json:"attempts"`
+	NextAttemptAt  pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	ResponseStatus *int32             `db:"response_status" json:"response_status"`
+	ResponseBody   *string            `db:"response_body" json:"response_body"`
+	LastError      *string            `db:"last_error" json:"last_error"`
+	DurationMs     *int32             `db:"duration_ms" json:"duration_ms"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DeliveredAt    pgtype.Timestamptz `db:"delivered_at" json:"delivered_at"`
+}
+
+type WebhookEndpoint struct {
+	ID        pgtype.UUID        `db:"id" json:"id"`
+	TenantID  pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Url       string             `db:"url" json:"url"`
+	Events    []string           `db:"events" json:"events"`
+	Secret    string             `db:"secret" json:"secret"`
+	Active    bool               `db:"active" json:"active"`
+	CreatedBy pgtype.UUID        `db:"created_by" json:"created_by"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}

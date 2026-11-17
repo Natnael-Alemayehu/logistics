@@ -362,6 +362,16 @@ func (s *Server) funcs() template.FuncMap {
 			}
 			return def
 		},
+		// has reports whether a field sent several times, such as a
+		// group of checkboxes, holds value.
+		"has": func(form url.Values, name, value string) bool {
+			for _, v := range form[name] {
+				if v == value {
+					return true
+				}
+			}
+			return false
+		},
 		"bytes": func(v any) string { return humanBytes(toFloat(v)) },
 		"millis": func(d time.Duration) string {
 			if d < 10*time.Millisecond {

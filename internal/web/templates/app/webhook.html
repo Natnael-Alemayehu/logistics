@@ -1,0 +1,102 @@
+{{define "content"}}{{$d := .Data}}{{$w := $d.Endpoint}}{{$id := uuid $w.ID}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/settings">Settings</a> / <a href="/app/settings/webhooks">Webhooks</a></p>
+    <h1 class="mono">{{$w.Url}}</h1>
+    <p class="muted">{{if $w.Active}}Sending{{else}}<span class="badge">Paused</span> Messages wait until it is resumed{{end}} · added {{date $w.CreatedAt}}</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/app/settings/webhooks/{{$id}}/test"><button class="btn" type="submit">Send a test</button></form>
+    {{if $w.Active}}
+    <form method="post" action="/app/settings/webhooks/{{$id}}/pause"><button class="btn" type="submit">Pause</button></form>
+    {{else}}
+    <form method="post" action="/app/settings/webhooks/{{$id}}/resume"><button class="btn btn-primary" type="submit">Resume</button></form>
+    {{end}}
+  </div>
+</div>
+{{template "form-error" .}}
+
+<div class="grid-detail">
+<div class="col-main stack">
+<section class="card card-flush">
+  <div class="card-head"><h2>Messages</h2><span class="small muted">The last 30 days</span></div>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>When</th><th>Event</th><th>Shipment</th><th>Result</th><th class="num"></th></tr></thead>
+    <tbody>
+    {{range $d.Deliveries}}
+    <tr>
+      <td class="nowrap">{{when .CreatedAt}}</td>
+      <td><code>{{.EventType}}</code></td>
+      <td class="nowrap">{{$sid := .ShipmentID}}{{with .TrackingNumber}}<a class="mono" href="/app/shipments/{{uuid $sid}}">{{.}}</a>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td>
+        {{if eq .Status "delivered"}}<span class="text-good">Delivered</span>
+        {{else if eq .Status "failed"}}<span class="text-bad">Failed</span>
+        {{else if eq .Status "sending"}}<span class="text-warn">Sending</span>
+        {{else if not $w.Active}}<span class="text-warn">Waiting until it is resumed</span>
+        {{else if gt .Attempts 0}}<span class="text-warn">Trying again {{until .NextAttemptAt}}</span>
+        {{else}}<span class="text-warn">Waiting</span>{{end}}
+        <div class="small muted">{{with .ResponseStatus}}{{.}} · {{end}}{{with .DurationMs}}{{.}} ms · {{end}}{{if gt .Attempts 1}}{{.Attempts}} attempts{{else if eq .Attempts 1}}1 attempt{{end}}</div>
+      </td>
+      <td class="num">
+        <details class="pop pop-right">
+          <summary class="btn btn-sm btn-ghost">Details</summary>
+          <div class="pop-panel stack webhook-detail">
+            {{with .LastError}}<p class="small text-bad">{{.}}</p>{{end}}
+            <p class="small"><strong>Sent</strong> · <span class="mono">webhook-id: {{uuid .EventID}}</span></p>
+            <pre class="pre small mono">{{.Payload}}</pre>
+            {{with .ResponseBody}}<p class="small"><strong>Answered</strong></p><pre class="pre small mono">{{.}}</pre>{{end}}
+            {{if or (eq .Status "delivered") (eq .Status "failed")}}
+            <form method="post" action="/app/settings/webhooks/{{$id}}/deliveries/{{uuid .ID}}/resend"><button class="btn btn-sm btn-block" type="submit">Send again</button></form>
+            {{end}}
+          </div>
+        </details>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">Nothing sent yet. <strong>Send a test</strong> to try the address.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{if or $d.More (gt $d.Page 1)}}
+  <nav class="pager card-foot">
+    {{if gt $d.Page 1}}<a class="btn btn-sm" href="?page={{sub $d.Page 1}}">← Newer</a>{{end}}
+    {{if $d.More}}<a class="btn btn-sm" href="?page={{add $d.Page 1}}">Older →</a>{{end}}
+  </nav>
+  {{end}}
+</section>
+
+<form method="post" action="/app/settings/webhooks/{{$id}}" class="card stack" novalidate>
+  <h2>Address and events</h2>
+  {{template "webhook-fields" .}}
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+</form>
+</div>
+
+<aside class="col-side stack">
+  <section class="card">
+    <h2>Secret</h2>
+    <p class="small">Every message is signed with it. Keep it on the receiving system and nowhere else.</p>
+    <details>
+      <summary class="btn btn-sm">Show the secret</summary>
+      <p class="secret mono small" data-secret>{{$w.Secret}}</p>
+      <p><button type="button" class="btn btn-sm" data-copy="{{$w.Secret}}">Copy</button></p>
+    </details>
+    <p class="small">To check a message, compute HMAC-SHA256 of <code>webhook-id</code>, <code>webhook-timestamp</code> and the body, joined by dots, keyed with the secret's part after <code>whsec_</code> decoded from base64. It must equal the base64 after <code>v1,</code> in <code>webhook-signature</code>. Refuse a timestamp more than five minutes old, and use <code>webhook-id</code> to ignore a message you have already handled.</p>
+    <form method="post" action="/app/settings/webhooks/{{$id}}/secret" class="stack">
+      <p class="hint">A new secret signs every message from now on, retries included. Change it on the receiver straight after.</p>
+      <button class="btn btn-sm" type="submit">Make a new secret</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Remove</h2>
+    <form method="post" action="/app/settings/webhooks/{{$id}}/delete" class="stack">
+      <p class="hint">Nothing more is sent to it, and its messages go too.</p>
+      <label class="check small"><input type="checkbox" required> Remove this webhook</label>
+      <button class="btn btn-sm btn-danger-ghost" type="submit">Remove</button>
+    </form>
+  </section>
+</aside>
+</div>
+{{end}}

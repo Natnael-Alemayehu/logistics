@@ -1,0 +1,50 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/settings">Settings</a></p>
+    <h1>Webhooks</h1>
+    <p class="muted">Your own systems are told at these addresses when your shipments change, as it happens.</p>
+  </div>
+  <div class="actions"><a class="btn" href="/app/settings/api">API keys</a></div>
+</div>
+{{template "form-error" .}}
+
+<div class="grid-detail">
+<div class="col-main stack">
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Address</th><th>Events</th><th>Last delivered</th><th class="num"></th></tr></thead>
+  <tbody>
+  {{range $d.Endpoints}}
+  <tr {{if not .Active}}class="is-muted"{{end}}>
+    <td><a href="/app/settings/webhooks/{{uuid .ID}}" class="mono">{{.Url}}</a>{{if not .Active}} <span class="badge">Paused</span>{{end}}{{if gt .FailedWeek 0}} <span class="badge s-issue" title="Messages that failed every attempt in the last 7 days">{{.FailedWeek}} failed</span>{{end}}</td>
+    <td class="small">{{range $i, $ev := .Events}}{{if $i}}, {{end}}<code>{{$ev}}</code>{{end}}</td>
+    <td class="nowrap">{{if .LastDeliveredAt.Valid}}{{ago .LastDeliveredAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
+    <td class="num"><a class="btn btn-sm btn-ghost" href="/app/settings/webhooks/{{uuid .ID}}">Open</a></td>
+  </tr>
+  {{else}}
+  <tr><td colspan="4" class="muted">No webhooks yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+
+<form method="post" action="/app/settings/webhooks" class="card stack" novalidate>
+  <h2>Add a webhook</h2>
+  {{template "webhook-fields" .}}
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Add webhook</button></div>
+</form>
+</div>
+
+<aside class="col-side stack">
+  <section class="card">
+    <h2>How they work</h2>
+    <p class="small">Each message is a POST of JSON: the event's <code>type</code>, a <code>timestamp</code>, and in <code>data</code> the shipment as the API sends it and what happened to it.</p>
+    <p class="small">Answer 2xx within 10 seconds. Anything else is tried again after 1 and 5 minutes, half an hour, then 2, 6 and 12 hours. Each webhook's page lists what was sent and how it was answered, for 30 days.</p>
+    <p class="small">Messages are signed as <a href="https://www.standardwebhooks.com" rel="noopener">Standard Webhooks</a> describes, so any of its libraries can check them: see a webhook's page for its secret.</p>
+  </section>
+</aside>
+</div>
+{{end}}

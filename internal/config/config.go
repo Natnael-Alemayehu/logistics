@@ -102,6 +102,12 @@ type Config struct {
 	// AllowMockProviders lets a production deployment start with stand-in
 	// SMS, email or payments, for a demo or staging site.
 	AllowMockProviders bool
+	// PrivateWebhooks lets companies' webhooks go to private and loopback
+	// addresses and over plain HTTP. It defaults to on in development, to
+	// try webhooks against a receiver on the same machine, and off in
+	// production, where it would let a company reach the server's own
+	// network.
+	PrivateWebhooks bool
 }
 
 // TelebirrSettings are a telebirr merchant's (H5 C2B web checkout). The
@@ -184,6 +190,7 @@ func Load() (*Config, error) {
 		SupportEmail:       getEnv("SUPPORT_EMAIL", ""),
 		AllowMockProviders: getBoolEnv("ALLOW_MOCK_PROVIDERS", false),
 	}
+	c.PrivateWebhooks = getBoolEnv("WEBHOOK_PRIVATE_TARGETS", !c.IsProduction())
 	if c.PublicURL == "" {
 		c.PublicURL = "http://localhost:" + c.Port
 	}

@@ -155,10 +155,10 @@ In order. The first two can run side by side.
 5. **Tracking with the screen off** (M1), if the pilot asks for it: wrap the
    driver app in Capacitor with a background-location plugin. The web code
    stays the app.
-6. **Later:** a second app instance (O4), webhooks (FR-047), and
-   point-in-time recovery (WAL archiving, the rest of O1) if a pilot can't
-   afford to lose a day. The public API (FR-046) is built: a pilot that
-   wants its own system to book shipments can start with it.
+6. **Later:** a second app instance (O4), and point-in-time recovery (WAL
+   archiving, the rest of O1) if a pilot can't afford to lose a day. The
+   public API and webhooks (FR-046, FR-047) are built: a pilot that wants
+   its own system to book or follow shipments can start with them.
 
 ## Decided, and when to revisit
 

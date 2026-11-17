@@ -391,6 +391,15 @@ SMS: the email appears in the server terminal.
   not ignored. `/api/v1/openapi.json` lists the rest.
 - **Revoke** the key: the same request is answered 401 at once. Both show in
   the audit log. A dispatcher gets 403 on the page.
+- **Settings → Webhooks → Add a webhook.** For a receiver, run
+  `python3 -m http.server 9000` in another terminal (it answers 501 to a
+  POST, so messages fail and are retried) or point it at a request bin.
+  In development, plain `http://localhost:9000/` is allowed. **Send a
+  test**: it shows under Messages with the answer, and **Details** has the
+  body and the error. Book a shipment and move it along in the driver app:
+  each booking and status change is listed. **Pause** holds messages,
+  **Resume** sends what waited. In production only `https://` on a public
+  address is accepted.
 
 ### Help and your data
 
