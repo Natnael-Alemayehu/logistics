@@ -133,10 +133,10 @@ func (s *Server) Handler() http.Handler {
 	// its own: an account locks after five wrong passwords anyway, and a
 	// depot's drivers often reach the internet through one carrier address.
 	// strict is for what sends a code or checks one.
-	signIn := httprate.Limit(30, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
-	strict := httprate.Limit(10, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
-	lookup := httprate.Limit(60, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
-	general := httprate.Limit(600, time.Minute, httprate.WithKeyFuncs(ipKey), httprate.WithLimitHandler(s.tooManyRequests))
+	signIn := httprate.LimitBy(30, time.Minute, ipKey, httprate.WithLimitHandler(s.tooManyRequests))
+	strict := httprate.LimitBy(10, time.Minute, ipKey, httprate.WithLimitHandler(s.tooManyRequests))
+	lookup := httprate.LimitBy(60, time.Minute, ipKey, httprate.WithLimitHandler(s.tooManyRequests))
+	general := httprate.LimitBy(600, time.Minute, ipKey, httprate.WithLimitHandler(s.tooManyRequests))
 
 	// Public pages.
 	r.Group(func(r chi.Router) {
