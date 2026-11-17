@@ -94,6 +94,11 @@ Check:
   receiver gets the confirmation link and the customer a "was delivered"
   text with the tracking link. The waybill prints Shipper and Consignee.
 - **Waybill** prints a one-page document.
+- **Import CSV** on the shipment list: download the template, add a few
+  rows in a spreadsheet, break one (a town that doesn't exist) and choose
+  the file. The page names the row and what is wrong, and books nothing.
+  Correct it and choose it again: the page lists what it will book, and
+  **Book** books them all. They appear under **Unassigned**.
 
 ## 4. The driver app
 
