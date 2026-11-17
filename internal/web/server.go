@@ -200,6 +200,8 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/driver/pin", s.apiChangePIN)
 			r.Post("/driver/sync", s.apiSync)
 		})
+		// The public API, for a company's own systems.
+		s.mountPublicAPI(r)
 		r.Post("/sms/inbound", s.apiSMSInbound)
 		r.Post("/sms/status", s.apiSMSStatus)
 		// Each payment provider's calls: how a payment went, and for one
@@ -335,6 +337,9 @@ func (s *Server) Handler() http.Handler {
 					r.Get("/billing/invoices/{id}", s.invoicePage)
 					r.Post("/billing/invoices/{id}/pay", s.invoicePay)
 					r.Get("/billing/payments/{id}", s.paymentPage)
+					r.Get("/settings/api", s.apiKeysPage)
+					r.Post("/settings/api", s.apiKeyCreate)
+					r.Post("/settings/api/{id}/revoke", s.apiKeyRevoke)
 					r.Get("/settings/sms", s.smsLog)
 					r.Post("/settings/sms/simulate", s.smsSimulate)
 					r.Get("/audit", s.auditLog)

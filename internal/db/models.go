@@ -23,6 +23,18 @@ type Alert struct {
 	Episode        *string            `db:"episode" json:"episode"`
 }
 
+type ApiKey struct {
+	ID         pgtype.UUID        `db:"id" json:"id"`
+	TenantID   pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	Name       string             `db:"name" json:"name"`
+	Prefix     string             `db:"prefix" json:"prefix"`
+	KeyHash    string             `db:"key_hash" json:"key_hash"`
+	CreatedBy  pgtype.UUID        `db:"created_by" json:"created_by"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	LastUsedAt pgtype.Timestamptz `db:"last_used_at" json:"last_used_at"`
+	RevokedAt  pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+}
+
 type AuditLog struct {
 	ID         pgtype.UUID        `db:"id" json:"id"`
 	TenantID   pgtype.UUID        `db:"tenant_id" json:"tenant_id"`

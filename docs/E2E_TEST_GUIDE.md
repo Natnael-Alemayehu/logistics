@@ -373,6 +373,25 @@ SMS: the email appears in the server terminal.
   address must be confirmed again: a link goes to it, and reset links sent to
   the old address stop working.
 
+### The API
+
+- **Settings → API keys → Make key**, named after what will use it. The key
+  shows once, with a Copy button; the list shows only its start. Try it:
+
+  ```bash
+  KEY=kf_…
+  curl -s -H "Authorization: Bearer $KEY" http://localhost:8080/api/v1/drivers
+  curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+    -d '{"origin":{"city":"Addis Ababa","address":"Depot"},"destination":{"city":"Adama","address":"Warehouse"},"customer":{"name":"Abyssinia Traders","phone":"0911223344"}}' \
+    http://localhost:8080/api/v1/shipments
+  ```
+
+  The shipment appears on the board, booked by "API: " and the key's name,
+  and the customer is texted as from the form. A misspelt field is refused,
+  not ignored. `/api/v1/openapi.json` lists the rest.
+- **Revoke** the key: the same request is answered 401 at once. Both show in
+  the audit log. A dispatcher gets 403 on the page.
+
 ### Help and your data
 
 - **Help** holds questions to the Kiflet team. **Ask a question** with a

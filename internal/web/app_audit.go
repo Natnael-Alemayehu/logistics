@@ -68,6 +68,8 @@ var auditActions = map[string]string{
 	"user_anonymised":            "Removed a former member's details",
 	"data_exported":              "Downloaded the company's data",
 	"tenant_deleted":             "Deleted a company",
+	"api_key_created":            "Made an API key",
+	"api_key_revoked":            "Revoked an API key",
 }
 
 func (s *Server) userNames(ctx context.Context, tenantID pgtype.UUID) map[pgtype.UUID]string {

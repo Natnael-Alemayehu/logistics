@@ -53,6 +53,7 @@ type Querier interface {
 	ClaimQueuedSMS(ctx context.Context, limit int32) ([]SmsMessage, error)
 	ClearVehicleFromDrivers(ctx context.Context, arg ClearVehicleFromDriversParams) error
 	ConsumeVerificationCode(ctx context.Context, id pgtype.UUID) (int64, error)
+	CountActiveAPIKeys(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountActiveDriversByTenant(ctx context.Context, tenantID pgtype.UUID) (int64, error)
 	CountActiveShipmentsByDriver(ctx context.Context, arg CountActiveShipmentsByDriverParams) (int64, error)
 	CountAlerts(ctx context.Context, arg CountAlertsParams) (int64, error)
@@ -85,6 +86,8 @@ type Querier interface {
 	CountVerificationAttempt(ctx context.Context, arg CountVerificationAttemptParams) (int32, error)
 	CountVerificationCodesSince(ctx context.Context, arg CountVerificationCodesSinceParams) (int64, error)
 	CountWaitingTickets(ctx context.Context) (int64, error)
+	// The public API's keys (FR-046).
+	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	// An open alert for the same subject and type already covers this one, and
 	// an alert of the same episode was raised before, even if dismissed since:
 	// the unique indexes turn either duplicate into a no-op and no row returns.
@@ -148,6 +151,8 @@ type Querier interface {
 	ExportVehicles(ctx context.Context, tenantID pgtype.UUID) ([]ExportVehiclesRow, error)
 	FinishPayment(ctx context.Context, arg FinishPaymentParams) error
 	FlagRefundDue(ctx context.Context, arg FlagRefundDueParams) error
+	// The one query not scoped by company: the key is what says which company.
+	GetAPIKeyByHash(ctx context.Context, keyHash string) (GetAPIKeyByHashRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, arg GetActiveSessionByTokenHashParams) (Session, error)
 	GetActiveVerificationCode(ctx context.Context, arg GetActiveVerificationCodeParams) (VerificationCode, error)
 	GetCompanyTicket(ctx context.Context, arg GetCompanyTicketParams) (GetCompanyTicketRow, error)
@@ -213,6 +218,7 @@ type Querier interface {
 	GetVehicleLoad(ctx context.Context, arg GetVehicleLoadParams) (GetVehicleLoadRow, error)
 	IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error)
 	IsPhoneOptedOut(ctx context.Context, phone string) (bool, error)
+	ListAPIKeys(ctx context.Context, tenantID pgtype.UUID) ([]ApiKey, error)
 	ListActiveSessionsByUser(ctx context.Context, userID pgtype.UUID) ([]Session, error)
 	ListActiveShipmentsByDriver(ctx context.Context, arg ListActiveShipmentsByDriverParams) ([]Shipment, error)
 	ListActiveShipmentsForMap(ctx context.Context, tenantID pgtype.UUID) ([]ListActiveShipmentsForMapRow, error)
@@ -415,6 +421,7 @@ type Querier interface {
 	// Following a reset link proves the address, and ends any lockout.
 	ResetUserPassword(ctx context.Context, arg ResetUserPasswordParams) error
 	ReviewPOD(ctx context.Context, arg ReviewPODParams) error
+	RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (ApiKey, error)
 	RevokeAllUserSessions(ctx context.Context, userID pgtype.UUID) error
 	RevokeOtherUserSessions(ctx context.Context, arg RevokeOtherUserSessionsParams) error
 	RevokeSession(ctx context.Context, id pgtype.UUID) error
@@ -475,6 +482,8 @@ type Querier interface {
 	SetUserRole(ctx context.Context, arg SetUserRoleParams) error
 	SumPaidSince(ctx context.Context, completedAt pgtype.Timestamptz) (int64, error)
 	TenantForDeletion(ctx context.Context, id pgtype.UUID) (TenantForDeletionRow, error)
+	// At most one write a minute, however busy the key.
+	TouchAPIKey(ctx context.Context, id pgtype.UUID) error
 	// Sliding expiry: a session in use is pushed out, never pulled in.
 	TouchSession(ctx context.Context, arg TouchSessionParams) error
 	UpdatePIN(ctx context.Context, arg UpdatePINParams) error

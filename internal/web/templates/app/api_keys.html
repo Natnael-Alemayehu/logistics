@@ -1,0 +1,79 @@
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/settings">Settings</a></p>
+    <h1>API keys</h1>
+    <p class="muted">Your own systems can book and follow shipments through the API with one of these keys.</p>
+  </div>
+</div>
+{{template "form-error" .}}
+
+{{if $d.Created}}
+<section class="card credential">
+  <h2>{{$d.CreatedKey.Name}}</h2>
+  <p>Copy this key now and keep it where only the system that uses it can read it. It won't be shown again.</p>
+  <p class="secret mono" data-secret>{{$d.Created}}</p>
+  <p><button type="button" class="btn btn-sm" data-copy="{{$d.Created}}">Copy</button></p>
+  <p class="small">Send it with every request: <code>Authorization: Bearer {{$d.CreatedKey.Prefix}}…</code></p>
+</section>
+{{end}}
+
+<div class="grid-detail">
+<div class="col-main stack">
+<div class="card card-flush">
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Name</th><th>Key</th><th>Made</th><th>Last used</th><th class="num"></th></tr></thead>
+  <tbody>
+  {{range $d.Keys}}
+  <tr {{if .RevokedAt.Valid}}class="is-muted"{{end}}>
+    <td><strong>{{.Name}}</strong>{{if .RevokedAt.Valid}} <span class="badge">Revoked {{date .RevokedAt}}</span>{{end}}</td>
+    <td class="mono nowrap">{{.Prefix}}…</td>
+    <td class="nowrap">{{date .CreatedAt}}</td>
+    <td class="nowrap">{{if .LastUsedAt.Valid}}{{ago .LastUsedAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
+    <td class="num">{{if not .RevokedAt.Valid}}
+      <details class="pop pop-right">
+        <summary class="btn btn-sm btn-ghost">Revoke</summary>
+        <div class="pop-panel stack">
+          <form method="post" action="/app/settings/api/{{uuid .ID}}/revoke" class="stack">
+            <p class="hint">Requests that send this key are refused at once. This can't be undone: make a new key instead.</p>
+            <button class="btn btn-sm btn-block btn-danger-ghost" type="submit">Revoke {{.Name}}</button>
+          </form>
+        </div>
+      </details>
+    {{end}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="muted">No keys yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+
+<form method="post" action="/app/settings/api" class="card stack" novalidate>
+  <h2>Make a key</h2>
+  <label>Name
+    <input name="name" value="{{field $f "name" ""}}" maxlength="60" required autocomplete="off" placeholder="Warehouse system" {{if index $e "name"}}aria-invalid="true"{{end}}>
+    {{template "field-error" (index $e "name")}}
+  </label>
+  <p class="hint">Name it after what will use it. What a key does is recorded under that name, in each shipment's history.</p>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Make key</button></div>
+</form>
+</div>
+
+<aside class="col-side stack">
+  <section class="card">
+    <h2>Using the API</h2>
+    <p class="small">Requests go to <code>{{$d.BaseURL}}</code>, in JSON. Each key may make 300 requests a minute.</p>
+    <ul class="small">
+      <li>Book, list, change and cancel shipments, and assign drivers.</li>
+      <li>Read a shipment's history and where its truck was last seen.</li>
+      <li>List your drivers.</li>
+    </ul>
+    <p class="small">Every endpoint and field is described in <a href="/api/v1/openapi.json">the OpenAPI document</a>.</p>
+    <p class="small muted">A key acts for the whole company, with the same rules as the dashboard. Keep it out of web pages and phone apps, where anyone could read it.</p>
+  </section>
+</aside>
+</div>
+{{end}}

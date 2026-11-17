@@ -29,6 +29,7 @@ perfect coverage. Drivers with feature phones report by SMS instead
 | Drivers on feature phones | SMS | `ET <last 4> <code> [note]`, codes 1 departed, 2 delayed, 3 arrived, 4 delivered, 5 problem |
 | Customers and receivers | `/track`, SMS links | Texts and pages in English or Amharic, as the company chooses and the reader can switch: tracking by number or by phone (one-time SMS code), a coarse last-known position, and a confirm-or-report-a-problem page after delivery, which goes to whoever took delivery when a shipment names a receiver apart from its customer |
 | Company admins | `/app/billing` | The plan and this month's usage, plan changes, printable invoices, payment by telebirr or CBE Birr, or bank transfer details |
+| A company's own systems | `/api/v1` | A JSON API with keys an admin makes under Settings: book, list, change, assign and cancel shipments, read a shipment's history and last position, and list drivers, under the dashboard's rules. `/api/v1/openapi.json` describes it |
 | The operator | `/app/platform` | Every company with its plan and activity, trial extensions, Enterprise terms, suspension and deletion; unpaid invoices, bank transfers to record, refunds to send, monthly recurring revenue; the companies' questions; every company's audit log; system health (database, background jobs, message queues, disk) |
 
 Companies sign up on their own, confirming the admin's phone with an SMS code,

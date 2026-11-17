@@ -91,6 +91,7 @@ type Services struct {
 	Data      *DataService
 	Support   *SupportService
 	Health    *HealthService
+	API       *APIService
 }
 
 // New wires the services together.
@@ -131,6 +132,7 @@ func New(d Deps) *Services {
 	s.Data = &DataService{core: c, media: s.Media}
 	s.Support = &SupportService{core: c}
 	s.Health = &HealthService{core: c}
+	s.API = &APIService{core: c}
 	s.Jobs = &Jobs{core: c, billing: s.Billing, data: s.Data}
 	return s
 }

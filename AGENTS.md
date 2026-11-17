@@ -29,7 +29,7 @@ were retired and live only in git history.
   server, background workers). `cmd/server` and the integration tests both
   use it, so new wiring goes here, not in `main.go`.
 - `internal/web`: routes (`server.go`), middleware, handlers (`app_*.go`,
-  `public.go`, `api_driver.go`), templates and static files
+  `public.go`, `api_driver.go`, `api_public.go`), templates and static files
 - `internal/service`: all business rules. Handlers stay thin.
 - `internal/model`: statuses and the transition table, reasons, roles, plans
   and prices
@@ -71,6 +71,10 @@ make lint                          # golangci-lint, node --check, gitleaks over 
   UPDATE, DELETE and TRUNCATE. Code that must remove them (company deletion,
   retention) runs inside `purgeTx` in `internal/service/data.go`, which sets
   `kiflet.purge` for its transaction only.
+- The public API (`api_public.go`) acts as its key's `service.Actor`
+  through the same services as the dashboard; it has no rules of its own.
+  `static/openapi.json` describes it, and `TestOpenAPIMatchesTheAPI` checks
+  that the two have the same routes and fields: change them together.
 - The driver app's status rules come from `/api/v1/driver/config`, which is
   derived from `model.AllowedTransitions`. Change the rules there, not in JS.
 - The driver app is ES modules with no build step. `app.js` starts it;
