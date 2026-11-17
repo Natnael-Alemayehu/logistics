@@ -51,6 +51,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      app-data:
+        condition: service_completed_successfully
+
+  # Mounts the app's volume once, before any instance does: Docker fills a
+  # new volume from the image (its folders, owned by the app's user), and
+  # two instances doing that at once collide.
+  app-data:
+    build:
+      context: ..
+    entrypoint: ["true"]
+    volumes:
+      - app-data:/data
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
 
   postgres:
     image: postgis/postgis:15-3.3-alpine
