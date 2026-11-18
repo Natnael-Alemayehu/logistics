@@ -4,6 +4,13 @@ What changed in each release, newest first.
 
 ## Unreleased
 
+### Fixed
+
+- **The overview's numbers on a laptop.** At 1280 pixels wide, the five
+  numbers at the top of the overview (and of the platform's health page)
+  wrapped onto two rows; they now stay on one, and go three, then two, to
+  a row on narrower screens.
+
 ### Added
 
 - **Support by phone and Telegram.** `SUPPORT_PHONE`, `SUPPORT_TELEGRAM`
