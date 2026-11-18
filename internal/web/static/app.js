@@ -127,6 +127,11 @@
   document.addEventListener("change", (e) => {
     if (e.target.matches("[data-autosubmit]")) e.target.form?.submit();
 
+    // The settings page previews the customer's text in the language chosen.
+    if (e.target.matches("[data-preview-language]")) {
+      $$("[data-sms-preview]").forEach((p) => { p.hidden = p.dataset.smsPreview !== e.target.value; });
+    }
+
     // Picking a driver selects their usual vehicle.
     if (e.target.matches("[data-driver-select]")) {
       const opt = e.target.selectedOptions[0];

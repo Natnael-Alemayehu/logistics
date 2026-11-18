@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/natnael-alemayehu/kiflet/internal/db"
 	"github.com/natnael-alemayehu/kiflet/internal/model"
@@ -172,4 +173,28 @@ func (s *ShipmentService) notifyDriverAssigned(ctx context.Context, q *db.Querie
 	s.enqueueSMS(ctx, q, after, outboundSMS{
 		TenantID: t.ID, ShipmentID: sh.ID, Phone: *d.Phone, Body: body, Purpose: PurposeDriverAssigned,
 	})
+}
+
+// SMSPreview is the text a customer gets when their load sets off, in one
+// language, as the settings page shows it.
+type SMSPreview struct {
+	Lang  string
+	Body  string
+	Chars int
+	Parts int32
+}
+
+// SMSPreviews is that text in each language, for a sample load on its way
+// to Dire Dawa, expected tomorrow afternoon.
+func (s *TenantService) SMSPreviews(t db.Tenant) []SMSPreview {
+	now := s.now().In(s.cfg.Location)
+	eta := time.Date(now.Year(), now.Month(), now.Day()+1, 14, 0, 0, 0, s.cfg.Location)
+	sh := db.Shipment{TrackingNumber: "ET-" + now.Format("20060102") + "-7KQ2MZ4RXA"}
+	var out []SMSPreview
+	for _, l := range text.Languages {
+		body := text.T(l.Code, "sms.on_way", t.Name, sh.TrackingNumber, "Dire Dawa", // the town as the load names it, in either language
+			text.T(l.Code, "sms.eta", text.ShortWhen(l.Code, eta)), s.trackURL(sh))
+		out = append(out, SMSPreview{Lang: l.Code, Body: body, Chars: utf8.RuneCountInString(body), Parts: smsParts(body)})
+	}
+	return out
 }
