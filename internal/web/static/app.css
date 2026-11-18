@@ -715,6 +715,19 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .col-side .assign { margin-top: 14px; }
 .track-link { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: grid; gap: 4px; }
 .track-link a { overflow-wrap: anywhere; }
+/* A shipment's documents and charges. */
+.doc-upload { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.doc-upload input[type="file"] { padding: 6px; min-height: 36px; }
+.doc-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.doc-list li { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.doc-list li:last-child { border-bottom: 0; }
+.doc-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 8px; background: var(--surface-2); color: var(--muted); }
+.doc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.doc-name { font-weight: 500; overflow-wrap: anywhere; }
+.doc-actions { display: flex; gap: 4px; align-items: center; }
+.table.charges tfoot th { font-weight: 600; border-top: 1px solid var(--border); background: none; }
+.charge-add { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; color: var(--text); }
+.charge-add label { font-size: 0.875rem; }
 .empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 12px 8px; }
 .empty-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; background: var(--surface-2); color: var(--text); margin-bottom: 4px; }
 .empty-icon .i { width: 20px; height: 20px; }
@@ -723,6 +736,8 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 @media (max-width: 600px) {
   .trip-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stepper { grid-template-columns: 1fr; gap: 10px; }
+  .doc-upload, .charge-add { grid-template-columns: 1fr; }
+  .doc-list li { flex-wrap: wrap; }
   .stepper li { display: grid; grid-template-columns: 6px 1fr auto; column-gap: 12px; align-items: center; }
   .stepper .step-line, .stepper .bar { width: 6px; height: 100%; min-height: 20px; margin: 0; }
   .stepper .bar > span { width: 100% !important; }

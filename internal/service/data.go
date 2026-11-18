@@ -45,6 +45,8 @@ type Export struct {
 	PODs      []db.ExportPODsRow
 	People    []db.ExportPeopleRow
 	Vehicles  []db.ExportVehiclesRow
+	Documents []db.ExportDocumentsRow
+	Charges   []db.ExportChargesRow
 }
 
 // Export reads the company's data in one snapshot, so the files agree with
@@ -76,6 +78,12 @@ func (s *DataService) Export(ctx context.Context, p *Principal, ci ClientInfo) (
 		return nil, err
 	}
 	if out.Vehicles, err = q.ExportVehicles(ctx, p.TenantID); err != nil {
+		return nil, err
+	}
+	if out.Documents, err = q.ExportDocuments(ctx, p.TenantID); err != nil {
+		return nil, err
+	}
+	if out.Charges, err = q.ExportCharges(ctx, p.TenantID); err != nil {
 		return nil, err
 	}
 	s.audit(ctx, s.q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), "data_exported", "tenant", p.TenantID, nil,
@@ -174,6 +182,11 @@ func (s *DataService) DeleteCompany(ctx context.Context, p *Principal, id pgtype
 			keys = append(keys, m.SignatureKey)
 			keys = append(keys, m.PhotoKeys...)
 		}
+		docs, err := q.ListTenantDocumentKeys(ctx, id)
+		if err != nil {
+			return err
+		}
+		keys = append(keys, docs...)
 		voided, err := q.VoidTenantInvoices(ctx, id)
 		if err != nil {
 			return err
@@ -192,7 +205,7 @@ func (s *DataService) DeleteCompany(ctx context.Context, p *Principal, id pgtype
 		after.do(func() {
 			go func() {
 				s.media.Delete(context.Background(), keys...)
-				s.log.Info().Str("company", name).Int("files", len(keys)).Msg("deleted company's delivery photos")
+				s.log.Info().Str("company", name).Int("files", len(keys)).Msg("deleted company's delivery photos and documents")
 			}()
 		})
 		return nil
@@ -205,7 +218,7 @@ const anonymiseBatch = 500
 
 // AnonymiseFinished removes customer and delivery details from shipments
 // that finished before the cutoff: names, phones, addresses, notes,
-// signatures and photos (AC-041.2, AC-041.3). What reports count stays
+// signatures, photos and documents (AC-041.2, AC-041.3). Charges stay. What reports count stays
 // (AC-041.4). It reports how many shipments it cleared.
 func (s *DataService) AnonymiseFinished(ctx context.Context, before time.Time) (int, error) {
 	total := 0
@@ -223,6 +236,14 @@ func (s *DataService) AnonymiseFinished(ctx context.Context, before time.Time) (
 			for _, m := range media {
 				keys = append(keys, m.SignatureKey)
 				keys = append(keys, m.PhotoKeys...)
+			}
+			docs, err := q.ListDocumentKeysForShipments(ctx, ids)
+			if err != nil {
+				return err
+			}
+			keys = append(keys, docs...)
+			if err := q.DeleteDocumentsForShipments(ctx, ids); err != nil {
+				return err
 			}
 			if err := q.AnonymisePODs(ctx, ids); err != nil {
 				return err

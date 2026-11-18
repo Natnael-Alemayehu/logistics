@@ -113,6 +113,8 @@ func (m *MediaService) Open(ctx context.Context, key string) (io.ReadCloser, str
 		ct = "image/png"
 	case ".svg":
 		ct = "image/svg+xml"
+	case ".pdf":
+		ct = "application/pdf"
 	}
 	return rc, ct, nil
 }

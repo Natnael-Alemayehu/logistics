@@ -6,6 +6,14 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **A shipment's documents and charges** (the redesign, part 4). Two
+  tabs on a shipment's page. **Documents** keeps files with a load (the
+  signed waybill, customs papers, invoices), up to 10 MB each, PDFs and
+  photos only, checked by their content; only the company sees them.
+  **Charges** lists what the customer is charged, line by line with a
+  total, discounts as negative lines. Both are in the company's export.
+  The keeping period removes documents with the customer's other details,
+  while charges stay for reports.
 - **Booking redesigned, and pieces on a load** (the redesign, part 3).
   The booking form is in sections (customer, route and pickup, load,
   driver and priority) with a summary beside it that follows what you

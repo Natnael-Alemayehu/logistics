@@ -121,6 +121,15 @@ func (q *Queries) AnonymiseUser(ctx context.Context, arg AnonymiseUserParams) (p
 	return id, err
 }
 
+const deleteDocumentsForShipments = `-- name: DeleteDocumentsForShipments :exec
+DELETE FROM shipment_documents WHERE shipment_id = ANY($1::uuid[])
+`
+
+func (q *Queries) DeleteDocumentsForShipments(ctx context.Context, ids []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteDocumentsForShipments, ids)
+	return err
+}
+
 const deleteMessagesToPerson = `-- name: DeleteMessagesToPerson :exec
 WITH texts AS (
     DELETE FROM sms_messages WHERE sms_messages.tenant_id = $1 AND phone = $3
@@ -174,6 +183,92 @@ DELETE FROM audit_logs WHERE tenant_id = $1
 func (q *Queries) DeleteTenantAuditLogs(ctx context.Context, tenantID pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteTenantAuditLogs, tenantID)
 	return err
+}
+
+const exportCharges = `-- name: ExportCharges :many
+SELECT s.tracking_number, c.description, c.amount::float8 AS amount, c.created_at
+FROM shipment_charges c
+JOIN shipments s ON s.id = c.shipment_id AND s.tenant_id = c.tenant_id
+WHERE c.tenant_id = $1
+ORDER BY s.created_at, c.created_at
+`
+
+type ExportChargesRow struct {
+	TrackingNumber string             `db:"tracking_number" json:"tracking_number"`
+	Description    string             `db:"description" json:"description"`
+	Amount         float64            `db:"amount" json:"amount"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ExportCharges(ctx context.Context, tenantID pgtype.UUID) ([]ExportChargesRow, error) {
+	rows, err := q.db.Query(ctx, exportCharges, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExportChargesRow{}
+	for rows.Next() {
+		var i ExportChargesRow
+		if err := rows.Scan(
+			&i.TrackingNumber,
+			&i.Description,
+			&i.Amount,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const exportDocuments = `-- name: ExportDocuments :many
+SELECT s.tracking_number, d.kind, d.name, d.storage_key, d.size_bytes, d.uploaded_by_name, d.created_at
+FROM shipment_documents d
+JOIN shipments s ON s.id = d.shipment_id AND s.tenant_id = d.tenant_id
+WHERE d.tenant_id = $1
+ORDER BY s.created_at, d.created_at
+`
+
+type ExportDocumentsRow struct {
+	TrackingNumber string             `db:"tracking_number" json:"tracking_number"`
+	Kind           string             `db:"kind" json:"kind"`
+	Name           string             `db:"name" json:"name"`
+	StorageKey     string             `db:"storage_key" json:"storage_key"`
+	SizeBytes      int32              `db:"size_bytes" json:"size_bytes"`
+	UploadedByName string             `db:"uploaded_by_name" json:"uploaded_by_name"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ExportDocuments(ctx context.Context, tenantID pgtype.UUID) ([]ExportDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, exportDocuments, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExportDocumentsRow{}
+	for rows.Next() {
+		var i ExportDocumentsRow
+		if err := rows.Scan(
+			&i.TrackingNumber,
+			&i.Kind,
+			&i.Name,
+			&i.StorageKey,
+			&i.SizeBytes,
+			&i.UploadedByName,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const exportPODs = `-- name: ExportPODs :many
@@ -500,6 +595,30 @@ func (q *Queries) ExportVehicles(ctx context.Context, tenantID pgtype.UUID) ([]E
 	return items, nil
 }
 
+const listDocumentKeysForShipments = `-- name: ListDocumentKeysForShipments :many
+SELECT storage_key FROM shipment_documents WHERE shipment_id = ANY($1::uuid[])
+`
+
+func (q *Queries) ListDocumentKeysForShipments(ctx context.Context, ids []pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listDocumentKeysForShipments, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var storage_key string
+		if err := rows.Scan(&storage_key); err != nil {
+			return nil, err
+		}
+		items = append(items, storage_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPODMediaForShipments = `-- name: ListPODMediaForShipments :many
 SELECT COALESCE(signature_url, '')::text AS signature_key, COALESCE(photo_urls, '{}')::text[] AS photo_keys
 FROM proof_of_deliveries
@@ -560,6 +679,30 @@ func (q *Queries) ListShipmentsToAnonymise(ctx context.Context, arg ListShipment
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTenantDocumentKeys = `-- name: ListTenantDocumentKeys :many
+SELECT storage_key FROM shipment_documents WHERE tenant_id = $1
+`
+
+func (q *Queries) ListTenantDocumentKeys(ctx context.Context, tenantID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listTenantDocumentKeys, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var storage_key string
+		if err := rows.Scan(&storage_key); err != nil {
+			return nil, err
+		}
+		items = append(items, storage_key)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

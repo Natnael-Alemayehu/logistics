@@ -98,6 +98,15 @@ func (s *Server) writeExport(ctx context.Context, zw *zip.Writer, ex *service.Ex
 		}
 	}
 
+	// Each document sits under its shipment, numbered so two of the same
+	// name don't collide.
+	docFiles := make([]string, len(ex.Documents))
+	for i, d := range ex.Documents {
+		ext := path.Ext(d.StorageKey)
+		docFiles[i] = fmt.Sprintf("documents/%s/%d-%s%s", fileSlug(d.TrackingNumber), i+1, fileSlug(strings.TrimSuffix(d.Name, path.Ext(d.Name))), ext)
+		media = append(media, file{d.StorageKey, docFiles[i]})
+	}
+
 	readme := fmt.Sprintf(`%s: everything %s holds
 Downloaded %s by %s.
 
@@ -106,11 +115,13 @@ events.csv       what happened to each shipment, in order (%d)
 deliveries.csv   proofs of delivery (%d); their signatures and photos are in deliveries/
 people.csv       drivers and office staff (%d)
 vehicles.csv     vehicles (%d)
+documents.csv    documents kept with shipments (%d); the files are in documents/
+charges.csv      what customers were charged, line by line (%d)
 
 Times are in %s.
 
 Shipments that finished more than %d days ago no longer hold their customer's
-or recipient's details, signatures or photos: they are removed once the
+or recipient's details, signatures, photos or documents: they are removed once the
 keeping period is over. Those shipments say "Former customer". People who
 left and whose details were removed are listed as "Former driver" or "Former
 staff member".
@@ -118,7 +129,7 @@ staff member".
 A shipment's GPS route is kept for 90 days and is not in this file: download
 it from the shipment's page while it is kept.
 `, ex.Company.Name, s.cfg.AppName, ex.At.In(loc).Format("2 January 2006 at 15:04"), by,
-		len(ex.Shipments), len(ex.Events), len(ex.PODs), len(ex.People), len(ex.Vehicles),
+		len(ex.Shipments), len(ex.Events), len(ex.PODs), len(ex.People), len(ex.Vehicles), len(ex.Documents), len(ex.Charges),
 		loc.String(), int(s.svc.Data.RetainShipments().Hours()/24))
 	if err := writeZipFile(zw, "README.txt", strings.NewReader(readme)); err != nil {
 		return err
@@ -198,11 +209,26 @@ it from the shipment's page while it is kept.
 		return err
 	}
 
+	err = writeCSV(zw, "documents.csv", []string{"Tracking number", "Kind", "Name", "Size (bytes)", "Added by", "Added", "File"}, len(ex.Documents), func(i int) []string {
+		d := ex.Documents[i]
+		return []string{d.TrackingNumber, service.DocumentKindLabel(d.Kind), csvSafe(d.Name), strconv.Itoa(int(d.SizeBytes)), csvSafe(d.UploadedByName), ts(d.CreatedAt), docFiles[i]}
+	})
+	if err != nil {
+		return err
+	}
+	err = writeCSV(zw, "charges.csv", []string{"Tracking number", "Item", "Amount (ETB)", "Added"}, len(ex.Charges), func(i int) []string {
+		c := ex.Charges[i]
+		return []string{c.TrackingNumber, csvSafe(c.Description), strconv.FormatFloat(c.Amount, 'f', 2, 64), ts(c.CreatedAt)}
+	})
+	if err != nil {
+		return err
+	}
+
 	for _, f := range media {
 		rc, _, err := s.svc.Media.Open(ctx, f.key)
 		if err != nil {
 			// A file lost from storage shouldn't cost the company the rest.
-			s.log.Warn().Err(err).Str("key", f.key).Msg("export: delivery file missing")
+			s.log.Warn().Err(err).Str("key", f.key).Msg("export: stored file missing")
 			continue
 		}
 		err = writeZipFile(zw, f.name, rc)

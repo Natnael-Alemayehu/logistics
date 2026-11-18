@@ -279,6 +279,30 @@ type Shipment struct {
 	CargoUnit           *string            `db:"cargo_unit" json:"cargo_unit"`
 }
 
+type ShipmentCharge struct {
+	ID          pgtype.UUID        `db:"id" json:"id"`
+	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID  pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	Description string             `db:"description" json:"description"`
+	Amount      pgtype.Numeric     `db:"amount" json:"amount"`
+	CreatedBy   pgtype.UUID        `db:"created_by" json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ShipmentDocument struct {
+	ID             pgtype.UUID        `db:"id" json:"id"`
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	Kind           string             `db:"kind" json:"kind"`
+	Name           string             `db:"name" json:"name"`
+	StorageKey     string             `db:"storage_key" json:"storage_key"`
+	ContentType    string             `db:"content_type" json:"content_type"`
+	SizeBytes      int32              `db:"size_bytes" json:"size_bytes"`
+	UploadedBy     pgtype.UUID        `db:"uploaded_by" json:"uploaded_by"`
+	UploadedByName string             `db:"uploaded_by_name" json:"uploaded_by_name"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type ShipmentEvent struct {
 	ID               pgtype.UUID        `db:"id" json:"id"`
 	TenantID         pgtype.UUID        `db:"tenant_id" json:"tenant_id"`

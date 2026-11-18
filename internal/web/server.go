@@ -288,6 +288,11 @@ func (s *Server) Handler() http.Handler {
 				r.Post("/shipments/{id}/pods/{pod}/accept", s.shipmentAcceptPOD)
 				r.Post("/shipments/{id}/pods/{pod}/dismiss", s.shipmentDismissPOD)
 				r.Get("/shipments/{id}/pods/{pod}/media/{n}", s.shipmentReviewMedia)
+				r.Post("/shipments/{id}/documents", s.shipmentDocumentAdd)
+				r.Get("/shipments/{id}/documents/{doc}", s.shipmentDocument)
+				r.Post("/shipments/{id}/documents/{doc}/delete", s.shipmentDocumentDelete)
+				r.Post("/shipments/{id}/charges", s.shipmentChargeAdd)
+				r.Post("/shipments/{id}/charges/{charge}/delete", s.shipmentChargeDelete)
 
 				r.Get("/drivers", s.driverList)
 				r.Get("/drivers/message", s.broadcastPage)
