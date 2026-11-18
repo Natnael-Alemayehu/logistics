@@ -75,11 +75,15 @@ function miniMap(sh) {
     if (!box.isConnected) return;
     const map = L.map(box, { zoomControl: false, scrollWheelZoom: false });
     L.tileLayer(S.config.tile_url, { attribution: S.config.tile_credit, maxZoom: 18 }).addTo(map);
-    const dot = (ll, color) => L.circleMarker(ll, { radius: 8, weight: 3, color: "#fff", fillColor: color, fillOpacity: 1 }).addTo(map);
-    dot([to.lat, to.lng], "#b42b2b");
+    // In the theme's colours, as the dashboard's maps: the drop-off in
+    // "bad", the driver in "info".
+    const css = getComputedStyle(document.documentElement);
+    const tok = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+    const dot = (ll, color) => L.circleMarker(ll, { radius: 8, weight: 3, color: tok("--surface", "#fff"), fillColor: color, fillOpacity: 1 }).addTo(map);
+    dot([to.lat, to.lng], tok("--bad", "#b42318"));
     const f = S.lastFix;
     if (f) {
-      dot([f.lat, f.lng], "#256abf");
+      dot([f.lat, f.lng], tok("--info", "#1e40af"));
       map.fitBounds([[to.lat, to.lng], [f.lat, f.lng]], { padding: [24, 24], maxZoom: 15 });
     } else map.setView([to.lat, to.lng], 13);
   }).catch(() => wrap.remove());

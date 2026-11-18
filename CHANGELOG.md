@@ -19,6 +19,17 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **The driver app in the dashboard's look** (the redesign, part 9). The
+  same colours (Desk, and Night in dark mode), the Geist font, bundled so
+  it works offline, the dark mark in place of the blue one, and the
+  dashboard's status badges, buttons, fields and cards, kept at the
+  driver app's larger sizes for one hand and bright sun. The app's icon,
+  the browser's colour around it and the mini-map's markers follow.
+  Drivers see it the next time the app starts after downloading it.
+- **The maps in the theme's colours.** Routes, the truck's area, the start
+  and a delivery on the dashboard's and tracking page's maps now use the
+  palette (and Night's in dark mode) instead of a fixed blue; so does the
+  browser tab's icon.
 - **The public pages redesigned** (the redesign, part 8).
   - **Tracking**: the carrier first, then the status, the expected time,
     the distance left by road and where the truck was last seen; when

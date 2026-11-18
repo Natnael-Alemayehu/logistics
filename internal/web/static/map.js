@@ -95,14 +95,24 @@
     else if (valid.length > 1) map.fitBounds(valid, { padding: [30, 30], maxZoom });
   }
 
+  // The maps draw in the page's palette (Desk or Night), read once from the
+  // tokens in app.css: routes and the truck in "info", the drop-off in
+  // "bad", a delivery in "good", the start in "muted".
+  const css = getComputedStyle(document.documentElement);
+  const tok = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const C = {
+    info: tok("--info", "#1e40af"), good: tok("--good", "#17663a"), muted: tok("--muted", "#5f5b53"),
+    line: tok("--focus", "#8a867d"), surface: tok("--surface", "#fff"),
+  };
+
   // ---- fleet map --------------------------------------------------------------
   // Drivers at their last position, the destinations of active shipments and
   // a line from where each was collected, filtered by status, driver and
   // region (FR-028).
   const ROAD = ["in_transit", "delayed", "arrived", "issue"];
   const ATTENTION = ["delayed", "issue"];
-  const ROUTE = { color: "#898781", weight: 1.5, opacity: 0.7, dashArray: "5 6" };
-  const ROUTE_ON = { color: "#2a78d6", weight: 3, opacity: 0.95, dashArray: null };
+  const ROUTE = { color: C.line, weight: 1.5, opacity: 0.7, dashArray: "5 6" };
+  const ROUTE_ON = { color: C.info, weight: 3, opacity: 0.95, dashArray: null };
 
   function fleet(el) {
     const map = base(el);
@@ -292,7 +302,7 @@
     const map = base(el);
     const pts = [];
     if (data.origin) {
-      L.circleMarker([data.origin.lat, data.origin.lng], { radius: 6, color: "#52514e", weight: 2, fillColor: "#fff", fillOpacity: 1 })
+      L.circleMarker([data.origin.lat, data.origin.lng], { radius: 6, color: C.muted, weight: 2, fillColor: C.surface, fillOpacity: 1 })
         .bindTooltip("Pickup: " + data.origin.label).addTo(map);
       pts.push([data.origin.lat, data.origin.lng]);
     }
@@ -300,11 +310,11 @@
       L.marker([data.destination.lat, data.destination.lng], { icon: destIcon() })
         .bindTooltip("Delivery: " + data.destination.label).addTo(map);
       L.circle([data.destination.lat, data.destination.lng], {
-        radius: data.tolerance || 5000, color: "#2a78d6", weight: 1, fillOpacity: 0.05, dashArray: "4 4",
+        radius: data.tolerance || 5000, color: C.info, weight: 1, fillOpacity: 0.05, dashArray: "4 4",
       }).bindTooltip("Deliveries recorded inside this circle count as at the destination").addTo(map);
       pts.push([data.destination.lat, data.destination.lng]);
     }
-    const route = L.polyline(data.route || [], { color: "#2a78d6", weight: 3, opacity: 0.85 }).addTo(map);
+    const route = L.polyline(data.route || [], { color: C.info, weight: 3, opacity: 0.85 }).addTo(map);
     (data.route || []).forEach((p) => pts.push(p));
     let truck = null;
     const last = (data.route || []).slice(-1)[0];
@@ -312,7 +322,7 @@
       truck = L.marker(last, { icon: driverIcon("stale") }).bindTooltip("Last known position").addTo(map);
     }
     if (data.pod) {
-      L.circleMarker([data.pod.lat, data.pod.lng], { radius: 7, color: "#fff", weight: 2, fillColor: "#0ca30c", fillOpacity: 1 })
+      L.circleMarker([data.pod.lat, data.pod.lng], { radius: 7, color: C.surface, weight: 2, fillColor: C.good, fillOpacity: 1 })
         .bindTooltip(data.pod.label).addTo(map);
       pts.push([data.pod.lat, data.pod.lng]);
     }
@@ -351,7 +361,7 @@
     const map = base(el, { dragging: !L.Browser.mobile });
     const pts = [];
     if (data.origin) {
-      L.circleMarker([data.origin.lat, data.origin.lng], { radius: 6, color: "#52514e", weight: 2, fillColor: "#fff", fillOpacity: 1 })
+      L.circleMarker([data.origin.lat, data.origin.lng], { radius: 6, color: C.muted, weight: 2, fillColor: C.surface, fillOpacity: 1 })
         .bindTooltip(data.origin.label, { permanent: true, direction: "top", className: "map-label" }).addTo(map);
       pts.push([data.origin.lat, data.origin.lng]);
     }
@@ -361,10 +371,10 @@
       pts.push([data.destination.lat, data.destination.lng]);
     }
     if (data.origin && data.destination) {
-      L.polyline(pts, { color: "#898781", weight: 2, dashArray: "6 6" }).addTo(map);
+      L.polyline(pts, { color: C.line, weight: 2, dashArray: "6 6" }).addTo(map);
     }
     if (data.current) {
-      L.circle([data.current.lat, data.current.lng], { radius: 4000, color: "#2a78d6", weight: 2, fillOpacity: 0.15 })
+      L.circle([data.current.lat, data.current.lng], { radius: 4000, color: C.info, weight: 2, fillOpacity: 0.15 })
         .bindTooltip(data.current.label).addTo(map);
       pts.push([data.current.lat, data.current.lng]);
     }
