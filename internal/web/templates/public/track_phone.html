@@ -24,7 +24,13 @@
     </label>
     <button class="btn btn-primary btn-block" type="submit">{{.T "phone.send"}}</button>
   </form>
-  <p class="small"><a href="/track">{{.T "phone.have_number"}}</a></p>
   {{end}}
+  <div class="auth-foot">
+    <p class="small muted">{{.T "phone.have_number"}}</p>
+    <form method="post" action="/track" class="track-another">
+      <label><span class="sr-only">{{.T "form.number"}}</span><input name="number" class="mono" autocomplete="off" placeholder="ET-…" required></label>
+      <button class="btn" type="submit">{{.T "form.track"}}</button>
+    </form>
+  </div>
 </section>
 {{end}}

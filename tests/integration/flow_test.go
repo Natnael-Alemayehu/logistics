@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -264,6 +265,43 @@ func TestStaffRoles(t *testing.T) {
 	} {
 		if p := disp.get(path); p.Status != want {
 			t.Errorf("dispatcher GET %s: status %d, want %d", path, p.Status, want)
+		}
+	}
+}
+
+// TestTrackingPageDetails: on the road, the tracking page says how far the
+// truck has still to go, when each stage was reached, and how to call the
+// carrier; the steps not yet reached have no time.
+func TestTrackingPageDetails(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Detail Haulage")
+	driverID, phone, pin := office.addDriver("Bekele Tadesse")
+	id, tracking := office.book("Addis Ababa", "Hawassa", driverID)
+	d := e.signIn(phone, pin)
+	if r := d.status(clientID(), id, "in_transit"); !r.OK {
+		t.Fatalf("depart: %+v", r)
+	}
+	// Last seen near Batu, about 160 km by road from Hawassa.
+	exec(t, `INSERT INTO tracking_events (tenant_id, shipment_id, driver_id, coordinates, event_type, recorded_at)
+		SELECT tenant_id, id, driver_id, ST_SetSRID(ST_MakePoint(38.72, 7.93), 4326), 'gps_ping', NOW() - INTERVAL '5 minutes'
+		FROM shipments WHERE id = $1`, id)
+
+	p := e.browser().get("/track/" + tracking)
+	m := regexp.MustCompile(`Distance left</dt><dd>(\d+) km`).FindStringSubmatch(p.Body)
+	if m == nil {
+		t.Fatal("the page should say how far is left")
+	}
+	if km, _ := strconv.Atoi(m[1]); km < 60 || km > 200 {
+		t.Errorf("%d km left from Batu to Hawassa", km)
+	}
+	_, steps, _ := strings.Cut(p.Body, `<ol class="progress"`)
+	steps, _, _ = strings.Cut(steps, "</ol>")
+	if n := strings.Count(steps, "<small"); n != 3 {
+		t.Errorf("%d steps have a time, want 3 (booked, preparing, on the way)", n)
+	}
+	for _, want := range []string{"Detail Haulage answers for this shipment.", `href="tel:`, "Tracked with Kiflet"} {
+		if !strings.Contains(p.Body, want) {
+			t.Errorf("the tracking page lacks %q", want)
 		}
 	}
 }

@@ -12,6 +12,16 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **The public pages redesigned** (the redesign, part 8).
+  - **Tracking**: the carrier first, then the status, the expected time,
+    the distance left by road and where the truck was last seen; when
+    each stage was reached; the delivery's details, what happens on
+    arrival, and a button to call the carrier beside the map.
+  - **Sign in**: a choice of phone or email, which only changes the field;
+    links for drivers, new companies and customers below.
+  - **Find my shipments**: a box for a tracking number under the phone
+    form.
+  - On a phone, the public pages' header fits on one line.
 - **The company's pages redesigned** (the redesign, part 7).
   - **Help**: answers to common questions by topic, with a search that
     narrows them as you type, then your questions to the Kiflet team and

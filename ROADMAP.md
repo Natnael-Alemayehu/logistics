@@ -39,14 +39,15 @@ the Claude Design canvas: a light theme ("Desk"), a dark one ("Night"),
 Geist type and lucide icons. The shell, the overview, the shipment list, a
 shipment's page with its documents and charges, the booking form, the
 drivers and vehicles with their papers, the alerts with their rules,
-and the company's pages (reports, team, billing, settings, help) are done. Each part below is a pull
-request; the design's pages are named after it.
+the company's pages (reports, team, billing, settings, help) and the
+public pages (sign in, tracking, finding shipments by phone) are done.
+What is left:
 
-- [ ] **The public pages.** Signing in by phone or email, the tracking page
-      with the carrier's details, and finding a shipment by phone with a
-      code, in English and Amharic (D-SignIn, D-Tracking, D-FindByPhone).
 - [ ] **Amharic on the dashboard** (audit W1), after a native speaker has
       reviewed the words. The design's language switch waits for it.
+      The same reviewer should read the tracking page's words added with
+      its redesign (`track.tracked_with` to `track.call` in
+      `internal/text/am.go`), which were not reviewed by a native speaker.
 
 ## Finish the rename
 
