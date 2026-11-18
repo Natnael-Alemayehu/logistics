@@ -32,6 +32,10 @@ type CargoJSON struct {
 	Description string  `json:"description"`
 	WeightKg    float64 `json:"weight_kg"`
 	ValueETB    float64 `json:"value_etb"`
+	// Pieces is how many pieces the load is, 0 when not counted, and Unit
+	// what they are ("bales").
+	Pieces int    `json:"pieces"`
+	Unit   string `json:"unit"`
 }
 
 // ShipmentJSON is a shipment as the API and webhooks send it.
@@ -78,10 +82,11 @@ type EventJSON struct {
 func AsJSON(sh db.Shipment, baseURL string) ShipmentJSON {
 	out := ShipmentJSON{
 		ID: sh.ID.String(), TrackingNumber: sh.TrackingNumber, Status: sh.Status, StatusReason: deref(sh.StatusReason), Priority: sh.Priority,
-		Origin:       PlaceJSON{City: deref(sh.OriginCity), Address: sh.OriginAddress, Lat: sh.OriginLat, Lng: sh.OriginLng},
-		Destination:  PlaceJSON{City: deref(sh.DestinationCity), Address: sh.DestinationAddress, Lat: sh.DestinationLat, Lng: sh.DestinationLng},
-		Customer:     PartyJSON{Name: sh.CustomerName, Phone: sh.CustomerPhone},
-		Cargo:        CargoJSON{Description: deref(sh.CargoDescription), WeightKg: numericOr(sh.CargoWeight), ValueETB: numericOr(sh.CargoValue)},
+		Origin:      PlaceJSON{City: deref(sh.OriginCity), Address: sh.OriginAddress, Lat: sh.OriginLat, Lng: sh.OriginLng},
+		Destination: PlaceJSON{City: deref(sh.DestinationCity), Address: sh.DestinationAddress, Lat: sh.DestinationLat, Lng: sh.DestinationLng},
+		Customer:    PartyJSON{Name: sh.CustomerName, Phone: sh.CustomerPhone},
+		Cargo: CargoJSON{Description: deref(sh.CargoDescription), WeightKg: numericOr(sh.CargoWeight), ValueETB: numericOr(sh.CargoValue),
+			Pieces: int(derefInt(sh.CargoPieces)), Unit: deref(sh.CargoUnit)},
 		Instructions: deref(sh.SpecialInstructions), DriverID: uuidJSON(sh.DriverID), VehicleID: uuidJSON(sh.VehicleID),
 		PlannedPickup: utcJSON(sh.PlannedPickupAt), EstimatedDelivery: utcJSON(sh.EstimatedDelivery),
 		PickedUpAt: utcJSON(sh.PickedUpAt), DeliveredAt: utcJSON(sh.ActualDelivery),

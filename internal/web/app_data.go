@@ -127,7 +127,7 @@ it from the shipment's page while it is kept.
 	err := writeCSV(zw, "shipments.csv", []string{
 		"Tracking number", "Status", "Reason", "Priority", "Booked", "Planned pickup", "Picked up", "Due", "Delivered",
 		"From city", "From address", "To city", "To address", "Customer", "Customer phone", "Receiver", "Receiver phone",
-		"Cargo", "Weight (kg)", "Value (ETB)", "Instructions", "Driver", "Vehicle",
+		"Cargo", "Pieces", "Weight (kg)", "Value (ETB)", "Instructions", "Driver", "Vehicle",
 		"Customer confirmed", "Customer feedback", "Details removed",
 	}, len(ex.Shipments), func(i int) []string {
 		sh := ex.Shipments[i]
@@ -136,7 +136,7 @@ it from the shipment's page while it is kept.
 			ts(sh.CreatedAt), ts(sh.PlannedPickupAt), ts(sh.PickedUpAt), ts(sh.EstimatedDelivery), ts(sh.ActualDelivery),
 			sh.OriginCity, csvSafe(sh.OriginAddress), sh.DestinationCity, csvSafe(sh.DestinationAddress),
 			csvSafe(sh.CustomerName), csvSafe(sh.CustomerPhone), csvSafe(sh.ConsigneeName), csvSafe(sh.ConsigneePhone),
-			csvSafe(sh.CargoDescription), numStr(sh.CargoWeightKg), numStr(sh.CargoValue), csvSafe(sh.SpecialInstructions),
+			csvSafe(sh.CargoDescription), csvSafe(pieces(sh.CargoPieces, sh.CargoUnit)), numStr(sh.CargoWeightKg), numStr(sh.CargoValue), csvSafe(sh.SpecialInstructions),
 			csvSafe(sh.DriverName), sh.VehiclePlate,
 			ts(sh.CustomerConfirmedAt), csvSafe(sh.CustomerFeedback), ts(sh.AnonymisedAt),
 		}
@@ -481,4 +481,10 @@ func (s *Server) platformHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	v := s.view(w, r, "System health", "platform-health", data)
 	s.render(w, r, http.StatusOK, "app/platform_health", v)
+}
+
+// pieces writes an export's piece count, which comes as 0 and "" when there
+// is none.
+func pieces(n int32, unit string) string {
+	return service.FormatPieces(&n, &unit)
 }

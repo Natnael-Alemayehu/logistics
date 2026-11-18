@@ -4,9 +4,11 @@ What to do next, in order. Written on 2026-11-14 from a survey of the
 repository at `f540720`. Tick the boxes as work lands, and delete a section
 once it is done: this file should only ever hold what is still ahead.
 
-1. [Finish the rename](#finish-the-rename): the checks and registrations
+1. [Finish the redesign](#finish-the-redesign): the rest of the pages, and
+   the features the design added.
+2. [Finish the rename](#finish-the-rename): the checks and registrations
    that make the name final.
-2. [Toward the first paying customer](#toward-the-first-paying-customer).
+3. [Toward the first paying customer](#toward-the-first-paying-customer).
 
 ## Where things stand
 
@@ -29,6 +31,34 @@ once it is done: this file should only ever hold what is still ahead.
 - The product and the repository were renamed Kiflet on 2026-11-15. The
   checks and registrations that make the name final are still open: see
   [Finish the rename](#finish-the-rename).
+
+## Finish the redesign
+
+The dashboard is being rebuilt to the design called Direction D, made on
+the Claude Design canvas: a light theme ("Desk"), a dark one ("Night"),
+Geist type and lucide icons. The shell, the overview, the shipment list, a
+shipment's page and the booking form are done. Each part below is a pull
+request; the design's pages are named after it.
+
+- [ ] **A shipment's documents and charges.** Two tabs on a shipment's
+      page: documents the office uploads (waybill copies, customs papers,
+      invoices) to list and download, and charges as line items with a
+      total (D-Shipment).
+- [ ] **Drivers and vehicles.** A driver's licence expiry, and a vehicle's
+      insurance and annual inspection (ቦሎ) dates, each with a reminder
+      before it runs out; a "papers due in 30 days" figure and a banner
+      for what has lapsed (D-Drivers, D-Vehicles).
+- [ ] **Alerts and their rules.** The alerts page with rules a company
+      sets: running late by more than a set time, a phone not heard from,
+      a long stop, leaving the route; and who gets each alert (D-Alerts).
+- [ ] **The company's pages.** Reports, team (with what each role can do),
+      billing, settings (in sections) and help, with Telegram as a support
+      channel (D-Reports, D-Team, D-Billing, D-Settings, D-Help).
+- [ ] **The public pages.** Signing in by phone or email, the tracking page
+      with the carrier's details, and finding a shipment by phone with a
+      code, in English and Amharic (D-SignIn, D-Tracking, D-FindByPhone).
+- [ ] **Amharic on the dashboard** (audit W1), after a native speaker has
+      reviewed the words. The design's language switch waits for it.
 
 ## Finish the rename
 

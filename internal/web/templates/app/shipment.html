@@ -253,6 +253,7 @@ driver card and the note form are left alone, being forms in use. */}}
     <dl class="facts facts-row">
       <div><dt>Cargo</dt><dd>{{with $s.CargoDescription}}{{.}}{{else}}—{{end}}</dd></div>
       <div><dt>Weight</dt><dd>{{if hasNum $s.CargoWeight}}{{kg $s.CargoWeight}}{{else}}—{{end}}</dd></div>
+      {{with pieces $s.CargoPieces $s.CargoUnit}}<div><dt>Pieces</dt><dd>{{.}}</dd></div>{{end}}
       {{if hasNum $s.CargoValue}}<div><dt>Value</dt><dd>{{money $s.CargoValue}}</dd></div>{{end}}
       {{with $s.SpecialInstructions}}<div><dt>For the driver</dt><dd class="pre">{{.}}</dd></div>{{end}}
     </dl>

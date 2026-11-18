@@ -54,14 +54,15 @@ var (
 		{"Lakeside Hardware", "0913220011"}, {"Tana Wholesale", "0918330022"}, {"Harar Gate Stores", "0915440033"},
 	}
 	demoCargo = []struct {
-		what string
-		kg   float64
-		etb  float64
+		what   string
+		pieces string
+		kg     float64
+		etb    float64
 	}{
-		{"200 bags of cement", 10000, 180000}, {"Green coffee, 120 sacks", 7200, 1450000},
-		{"Steel rebar, 12 mm", 18000, 1900000}, {"Wheat flour, 300 bags", 15000, 420000},
-		{"Textile rolls", 6000, 980000}, {"Fertilizer (urea), 400 bags", 20000, 760000},
-		{"Bottled water, 900 cases", 11000, 160000}, {"Ceramic floor tiles", 14000, 640000},
+		{"Cement", "200 bags", 10000, 180000}, {"Green coffee", "120 sacks", 7200, 1450000},
+		{"Steel rebar, 12 mm", "450 bars", 18000, 1900000}, {"Wheat flour", "300 bags", 15000, 420000},
+		{"Textile rolls", "", 6000, 980000}, {"Fertilizer (urea)", "400 bags", 20000, 760000},
+		{"Bottled water", "900 cases", 11000, 160000}, {"Ceramic floor tiles", "", 14000, 640000},
 	}
 	demoAddresses = map[string][]string{
 		"Addis Ababa": {"Kality industrial zone, gate 3", "Merkato, near Anwar mosque", "Bole Lemi industrial park, shed 12", "Akaki, Mekanisa road warehouse"},
@@ -216,7 +217,7 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 			Priority: priority, OriginCity: r.from, OriginAddress: pick(demoAddresses[r.from]),
 			DestinationCity: r.to, DestinationAddress: pick(demoAddresses[r.to]),
 			CustomerName: c.name, CustomerPhone: c.phone, CargoDescription: cargo.what,
-			CargoWeightKg: cargo.kg, CargoValueETB: cargo.etb,
+			CargoWeightKg: cargo.kg, CargoValueETB: cargo.etb, CargoPiecesText: cargo.pieces,
 		}
 		// Chosen by count, not by rng, so the rest of the demo data is
 		// what it was before receivers existed.

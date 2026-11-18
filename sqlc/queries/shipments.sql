@@ -26,7 +26,7 @@ INSERT INTO shipments (
     customer_name, customer_phone,
     cargo_description, cargo_weight, cargo_value, special_instructions,
     driver_id, vehicle_id, status, estimated_delivery, eta_manual, created_by, status_changed_at,
-    planned_pickup_at, consignee_name, consignee_phone
+    planned_pickup_at, consignee_name, consignee_phone, cargo_pieces, cargo_unit
 ) VALUES (
     $1, $2, $3,
     $4, $5, $6, $7,
@@ -34,7 +34,8 @@ INSERT INTO shipments (
     $13, $14,
     $15, $16, $17, $18,
     $19, $20, $21, $22, $23, $24, NOW(),
-    sqlc.narg(planned_pickup_at), sqlc.narg(consignee_name), sqlc.narg(consignee_phone)
+    sqlc.narg(planned_pickup_at), sqlc.narg(consignee_name), sqlc.narg(consignee_phone),
+    sqlc.narg(cargo_pieces), sqlc.narg(cargo_unit)
 ) RETURNING *;
 
 -- name: UpdateShipmentDetails :one
@@ -61,6 +62,8 @@ SET priority = $3,
     planned_pickup_at = sqlc.narg(planned_pickup_at),
     consignee_name = sqlc.narg(consignee_name),
     consignee_phone = sqlc.narg(consignee_phone),
+    cargo_pieces = sqlc.narg(cargo_pieces),
+    cargo_unit = sqlc.narg(cargo_unit),
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
 RETURNING *;

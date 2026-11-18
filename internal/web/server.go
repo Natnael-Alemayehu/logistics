@@ -265,6 +265,7 @@ func (s *Server) Handler() http.Handler {
 
 				r.Get("/shipments", s.shipmentList)
 				r.Get("/shipments/new", s.shipmentNew)
+				r.Get("/shipments/estimate", s.shipmentEstimate)
 				r.Post("/shipments", s.shipmentCreate)
 				r.Get("/shipments/import", s.shipmentImportPage)
 				r.Post("/shipments/import", s.shipmentImport)

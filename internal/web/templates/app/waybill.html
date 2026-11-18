@@ -43,9 +43,10 @@
   </section>
 
   <table class="wb-table">
-    <thead><tr><th>Description / መግለጫ</th><th class="num">Weight / ክብደት</th><th class="num">Declared value / ዋጋ</th></tr></thead>
+    <thead><tr><th>Description / መግለጫ</th><th class="num">Pieces / ብዛት</th><th class="num">Weight / ክብደት</th><th class="num">Declared value / ዋጋ</th></tr></thead>
     <tbody><tr>
       <td>{{with $s.CargoDescription}}{{.}}{{else}}—{{end}}</td>
+      <td class="num">{{with pieces $s.CargoPieces $s.CargoUnit}}{{.}}{{else}}—{{end}}</td>
       <td class="num">{{if hasNum $s.CargoWeight}}{{kg $s.CargoWeight}}{{else}}—{{end}}</td>
       <td class="num">{{if hasNum $s.CargoValue}}{{money $s.CargoValue}}{{else}}—{{end}}</td>
     </tr></tbody>

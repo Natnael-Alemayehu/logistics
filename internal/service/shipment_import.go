@@ -95,6 +95,8 @@ var ImportColumns = []importColumn{
 		set: words(func(in *ShipmentInput, v string) { in.ConsigneePhone = v })},
 	{Name: "Cargo", Help: "What is carried", aliases: []string{"cargodescription"},
 		set: words(func(in *ShipmentInput, v string) { in.CargoDescription = v })},
+	{Name: "Pieces", Help: "How many, and of what: 152 bales", aliases: []string{"piececount", "cargopieces", "quantity", "qty"},
+		set: words(func(in *ShipmentInput, v string) { in.CargoPiecesText = v })},
 	{Name: "Weight (kg)", aliases: []string{"weight", "cargoweight"},
 		set: amount("The weight", func(in *ShipmentInput, f float64) { in.CargoWeightKg = f })},
 	{Name: "Value (ETB)", aliases: []string{"value", "cargovalue"},
@@ -121,18 +123,26 @@ func heading(s string) string {
 	return b.String()
 }
 
+// importExample is the example row of the import template, by column name.
+var importExample = map[string]string{
+	"Origin": "Addis Ababa", "Origin address": "Kality depot, gate 2", "Destination": "Hawassa", "Destination address": "Lakeside store",
+	"Customer": "Abyssinia Traders", "Customer phone": "0911223344", "Receiver": "Lakeside Hardware", "Receiver phone": "0913220011",
+	"Cargo": "Cement", "Pieces": "200 bags", "Weight (kg)": "10000", "Value (ETB)": "180000", "Priority": "normal",
+	"Pickup": "2026-11-20 08:00", "Instructions": "Call before arriving",
+}
+
 // ImportTemplate is a file to start from: the headings and one example row.
 func ImportTemplate() []byte {
 	var b bytes.Buffer
 	b.WriteString("\xEF\xBB\xBF") // so Excel reads UTF-8
 	w := csv.NewWriter(&b)
 	names := make([]string, len(ImportColumns))
+	row := make([]string, len(ImportColumns))
 	for i, c := range ImportColumns {
-		names[i] = c.Name
+		names[i], row[i] = c.Name, importExample[c.Name]
 	}
 	_ = w.Write(names)
-	_ = w.Write([]string{"Addis Ababa", "Kality depot, gate 2", "Hawassa", "Lakeside store", "Abyssinia Traders", "0911223344",
-		"Lakeside Hardware", "0913220011", "Cement, 200 bags", "10000", "180000", "normal", "2026-11-20 08:00", "", "Call before arriving"})
+	_ = w.Write(row)
 	w.Flush()
 	return b.Bytes()
 }

@@ -275,6 +275,8 @@ type Shipment struct {
 	AnonymisedAt        pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
 	ConsigneeName       *string            `db:"consignee_name" json:"consignee_name"`
 	ConsigneePhone      *string            `db:"consignee_phone" json:"consignee_phone"`
+	CargoPieces         *int32             `db:"cargo_pieces" json:"cargo_pieces"`
+	CargoUnit           *string            `db:"cargo_unit" json:"cargo_unit"`
 }
 
 type ShipmentEvent struct {

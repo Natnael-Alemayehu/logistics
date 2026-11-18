@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -45,9 +46,16 @@ type ShipmentInput struct {
 	ConsigneeName  string
 	ConsigneePhone string
 
-	CargoDescription    string
-	CargoWeightKg       float64
-	CargoValueETB       float64
+	CargoDescription string
+	CargoWeightKg    float64
+	CargoValueETB    float64
+	// CargoPieces and CargoUnit: how many pieces, and what they are
+	// ("bales"). See ParsePieces.
+	CargoPieces int
+	CargoUnit   string
+	// CargoPiecesText, when set, is the count as typed ("152 bales") and
+	// replaces CargoPieces and CargoUnit.
+	CargoPiecesText     string
 	SpecialInstructions string
 
 	// PlannedPickup is when the load is to be collected, if agreed. The
@@ -119,6 +127,8 @@ type validShipment struct {
 	consigneePhone *string
 	cargo          *string
 	weight, value  pgtype.Numeric
+	pieces         *int32
+	unit           *string
 	instructions   *string
 	pickup         *time.Time
 	etaManual      *time.Time
@@ -190,6 +200,24 @@ func validateShipment(in ShipmentInput, now time.Time) (validShipment, error) {
 	if in.CargoValueETB < 0 || math.IsNaN(in.CargoValueETB) || in.CargoValueETB > 1e12 {
 		return v, invalid("cargo_value", "Enter a valid value.")
 	}
+	if in.CargoPiecesText != "" {
+		if in.CargoPieces, in.CargoUnit, err = ParsePieces(in.CargoPiecesText); err != nil {
+			return v, err
+		}
+	}
+	if in.CargoPieces < 0 || in.CargoPieces > 1_000_000 {
+		return v, invalid("cargo_pieces", "Enter a number of pieces up to 1,000,000.")
+	}
+	if unit := strings.TrimSpace(in.CargoUnit); in.CargoPieces > 0 {
+		n := int32(in.CargoPieces)
+		v.pieces = &n
+		if utf8.RuneCountInString(unit) > 30 {
+			return v, invalid("cargo_pieces", "Name the pieces in 30 letters or fewer, e.g. bags or bales.")
+		}
+		v.unit = toText(unit)
+	} else if unit != "" {
+		return v, invalid("cargo_pieces", "Enter how many, e.g. 152 bales.")
+	}
 	v.weight = toNumericOmitZero(in.CargoWeightKg)
 	v.value = toNumericOmitZero(in.CargoValueETB)
 	v.cargo = toText(strings.TrimSpace(truncate(in.CargoDescription, 500)))
@@ -234,6 +262,39 @@ func (s *ShipmentService) estimateArrival(ctx context.Context, q *db.Queries, te
 		}
 	}
 	return start.Add(geo.EstimateTransit(oLat, oLng, dLat, dLng, history)).Truncate(time.Minute)
+}
+
+// Estimate is what the booking form's summary shows while a shipment is
+// being filled in: the distance by road and when it would arrive.
+type Estimate struct {
+	RoadKM float64   `json:"road_km"`
+	Hours  float64   `json:"hours"`
+	Start  time.Time `json:"start"`
+	Arrive time.Time `json:"arrive"`
+	// FromHistory: the time is the company's own median on this route.
+	FromHistory bool `json:"from_history"`
+}
+
+// Estimate works out an Estimate between two known towns, leaving at start
+// (now, when start is zero or past). ok is false when either town is unknown.
+func (s *ShipmentService) Estimate(ctx context.Context, tenantID pgtype.UUID, from, to string, start time.Time) (Estimate, bool, error) {
+	a, okA := geo.Lookup(from)
+	b, okB := geo.Lookup(to)
+	if !okA || !okB {
+		return Estimate{}, false, nil
+	}
+	if now := s.now(); start.Before(now) {
+		start = now
+	}
+	history, err := s.q.RouteTransitHours(ctx, db.RouteTransitHoursParams{TenantID: tenantID, OriginCity: &a.Name, DestinationCity: &b.Name})
+	if err != nil {
+		return Estimate{}, false, err
+	}
+	transit := geo.EstimateTransit(a.Lat, a.Lng, b.Lat, b.Lng, history)
+	return Estimate{
+		RoadKM: math.Round(geo.RoadKM(a.Lat, a.Lng, b.Lat, b.Lng)), Hours: math.Round(transit.Hours()*10) / 10,
+		Start: start, Arrive: start.Add(transit).Truncate(time.Minute), FromHistory: len(history) >= geo.MinHistorySamples,
+	}, true, nil
 }
 
 // Create books a shipment, optionally assigning it straight away.
@@ -294,6 +355,8 @@ func (s *ShipmentService) Create(ctx context.Context, a Actor, in ShipmentInput)
 			CargoDescription:    v.cargo,
 			CargoWeight:         v.weight,
 			CargoValue:          v.value,
+			CargoPieces:         v.pieces,
+			CargoUnit:           v.unit,
 			SpecialInstructions: v.instructions,
 			VehicleID:           vehicleID,
 			Status:              status,
@@ -395,6 +458,8 @@ func (s *ShipmentService) Update(ctx context.Context, a Actor, id pgtype.UUID, i
 			CargoDescription:    v.cargo,
 			CargoWeight:         v.weight,
 			CargoValue:          v.value,
+			CargoPieces:         v.pieces,
+			CargoUnit:           v.unit,
 			SpecialInstructions: v.instructions,
 			EstimatedDelivery:   toTimestamp(*eta),
 			EtaManual:           manual,
@@ -466,6 +531,7 @@ func changedFields(a, b db.Shipment) []string {
 	add(deref(a.ConsigneeName) != deref(b.ConsigneeName) || deref(a.ConsigneePhone) != deref(b.ConsigneePhone), "receiver")
 	add(deref(a.CargoDescription) != deref(b.CargoDescription) || numericOr(a.CargoWeight) != numericOr(b.CargoWeight), "cargo")
 	add(numericOr(a.CargoValue) != numericOr(b.CargoValue), "cargo value")
+	add(derefInt(a.CargoPieces) != derefInt(b.CargoPieces) || deref(a.CargoUnit) != deref(b.CargoUnit), "pieces")
 	add(deref(a.SpecialInstructions) != deref(b.SpecialInstructions), "instructions")
 	add(!sameTime(a.PlannedPickupAt, b.PlannedPickupAt), "pickup time")
 	add(!sameTime(a.EstimatedDelivery, b.EstimatedDelivery), "ETA")
@@ -797,6 +863,7 @@ func InputOf(sh db.Shipment) ShipmentInput {
 		CustomerName: sh.CustomerName, CustomerPhone: sh.CustomerPhone,
 		ConsigneeName: deref(sh.ConsigneeName), ConsigneePhone: deref(sh.ConsigneePhone),
 		CargoDescription: deref(sh.CargoDescription), CargoWeightKg: numericOr(sh.CargoWeight), CargoValueETB: numericOr(sh.CargoValue),
+		CargoPieces: int(derefInt(sh.CargoPieces)), CargoUnit: deref(sh.CargoUnit),
 		SpecialInstructions: deref(sh.SpecialInstructions),
 		PlannedPickup:       timePtr(sh.PlannedPickupAt),
 	}
@@ -1025,4 +1092,41 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+func derefInt(p *int32) int32 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// ParsePieces reads a piece count as people write it: "152 bales",
+// "152", "1,200 bags". Empty is no count.
+func ParsePieces(s string) (int, string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, "", nil
+	}
+	i := 0
+	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == ',') {
+		i++
+	}
+	n, err := strconv.Atoi(strings.ReplaceAll(s[:i], ",", ""))
+	if err != nil || n <= 0 {
+		return 0, "", invalid("cargo_pieces", "Start with how many, e.g. 152 bales.")
+	}
+	return n, strings.TrimSpace(s[i:]), nil
+}
+
+// FormatPieces writes a piece count back the way ParsePieces reads it.
+func FormatPieces(n *int32, unit *string) string {
+	if n == nil || *n <= 0 {
+		return ""
+	}
+	out := strconv.FormatInt(int64(*n), 10)
+	if u := deref(unit); u != "" {
+		out += " " + u
+	}
+	return out
 }

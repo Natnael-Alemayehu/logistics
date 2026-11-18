@@ -10,6 +10,7 @@ SELECT s.tracking_number, s.status, COALESCE(s.status_reason, '')::text AS statu
        COALESCE(s.consignee_name, '')::text AS consignee_name, COALESCE(s.consignee_phone, '')::text AS consignee_phone,
        COALESCE(s.cargo_description, '')::text AS cargo_description,
        COALESCE(s.cargo_weight, 0)::float8 AS cargo_weight_kg, COALESCE(s.cargo_value, 0)::float8 AS cargo_value,
+       COALESCE(s.cargo_pieces, 0)::int AS cargo_pieces, COALESCE(s.cargo_unit, '')::text AS cargo_unit,
        COALESCE(s.special_instructions, '')::text AS special_instructions,
        COALESCE(u.full_name, '')::text AS driver_name, COALESCE(v.plate_number, '')::text AS vehicle_plate,
        s.customer_confirmed_at, COALESCE(s.customer_feedback, '')::text AS customer_feedback, s.anonymised_at

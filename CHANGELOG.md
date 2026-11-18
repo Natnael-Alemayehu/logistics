@@ -6,6 +6,15 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **Booking redesigned, and pieces on a load** (the redesign, part 3).
+  The booking form is in sections (customer, route and pickup, load,
+  driver and priority) with a summary beside it that follows what you
+  type: the distance and time on the road (from your own past trips on
+  the route when there are enough), when it would arrive, and how full
+  the chosen truck will be. A load can say how many pieces it is, such
+  as "152 bales": on the shipment's page, the waybill, the list, both
+  exports, the CSV import, the API (`cargo.pieces` and `cargo.unit`)
+  and the driver app.
 - **Dispatch pages redesigned** (the redesign, part 2). The overview
   opens on the date, the figures with icons, the map, what needs
   attention (with buttons to call the driver or customer) and a shipments

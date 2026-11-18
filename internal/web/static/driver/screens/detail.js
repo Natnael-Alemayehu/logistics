@@ -127,7 +127,7 @@ export function screenDetail(sh) {
         h("p", {}, h("strong", { text: sh.customer_name })),
         h("a", { class: "btn call" + (sh.consignee_phone ? "" : " big"), href: "tel:" + sh.customer_phone, text: "📞 " + t("call") + " " + sh.customer_phone })),
       sh.cargo || sh.weight_kg || sh.vehicle ? h("section", { class: "card" },
-        sh.cargo ? h("p", {}, h("span", { class: "muted", text: t("cargo") + ": " }), sh.cargo, sh.weight_kg ? " · " + sh.weight_kg + " " + t("kg") : "") : null,
+        sh.cargo ? h("p", {}, h("span", { class: "muted", text: t("cargo") + ": " }), sh.cargo, sh.pieces ? " · " + sh.pieces : "", sh.weight_kg ? " · " + sh.weight_kg + " " + t("kg") : "") : null,
         sh.vehicle ? h("p", {}, h("span", { class: "muted", text: t("vehicle") + ": " }), sh.vehicle) : null) : null,
       sh.instructions ? h("section", { class: "card instructions" }, h("p", { class: "muted small", text: t("instructions") }), h("p", { class: "pre", text: sh.instructions })) : null,
       msgs.length ? h("section", { class: "card" }, h("p", { class: "muted small", text: t("messages") }),

@@ -349,6 +349,95 @@
     });
   }
 
+  // ---- booking summary -----------------------------------------------------------
+  // The summary beside the booking form follows what is typed: the distance and
+  // time come from the server's estimate, the rest from the form itself.
+  function initSummary() {
+    const form = $("[data-shipment-form]");
+    const box = $("[data-booking-summary]");
+    if (!form || !box) return;
+    const field = (name) => form.elements.namedItem(name);
+    const value = (name) => (field(name)?.value || "").trim();
+    const set = (key, text) => {
+      const n = $(`[data-sum="${key}"]`, box);
+      if (n) n.textContent = text || "—";
+    };
+    const tonnes = (kg) => (kg / 1000).toLocaleString("en", { maximumFractionDigits: 1 }) + " t";
+    const duration = (h) => {
+      if (h < 24) return Math.max(1, Math.round(h)) + " h";
+      const days = Math.floor(h / 24), rest = Math.round(h - days * 24);
+      return days + (days === 1 ? " day" : " days") + (rest ? " " + rest + " h" : "");
+    };
+
+    let asked = "";
+    async function estimate() {
+      const from = value("origin_city"), to = value("destination_city"), pickup = value("planned_pickup");
+      const key = [from, to, pickup].join("|");
+      if (key === asked) return;
+      asked = key;
+      const clear = () => {
+        set("distance");
+        set("time");
+        if (!value("estimated_delivery")) set("arrive");
+      };
+      if (!from || !to) return clear();
+      try {
+        const res = await fetch("/app/shipments/estimate?" + new URLSearchParams({ from, to, pickup }), { headers: { Accept: "application/json" } });
+        const e = await res.json();
+        if (key !== asked) return;
+        if (!e.known) return clear();
+        set("distance", "≈ " + Math.round(e.road_km).toLocaleString("en") + " km");
+        set("time", (e.from_history ? "" : "≈ ") + duration(e.hours) + (e.from_history ? ", going by your past trips" : ""));
+        if (pickup) set("pickup", e.start);
+        if (!value("estimated_delivery")) set("arrive", e.arrive);
+      } catch {
+        asked = "";
+      }
+    }
+
+    function update() {
+      set("from", value("origin_city"));
+      set("to", value("destination_city"));
+      if (!value("planned_pickup")) set("pickup", "As soon as it's booked");
+      const due = field("estimated_delivery");
+      set("arrive-label", due?.value ? "Due by" : "Arrives about");
+      if (due?.value) set("arrive", new Date(due.value).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }));
+
+      const weight = parseFloat(value("cargo_weight").replace(/,/g, "")) || 0;
+      const load = [value("cargo_pieces"), weight ? tonnes(weight) : ""].filter(Boolean).join(" · ");
+      set("load", load);
+
+      const driverSel = field("driver_id");
+      const driver = driverSel?.selectedOptions[0];
+      if (driverSel) set("driver", driver?.value ? driver.dataset.name : "Decide later");
+
+      const vehicleSel = field("vehicle_id");
+      const vehicleID = vehicleSel?.value || driver?.dataset.vehicle || "";
+      const vehicle = vehicleID && vehicleSel ? $(`option[value="${CSS.escape(vehicleID)}"]`, vehicleSel) : null;
+      const capacity = parseFloat(vehicle?.dataset.capacity || "") || 0;
+      const fill = $("[data-sum-fill]", box);
+      if (fill) {
+        fill.hidden = !(capacity && weight);
+        if (capacity && weight) {
+          const pct = Math.round((100 * weight) / capacity);
+          const bar = $("[data-sum-bar]", box);
+          bar.style.width = Math.min(pct, 100) + "%";
+          bar.parentElement.classList.toggle("bar-over", pct > 100);
+          set("fill", pct > 100
+            ? `Over ${vehicle.dataset.plate}'s ${tonnes(capacity)} by ${tonnes(weight - capacity)}.`
+            : `${vehicle.dataset.plate} will be ${pct}% full (${tonnes(weight)} of ${tonnes(capacity)}).`);
+        }
+      }
+      estimate();
+    }
+
+    let timer;
+    const soon = () => { clearTimeout(timer); timer = setTimeout(update, 250); };
+    form.addEventListener("input", soon);
+    form.addEventListener("change", soon);
+    update();
+  }
+
   // ---- live updates --------------------------------------------------------------
   function setBadge(n) {
     $$("[data-badge]").forEach((b) => {
@@ -444,6 +533,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     enhance(document);
+    initSummary();
     showNotify();
     const live = document.body.dataset.live;
     if (live && "WebSocket" in window) connectLive(live);

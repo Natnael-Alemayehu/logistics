@@ -278,7 +278,9 @@
         "properties": {
           "description": { "type": "string" },
           "weight_kg": { "type": "number", "minimum": 0 },
-          "value_etb": { "type": "number", "minimum": 0 }
+          "value_etb": { "type": "number", "minimum": 0 },
+          "pieces": { "type": "integer", "minimum": 0, "maximum": 1000000, "description": "How many pieces the load is; 0 when not counted." },
+          "unit": { "type": "string", "maxLength": 30, "description": "What the pieces are, e.g. bales. Only with pieces." }
         }
       },
       "Shipment": {
