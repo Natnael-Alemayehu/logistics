@@ -108,6 +108,9 @@ func (s *Server) funcs() template.FuncMap {
 		"icon":      icon,
 		"tripStage": tripStage,
 		"pieces":    service.FormatPieces,
+		"docKind":   service.DocumentKindLabel,
+		"fileSize":  fileSize,
+		"santim":    santim,
 		// section is the part of the dashboard a page belongs to, for the
 		// breadcrumb: its name and address.
 		"section": func(nav string) navSection { return navSections[nav] },
@@ -670,4 +673,21 @@ func formatWhen(t time.Time, loc *time.Location) string {
 		return t.Format("Mon 2 Jan, 15:04")
 	}
 	return t.Format("2 Jan 2006, 15:04")
+}
+
+// fileSize writes a size in bytes as people read it: 840 KB, 2.4 MB.
+func fileSize(n int32) string {
+	switch {
+	case n < 1<<10:
+		return fmt.Sprintf("%d bytes", n)
+	case n < 1<<20:
+		return fmt.Sprintf("%d KB", (n+512)>>10)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	}
+}
+
+// santim turns an amount in birr into santim, for birr.
+func santim(v any) int64 {
+	return int64(math.Round(toFloat(v) * 100))
 }

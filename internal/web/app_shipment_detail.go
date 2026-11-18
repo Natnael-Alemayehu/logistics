@@ -90,11 +90,24 @@ func (s *Server) shipmentDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tab := "overview"
-	if r.URL.Query().Get("tab") == "activity" {
-		tab = "activity"
+	switch t := r.URL.Query().Get("tab"); t {
+	case "activity", "documents", "charges":
+		tab = t
+	}
+	documents, err := s.svc.Shipments.Documents(r.Context(), p.TenantID, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	charges, chargeTotal, err := s.svc.Shipments.Charges(r.Context(), p.TenantID, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
 	v := s.view(w, r, sh.TrackingNumber, "shipments", map[string]any{
-		"D": d, "S": sh, "Timeline": timeline, "Trip": tripFrom(d), "Tab": tab, "Map": m, "Drivers": drivers, "Vehicles": vehicles, "Review": review,
+		"D": d, "S": sh, "Timeline": timeline, "Trip": tripFrom(d), "Tab": tab,
+		"Documents": documents, "Charges": charges, "ChargeTotal": chargeTotal,
+		"DocumentKinds": service.DocumentKinds, "MaxDocumentMB": service.MaxDocumentBytes >> 20, "Map": m, "Drivers": drivers, "Vehicles": vehicles, "Review": review,
 		"CanAssign": model.CanAssign(sh.Status), "CanUnassign": sh.DriverID.Valid && model.CanUnassign(sh.Status),
 		"CanCancel": model.CanCancel(sh.Status), "CanReopen": model.CanReopen(sh.Status),
 		"CanEdit": !model.IsFinalStatus(sh.Status), "Next": d.Next,

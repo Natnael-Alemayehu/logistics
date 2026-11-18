@@ -53,10 +53,12 @@ driver card and the note form are left alone, being forms in use. */}}
 <nav class="tabs" aria-label="Shipment sections">
   <a href="/app/shipments/{{$id}}" {{if eq $d.Tab "overview"}}aria-current="page"{{end}}>Overview</a>
   <a href="/app/shipments/{{$id}}?tab=activity" {{if eq $d.Tab "activity"}}aria-current="page"{{end}}>Activity <span class="badge">{{len $d.Timeline}}</span></a>
+  <a href="/app/shipments/{{$id}}?tab=documents" {{if eq $d.Tab "documents"}}aria-current="page"{{end}}>Documents{{with $d.Documents}} <span class="badge">{{len .}}</span>{{end}}</a>
+  <a href="/app/shipments/{{$id}}?tab=charges" {{if eq $d.Tab "charges"}}aria-current="page"{{end}}>Charges{{if $d.Charges}} <span class="badge">{{etb (santim $d.ChargeTotal)}}</span>{{end}}</a>
 </nav>
 
 {{if $s.AnonymisedAt.Valid}}
-<p class="banner info">The customer's and recipient's details, signatures and photos were removed {{date $s.AnonymisedAt}}, at the end of the keeping period. The dates, route, driver and cargo stay for reports.</p>
+<p class="banner info">The customer's and recipient's details, signatures, photos and documents were removed {{date $s.AnonymisedAt}}, at the end of the keeping period. The dates, route, driver and cargo stay for reports.</p>
 {{end}}
 
 <div class="grid-detail">
@@ -136,7 +138,7 @@ driver card and the note form are left alone, being forms in use. */}}
     </div>
     {{template "timeline" (dict "Items" $d.Timeline)}}
   </section>
-{{else}}
+{{else if eq $d.Tab "activity"}}
   {{if not (isFinal $s.Status)}}
   <section class="card" id="note">
     <div class="card-head"><h2>Message or note</h2></div>
@@ -181,6 +183,82 @@ driver card and the note form are left alone, being forms in use. */}}
   {{else}}
   <section class="card"><div class="card-head"><h2>Location history</h2></div><p class="muted">No positions yet. They arrive from the driver's phone once the trip starts.</p></section>
   {{end}}
+{{else if eq $d.Tab "documents"}}
+  {{if not $s.AnonymisedAt.Valid}}
+  <section class="card">
+    <div class="card-head"><div><h2>Add a document</h2><p class="card-sub">A PDF, or a photo as JPEG or PNG, up to {{$d.MaxDocumentMB}} MB. Only your company sees them.</p></div></div>
+    <form method="post" action="/app/shipments/{{$id}}/documents" enctype="multipart/form-data" class="doc-upload">
+      <label>File <input type="file" name="file" accept="application/pdf,image/jpeg,image/png" required></label>
+      <label>What it is
+        <select name="kind">{{range $d.DocumentKinds}}<option value="{{.}}">{{docKind .}}</option>{{end}}</select>
+      </label>
+      <button class="btn btn-primary" type="submit">{{icon "upload"}}Upload</button>
+    </form>
+  </section>
+  {{end}}
+  <section class="card card-flush">
+    <div class="card-head card-pad"><div><h2>Documents</h2><p class="card-sub">{{if $d.Documents}}{{len $d.Documents}} kept with this load{{else}}Nothing yet{{end}}</p></div></div>
+    {{if $d.Documents}}
+    <ul class="doc-list">
+      {{range $d.Documents}}{{$doc := uuid .ID}}
+      <li>
+        <span class="doc-icon">{{if eq .ContentType "application/pdf"}}{{icon "file-text"}}{{else}}{{icon "image"}}{{end}}</span>
+        <div class="doc-body">
+          <a class="doc-name" href="/app/shipments/{{$id}}/documents/{{$doc}}?view=1" target="_blank" rel="noopener">{{.Name}}</a>
+          <span class="small muted">{{docKind .Kind}} · {{fileSize .SizeBytes}} · added {{ago .CreatedAt}}{{with .UploadedByName}} by {{.}}{{end}}</span>
+        </div>
+        <div class="doc-actions">
+          <a class="btn btn-sm" href="/app/shipments/{{$id}}/documents/{{$doc}}" download>{{icon "download"}}Download</a>
+          <details class="pop pop-right">
+            <summary class="btn btn-sm btn-ghost" aria-label="Remove {{.Name}}" title="Remove">{{icon "trash-2"}}</summary>
+            <form method="post" action="/app/shipments/{{$id}}/documents/{{$doc}}/delete" class="pop-panel stack">
+              <p class="small"><strong>Remove {{.Name}}?</strong> The file is deleted for good.</p>
+              <button class="btn btn-danger btn-sm" type="submit">Remove</button>
+            </form>
+          </details>
+        </div>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <div class="empty-state card-pad">
+      <span class="empty-icon">{{icon "file-text"}}</span>
+      <p class="empty-title">No documents yet</p>
+      <p class="small muted">Keep the signed waybill, customs papers or the customer's invoice with the load, so anyone in the office can find them.</p>
+    </div>
+    {{end}}
+  </section>
+{{else if eq $d.Tab "charges"}}
+  <section class="card card-flush">
+    <div class="card-head card-pad"><div><h2>Charges</h2><p class="card-sub">What the customer is charged for this load, in birr</p></div></div>
+    <div class="table-wrap">
+    <table class="table charges">
+      <thead><tr><th>Item</th><th>Added</th><th class="num">Amount</th><th class="row-menu"><span class="sr-only">Remove</span></th></tr></thead>
+      <tbody>
+        {{range $d.Charges}}
+        <tr>
+          <td>{{.Description}}</td>
+          <td class="small muted">{{date .CreatedAt}}</td>
+          <td class="num mono">{{birr (santim .Amount)}}</td>
+          <td class="row-menu"><form method="post" action="/app/shipments/{{$id}}/charges/{{uuid .ID}}/delete"><button class="icon-btn" type="submit" aria-label="Remove {{.Description}}" title="Remove">{{icon "x"}}</button></form></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="4" class="muted">No charges yet.</td></tr>
+        {{end}}
+      </tbody>
+      {{if $d.Charges}}<tfoot><tr><th colspan="2">Total</th><th class="num mono">{{birr (santim $d.ChargeTotal)}}</th><th></th></tr></tfoot>{{end}}
+    </table>
+    </div>
+    <form method="post" action="/app/shipments/{{$id}}/charges" class="charge-add card-foot">
+      <label>Item <input name="description" list="charge-items" maxlength="120" required placeholder="e.g. Freight, Addis Ababa to {{with $s.DestinationCity}}{{.}}{{else}}destination{{end}}"></label>
+      <label>Amount
+        <span class="input-group"><span class="addon">ETB</span><input name="amount" inputmode="decimal" required placeholder="0.00"></span>
+      </label>
+      <button class="btn btn-primary" type="submit">{{icon "plus"}}Add</button>
+      <datalist id="charge-items"><option value="Freight"><option value="Loading"><option value="Unloading"><option value="Waiting time"><option value="Fuel surcharge"><option value="Border and customs fees"><option value="Discount"></datalist>
+    </form>
+    <p class="card-foot small">A discount is a negative amount. Charges stay with the shipment for reports, after the customer's details are removed.</p>
+  </section>
 {{end}}
 </div>
 

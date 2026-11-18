@@ -75,10 +75,17 @@ limit.
 1. **New shipment**: pick origin and destination towns from the list. **Pin the exact
    drop-off on a map** narrows the delivery location check from the town to 500 m. Customer name and phone are required.
 2. Assign the driver now or later. The driver's default vehicle fills in.
-3. Optionally set a **Pickup** time under Timing. The due time then counts
-   from the pickup rather than from now.
-4. The shipment page shows the tracking number, the route on a map, the
-   pickup and due times and the history.
+3. Optionally set a **Pickup** time. The due time then counts from the
+   pickup rather than from now.
+4. Under **Load**, give the weight and the **Pieces** as you'd write them,
+   "152 bales". The **Summary** beside the form follows as you type: the
+   distance and time on the road, when it would arrive, and how full the
+   chosen truck will be (from the vehicle's capacity). "Bales" alone, with no
+   number, is refused.
+5. The shipment page has the route as its title, a strip of the stages it
+   has passed with the distance left, the map with where it was last seen,
+   and the driver, customer and load beside them. Its history, messages and
+   positions are under **Activity**.
 
 Check:
 - The customer got a "booked" SMS with a tracking link. The driver got a "new
@@ -281,15 +288,17 @@ moves while you are typing or have a menu open; the page catches up after.
 
 ### Shipments
 
-- Tabs (unassigned, active, needs attention, delivered, cancelled), search,
-  filters and CSV export. Matches are highlighted. A phone number is found
+- Tabs (unassigned, active, needs attention, delivered, cancelled) with
+  counts, search, **Filters** and CSV export. Each load shows how far along
+  its route it is, and its row's ⋯ menu opens it, the customer's view or a
+  call to the customer. Matches are highlighted. A phone number is found
   however it is written: `0922 334 455`, `+251922334455` or `922334455`.
 - Click a column heading to sort by it, and again to reverse. **Columns**
   hides columns, and this browser remembers the choice.
 - A driver whose app hasn't synced for 30 minutes while carrying a load is
   marked in red ("synced 2 hours ago").
-- Under **Search and filter**, **Save this view as** keeps the tab, search
-  and filters as a chip above the list. × removes it. Each person has their
+- With a search or filters on, **Save view** keeps the tab, search and
+  filters as a chip above the list. × removes it. Each person has their
   own views.
 - On **Unassigned**, tick shipments (the box in the heading ticks them all),
   choose a driver and **Assign**. Each shipment is assigned on its own: if
@@ -304,7 +313,18 @@ the app. Within a moment of the sync the status, its buttons, the route times,
 the proof of delivery and the history change on their own, with no reload.
 The same happens after the live connection drops and comes back.
 
-A shipment's page has a **Location history** with the newest 200 positions:
+On a shipment's **Documents** tab, upload a PDF and a photo of a waybill.
+They're listed with what they are and who added them; the name opens the
+file and **Download** saves it. A text file renamed to `.pdf` is refused,
+and so is anything over 10 MB. Another company's dispatcher gets "not
+found" for the file's address. On **Charges**, add freight, loading and a
+negative discount: the tab shows the lines and the total, and the total
+appears on the tab itself. Both are in the company's export (Settings,
+**Download all data**), the files under `documents/`. When the keeping
+period clears a shipment, its documents go with the customer's details; its
+charges stay.
+
+A shipment's **Activity** tab has a **Location history** with the newest 200 positions:
 time, coordinates, accuracy, speed and battery. **Download every position as
 CSV** has all of them.
 

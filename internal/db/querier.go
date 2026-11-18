@@ -74,6 +74,8 @@ type Querier interface {
 	CountSMSSentSince(ctx context.Context, arg CountSMSSentSinceParams) (int64, error)
 	CountSMSToPhoneSince(ctx context.Context, arg CountSMSToPhoneSinceParams) (int64, error)
 	CountSavedFilters(ctx context.Context, arg CountSavedFiltersParams) (int64, error)
+	CountShipmentCharges(ctx context.Context, arg CountShipmentChargesParams) (int64, error)
+	CountShipmentDocuments(ctx context.Context, arg CountShipmentDocumentsParams) (int64, error)
 	CountShipments(ctx context.Context, arg CountShipmentsParams) (int64, error)
 	CountShipmentsByStatus(ctx context.Context, tenantID pgtype.UUID) ([]CountShipmentsByStatusRow, error)
 	CountShipmentsCreatedSince(ctx context.Context, arg CountShipmentsCreatedSinceParams) (int64, error)
@@ -106,6 +108,8 @@ type Querier interface {
 	CreatePendingSignup(ctx context.Context, arg CreatePendingSignupParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateShipment(ctx context.Context, arg CreateShipmentParams) (Shipment, error)
+	CreateShipmentCharge(ctx context.Context, arg CreateShipmentChargeParams) (ShipmentCharge, error)
+	CreateShipmentDocument(ctx context.Context, arg CreateShipmentDocumentParams) (ShipmentDocument, error)
 	CreateShipmentEvent(ctx context.Context, arg CreateShipmentEventParams) (ShipmentEvent, error)
 	CreateSupportTicket(ctx context.Context, arg CreateSupportTicketParams) (SupportTicket, error)
 	// A slug already taken returns no row, so the caller can try another
@@ -126,6 +130,7 @@ type Querier interface {
 	// Webhooks (FR-047): a company's endpoints, and the outbox of messages to
 	// them.
 	CreateWebhookEndpoint(ctx context.Context, arg CreateWebhookEndpointParams) (WebhookEndpoint, error)
+	DeleteDocumentsForShipments(ctx context.Context, ids []pgtype.UUID) error
 	DeleteExpiredPendingSignups(ctx context.Context, expiresAt pgtype.Timestamptz) error
 	DeleteExpiredSessions(ctx context.Context) error
 	DeleteExpiredVerificationCodes(ctx context.Context) error
@@ -141,6 +146,8 @@ type Querier interface {
 	DeletePendingSignup(ctx context.Context, id pgtype.UUID) error
 	DeletePersonDeviceData(ctx context.Context, driverID pgtype.UUID) error
 	DeleteSavedFilter(ctx context.Context, arg DeleteSavedFilterParams) (int64, error)
+	DeleteShipmentCharge(ctx context.Context, arg DeleteShipmentChargeParams) (int64, error)
+	DeleteShipmentDocument(ctx context.Context, arg DeleteShipmentDocumentParams) (string, error)
 	DeleteShipmentTexts(ctx context.Context, ids []pgtype.UUID) error
 	DeleteTenant(ctx context.Context, id pgtype.UUID) error
 	DeleteTenantAuditLogs(ctx context.Context, tenantID pgtype.UUID) error
@@ -156,6 +163,8 @@ type Querier interface {
 	ExpireEmailTokens(ctx context.Context, arg ExpireEmailTokensParams) error
 	// A prompt nobody answered. A late approval is still honoured.
 	ExpirePendingPayments(ctx context.Context, createdAt pgtype.Timestamptz) error
+	ExportCharges(ctx context.Context, tenantID pgtype.UUID) ([]ExportChargesRow, error)
+	ExportDocuments(ctx context.Context, tenantID pgtype.UUID) ([]ExportDocumentsRow, error)
 	ExportPODs(ctx context.Context, tenantID pgtype.UUID) ([]ExportPODsRow, error)
 	ExportPeople(ctx context.Context, tenantID pgtype.UUID) ([]ExportPeopleRow, error)
 	ExportShipmentEvents(ctx context.Context, tenantID pgtype.UUID) ([]ExportShipmentEventsRow, error)
@@ -213,6 +222,7 @@ type Querier interface {
 	// instead of both validating against the same stale status.
 	GetShipmentByIDForUpdate(ctx context.Context, arg GetShipmentByIDForUpdateParams) (Shipment, error)
 	GetShipmentByTrackingNumber(ctx context.Context, trackingNumber string) (Shipment, error)
+	GetShipmentDocument(ctx context.Context, arg GetShipmentDocumentParams) (ShipmentDocument, error)
 	// What an offline device's change was recorded as, if it was: a device
 	// sends a batch again when the answer to it was lost.
 	GetShipmentEventByClientID(ctx context.Context, arg GetShipmentEventByClientIDParams) (string, error)
@@ -257,6 +267,7 @@ type Querier interface {
 	ListBillingContacts(ctx context.Context, tenantID pgtype.UUID) ([]ListBillingContactsRow, error)
 	ListBroadcasts(ctx context.Context, arg ListBroadcastsParams) ([]ListBroadcastsRow, error)
 	ListCompanyTickets(ctx context.Context, tenantID pgtype.UUID) ([]ListCompanyTicketsRow, error)
+	ListDocumentKeysForShipments(ctx context.Context, ids []pgtype.UUID) ([]string, error)
 	// Messages to every driver on the road that reached this driver. The LIMIT
 	// is maxDriverBroadcasts in the sync service.
 	ListDriverBroadcastsSince(ctx context.Context, arg ListDriverBroadcastsSinceParams) ([]ListDriverBroadcastsSinceRow, error)
@@ -314,6 +325,9 @@ type Querier interface {
 	ListRouteDeviations(ctx context.Context, minGain float64) ([]ListRouteDeviationsRow, error)
 	ListSMSByTenant(ctx context.Context, arg ListSMSByTenantParams) ([]ListSMSByTenantRow, error)
 	ListSavedFilters(ctx context.Context, arg ListSavedFiltersParams) ([]SavedFilter, error)
+	ListShipmentCharges(ctx context.Context, arg ListShipmentChargesParams) ([]ShipmentCharge, error)
+	// A shipment's documents and charges. Every query names the tenant.
+	ListShipmentDocuments(ctx context.Context, arg ListShipmentDocumentsParams) ([]ShipmentDocument, error)
 	ListShipmentEvents(ctx context.Context, arg ListShipmentEventsParams) ([]ShipmentEvent, error)
 	// A truck carries several shipments at once and its pings are attributed to
 	// only one of them, so a shipment's route is the driver's track over the time
@@ -347,6 +361,7 @@ type Querier interface {
 	// Every company's tickets for the platform: waiting for an answer first.
 	ListSupportInbox(ctx context.Context, status *string) ([]ListSupportInboxRow, error)
 	ListTenantActivity(ctx context.Context, arg ListTenantActivityParams) ([]ListTenantActivityRow, error)
+	ListTenantDocumentKeys(ctx context.Context, tenantID pgtype.UUID) ([]string, error)
 	ListTenantPODMedia(ctx context.Context, tenantID pgtype.UUID) ([]ListTenantPODMediaRow, error)
 	// Companies with a finished month whose texts are not yet settled.
 	ListTenantsForUsageBilling(ctx context.Context, smsBilledMonth pgtype.Date) ([]Tenant, error)

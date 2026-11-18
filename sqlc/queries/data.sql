@@ -161,3 +161,26 @@ DELETE FROM tenants WHERE id = $1;
 -- Lets this transaction change the append-only audit log and shipment
 -- timeline (see the append_only trigger).
 SELECT set_config('kiflet.purge', 'on', true);
+
+-- name: ListDocumentKeysForShipments :many
+SELECT storage_key FROM shipment_documents WHERE shipment_id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: DeleteDocumentsForShipments :exec
+DELETE FROM shipment_documents WHERE shipment_id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: ListTenantDocumentKeys :many
+SELECT storage_key FROM shipment_documents WHERE tenant_id = $1;
+
+-- name: ExportDocuments :many
+SELECT s.tracking_number, d.kind, d.name, d.storage_key, d.size_bytes, d.uploaded_by_name, d.created_at
+FROM shipment_documents d
+JOIN shipments s ON s.id = d.shipment_id AND s.tenant_id = d.tenant_id
+WHERE d.tenant_id = $1
+ORDER BY s.created_at, d.created_at;
+
+-- name: ExportCharges :many
+SELECT s.tracking_number, c.description, c.amount::float8 AS amount, c.created_at
+FROM shipment_charges c
+JOIN shipments s ON s.id = c.shipment_id AND s.tenant_id = c.tenant_id
+WHERE c.tenant_id = $1
+ORDER BY s.created_at, c.created_at;
