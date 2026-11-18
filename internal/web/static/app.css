@@ -707,6 +707,14 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .role-list dt { font-weight: 600; font-size: 0.875rem; }
 .role-list dd { margin: 2px 0 0; color: var(--muted); font-size: 0.8125rem; line-height: 1.5; }
 
+/* Billing: the plan's price as a headline. */
+.plan-headline { margin: 4px 0 14px; font-size: 1.75rem; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.plan-headline .muted { font-size: 1rem; font-weight: 400; letter-spacing: 0; }
+.col-main > .kpis { margin-bottom: 0; }
+.kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.plan-card .btn { white-space: normal; height: auto; min-height: 36px; padding-block: 6px; line-height: 1.3; }
+
 /* Settings: a menu of sections beside them. */
 .settings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 24px; align-items: start; }
 .settings-nav { position: sticky; top: 72px; display: flex; flex-direction: column; gap: 2px; }
