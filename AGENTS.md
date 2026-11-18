@@ -12,6 +12,11 @@ trucking companies. See `README.md` for what it does and how it fits together.
 - `docs/E2E_TEST_GUIDE.md`: manual walkthrough of every flow
 - `docs/deploy.md`: production, backups, staging, connecting the providers
 - `docs/audit-2026-11.md`: the audit of November 2026 and its fix record
+- `docs/architecture.md`: the target architecture (backend modules,
+  RabbitMQ, Redis, the Next.js web and Expo driver apps, deployment)
+- `docs/migration.md`: the phased plan from this codebase to that one.
+  Until a phase is done, the Architecture section below describes what
+  is running.
 - `CONTRIBUTING.md`: these rules at full length
 - `ROADMAP.md`: what comes next, in order. Delete a section once it is done.
 - `CHANGELOG.md`: what changed in each release. It is the only file that
