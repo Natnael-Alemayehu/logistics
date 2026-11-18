@@ -51,10 +51,13 @@ you to confirm your email before paying; section 9 continues from there.
 2. **Drivers → Add driver**: name, phone, default vehicle and when their
    licence runs out. A one-time PIN is shown once (and texted to the
    driver).
-3. **Team → Add person**: a dispatcher with an email. A temporary password is
-   shown once, and texted if you gave a phone. The terminal also shows an
-   email to the dispatcher saying who added them, with a link to confirm the
-   address.
+3. **Team → Invite someone** (the form beside the list): a dispatcher with
+   an email. A temporary password is shown once, and texted if you gave a
+   phone. The terminal also shows an email to the dispatcher saying who
+   added them, with a link to confirm the address. Back on Team, they are
+   under **Waiting to join** until they sign in: **Resend** gives a new
+   temporary password, **Cancel** deactivates them, and former staff fold
+   away at the bottom.
 4. Sign in as the dispatcher in a private window. You must choose a new
    password first. A dispatcher can book and manage shipments but gets 403 on
    Team, Settings and Audit log.
@@ -261,12 +264,14 @@ or isn't a phone number at all.
    server terminal, and see all of their shipments.
 3. Open the confirmation link from the delivery SMS. Confirm, or report a
    problem with a note. A reported problem raises an alert for the office.
-4. In Amharic: in **Settings**, under "Text messages to customers", choose
+4. In Amharic: in **Settings**, under "Customer messages", choose
    አማርኛ and save. Book another shipment. The customer's text in the server
    terminal is in Amharic, and its tracking link opens in Amharic in a
    private window. **English** at the top switches the page, and the
    choice holds on `/track` and on the confirmation page. The dashboard
    stays in English.
+   The preview beside it changes to Amharic as you choose, with how many
+   SMS the text costs (more than in English).
 
 ## 8. Running the business
 
@@ -457,7 +462,12 @@ SMS: the email appears in the server terminal.
 
 ### Help and your data
 
-- **Help** holds questions to the Kiflet team. **Ask a question** with a
+- **Help** opens with answers by topic (getting started, shipments,
+  drivers, billing). Type `battery` in **Search help**: only the answer
+  about battery and data stays, opened. Below are your questions and
+  how to reach support: email always, and the phone, Telegram and hours
+  when `SUPPORT_PHONE`, `SUPPORT_TELEGRAM` and `SUPPORT_HOURS` are set.
+- **Your questions** go to the Kiflet team. **Ask a question** with a
   subject and a message. The team is emailed (an `EMAIL to admin@kiflet.et`
   block in the terminal). Its answer shows on the question's page and is
   emailed to whoever asked. Reply to carry on, or **Close** the question when

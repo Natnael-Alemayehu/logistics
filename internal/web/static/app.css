@@ -672,6 +672,84 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .switch input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .switch input:disabled { cursor: default; opacity: 0.6; }
 
+/* Help: a search, the answers by topic, then questions and contacts. */
+.help-hero { text-align: center; padding: 16px 0 28px; }
+.help-hero h1 { margin: 0 0 6px; }
+.help-search { max-width: 520px; margin: 18px auto 0; }
+.help-search input { height: 44px; font-size: 1rem; }
+.help-topics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-bottom: 24px; }
+.help-topic[hidden] { display: none; }
+.help-topic-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.help-topic-head h2 { margin: 0; font-size: 1rem; }
+.help-topic-head .i { width: 18px; height: 18px; color: var(--muted); }
+.help-topic details { border-top: 1px solid var(--border); }
+.help-topic summary { padding: 10px 0; cursor: pointer; font-size: 0.9375rem; }
+.help-topic summary:hover { text-decoration: underline; }
+.help-topic details p { margin: 0 0 12px; color: var(--muted); font-size: 0.875rem; line-height: 1.55; }
+.help-none { text-align: center; margin: -8px 0 24px; }
+.contact-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.contact-list li { display: flex; gap: 12px; align-items: flex-start; font-size: 0.875rem; }
+.contact-list li > .i { width: 18px; height: 18px; margin-top: 2px; color: var(--muted); flex: none; }
+.contact-list li > span { display: flex; flex-direction: column; }
+.contact-list a { overflow-wrap: anywhere; }
+
+/* Team: members, those waiting to join, those who left. */
+.card-title { margin: 0; font-size: 1rem; }
+.list-toolbar > div:first-child { flex: 1 1 auto; }
+.list-toolbar > div:first-child p { margin: 2px 0 0; }
+.invite-list { list-style: none; margin: 0; padding: 0; }
+.invite-list li { display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.invite-who { flex: 1 1 200px; min-width: 0; }
+.invite-who p { margin: 2px 0 0; }
+.former summary { cursor: pointer; }
+.former[open] summary { margin-bottom: 12px; }
+.role-list { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.role-list dt { font-weight: 600; font-size: 0.875rem; }
+.role-list dd { margin: 2px 0 0; color: var(--muted); font-size: 0.8125rem; line-height: 1.5; }
+
+/* Billing: the plan's price as a headline. */
+.plan-headline { margin: 4px 0 14px; font-size: 1.75rem; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.plan-headline .muted { font-size: 1rem; font-weight: 400; letter-spacing: 0; }
+.col-main > .kpis { margin-bottom: 0; }
+.kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.kpis-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1280px) { .kpis-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .kpis-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pct-cell { display: inline-flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.pct-bar { width: 56px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.pct-bar > span { display: block; height: 100%; background: var(--accent); }
+@media (max-width: 1100px) { .kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.plan-card .btn { white-space: normal; height: auto; min-height: 36px; padding-block: 6px; line-height: 1.3; }
+
+/* Settings: a menu of sections beside them. */
+.settings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 24px; align-items: start; }
+.settings-nav { position: sticky; top: 72px; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav a { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 6px; color: var(--muted); font-size: 0.875rem; text-decoration: none; }
+.settings-nav a:hover { background: var(--surface); color: var(--text); }
+.settings-nav .i { width: 16px; height: 16px; }
+.settings-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; max-width: 820px; }
+.settings-main > form { gap: 16px; }
+.settings-main .card { scroll-margin-top: 72px; margin: 0; }
+.setting-rows { display: flex; flex-direction: column; }
+.setting-row { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--border); }
+.setting-row:first-child { border-top: 0; padding-top: 0; }
+.setting-row label { display: inline; font-weight: inherit; }
+.setting-row p { margin: 2px 0 0; }
+.label-like { margin: 0 0 8px; font-weight: 500; font-size: 0.875rem; }
+.sms-preview { padding: 12px 14px; border-radius: 12px 12px 12px 4px; background: var(--surface-2); font-size: 0.875rem; line-height: 1.5; }
+.sms-preview p { margin: 0; overflow-wrap: anywhere; }
+.sms-preview p + p { margin-top: 6px; }
+.link-rows { list-style: none; margin: 0; padding: 0; }
+.link-rows li { border-top: 1px solid var(--border); }
+.link-rows li:first-child { border-top: 0; }
+.link-rows a { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; text-decoration: none; color: inherit; }
+.link-rows a:hover strong { text-decoration: underline; }
+@media (max-width: 860px) {
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-nav { position: static; flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 4px; }
+  .settings-nav a { white-space: nowrap; border: 1px solid var(--border); background: var(--surface); }
+}
+
 /* People, one to a line, with an avatar. */
 .people-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .people-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.875rem; }

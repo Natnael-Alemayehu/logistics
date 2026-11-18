@@ -1,18 +1,24 @@
 {{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}{{$u := $d.Usage}}{{$t := $d.Tenant}}
 <div class="page-head">
-  <div><h1>Settings</h1><p class="muted">{{$t.Name}}</p></div>
-  <div class="actions">
-    <a class="btn" href="/app/settings/sms">Text messages</a>
-    <a class="btn" href="/app/settings/api">API keys</a>
-    <a class="btn" href="/app/settings/webhooks">Webhooks</a>
-    <a class="btn" href="/app/audit">Audit log</a>
-  </div>
+  <div><h1>Settings</h1><p class="muted">Company details, customer messages and the driver app</p></div>
 </div>
 {{template "form-error" .}}
-<div class="grid-detail">
-<form method="post" action="/app/settings" class="col-main stack" novalidate>
-  <fieldset class="card">
-    <legend>Company</legend>
+<div class="settings-layout">
+<nav class="settings-nav" aria-label="Settings sections">
+  <a href="#company">{{icon "building-2"}}Company</a>
+  <a href="#messages">{{icon "message-circle"}}Customer messages</a>
+  <a href="#driver-app">{{icon "smartphone"}}Driver app</a>
+  <a href="#alerts">{{icon "bell"}}Alerts</a>
+  <a href="#integrations">{{icon "plug"}}Integrations</a>
+  <a href="#security">{{icon "shield"}}Security</a>
+  <a href="#plan">{{icon "receipt"}}Plan</a>
+  <a href="#data">{{icon "download"}}Your data</a>
+</nav>
+
+<div class="settings-main">
+<form method="post" action="/app/settings" class="stack" novalidate>
+  <section class="card" id="company">
+    <div class="card-head"><div><h2>Company</h2><p class="muted small">Shown to customers on the tracking page and on invoices</p></div></div>
     <div class="row-2">
       <label>Company name
         <input name="name" value="{{field $f "name" ""}}" required {{if index $e "name"}}aria-invalid="true"{{end}}>
@@ -25,9 +31,9 @@
       </label>
     </div>
     <div class="row-2">
-      <label>Phone customers can call
+      <label>Phone customers call
         <input name="contact_phone" type="tel" value="{{field $f "contact_phone" ""}}" {{if index $e "contact_phone"}}aria-invalid="true"{{end}}>
-        <span class="hint">Shown on the tracking page and in customer texts.</span>
+        <span class="hint">Shown on every tracking page and in customer texts.</span>
         {{template "field-error" (index $e "contact_phone")}}
       </label>
       <label>Email
@@ -41,62 +47,105 @@
         <span class="hint">New shipments start here unless you change it.</span>
         {{template "field-error" (index $e "region_city")}}
       </label>
+    </div>
+    <datalist id="towns">{{range $d.Towns}}<option value="{{.Name}}">{{end}}</datalist>
+    <div class="card-actions"><button class="btn btn-primary" type="submit">Save changes</button></div>
+  </section>
+
+  <section class="card" id="messages">
+    <div class="card-head"><div><h2>Customer messages</h2><p class="muted small">Texts we send your customers for every shipment, each with the tracking link. Customers can reply STOP to opt out.</p></div></div>
+    <div class="setting-rows">
+      {{template "setting-switch" (dict "Form" $f "Name" "sms_on_created" "Title" "When it's booked" "Hint" "With where it goes and the tracking link.")}}
+      {{template "setting-switch" (dict "Form" $f "Name" "sms_on_dispatched" "Title" "When the trip starts" "Hint" "With when it is expected.")}}
+      {{template "setting-switch" (dict "Form" $f "Name" "sms_on_delayed" "Title" "When it's running late" "Hint" "When the driver reports a delay, with the reason.")}}
+      {{template "setting-switch" (dict "Form" $f "Name" "sms_on_arrived" "Title" "When the truck arrives" "Hint" "So someone is ready to receive the load.")}}
+      {{template "setting-switch" (dict "Form" $f "Name" "sms_on_delivered" "Title" "When it's delivered" "Hint" "With a link to confirm receipt or report a problem.")}}
+      {{template "setting-switch" (dict "Form" $f "Name" "sms_on_cancelled" "Title" "If it's cancelled" "Hint" "With your phone number for questions.")}}
+    </div>
+    {{$lang := field $f "customer_language" "en"}}
+    <div class="row-2 mt-m">
+      <label>Language of the texts
+        <select name="customer_language" data-preview-language {{if index $e "customer_language"}}aria-invalid="true"{{end}}>
+          {{range $d.Languages}}<option value="{{.Code}}" lang="{{.Code}}" {{if eq $lang .Code}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        <span class="hint">Their tracking and confirmation pages open in it too; they can switch on the page.</span>
+        {{template "field-error" (index $e "customer_language")}}
+      </label>
+      <div>
+        <p class="label-like">Preview</p>
+        {{range $d.Previews}}
+        <div class="sms-preview" data-sms-preview="{{.Lang}}" lang="{{.Lang}}" {{if ne .Lang $lang}}hidden{{end}}>
+          <p>{{.Body}}</p>
+          <p class="muted small">{{.Parts}} SMS · {{.Chars}} characters</p>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    <p class="hint">A text in Amharic holds 70 characters to a part where one in English holds 160, so most go as two or three parts of your allowance.</p>
+    <div class="card-actions"><button class="btn btn-primary" type="submit">Save changes</button></div>
+  </section>
+
+  <section class="card" id="driver-app">
+    <div class="card-head"><div><h2>Driver app</h2><p class="muted small">Drivers open <span class="mono">{{.App.PublicURL}}/driver</span> on their phone and sign in with their number and PIN</p></div></div>
+    <div class="setting-rows">
+      {{template "setting-switch" (dict "Form" $f "Name" "sms_driver_on_assign" "Title" "Text the driver new work" "Hint" "Useful for drivers who rarely open the app. The app shows new work on its next sync either way.")}}
+    </div>
+    <div class="row-2 mt-m">
       <label>Most active shipments per driver
         <input name="max_active_per_driver" type="number" min="1" max="50" value="{{field $f "max_active_per_driver" "5"}}" {{if index $e "max_active_per_driver"}}aria-invalid="true"{{end}}>
         {{template "field-error" (index $e "max_active_per_driver")}}
       </label>
     </div>
-    <datalist id="towns">{{range $d.Towns}}<option value="{{.Name}}">{{end}}</datalist>
-  </fieldset>
+    <div class="card-actions"><button class="btn btn-primary" type="submit">Save changes</button></div>
+  </section>
 
-  <fieldset class="card">
-    <legend>Text messages to customers</legend>
-    <p class="small muted">Each message includes the tracking link. Customers can reply STOP to opt out.</p>
-    <label class="check"><input type="checkbox" name="sms_on_created" {{if field $f "sms_on_created" ""}}checked{{end}}> When the shipment is booked</label>
-    <label class="check"><input type="checkbox" name="sms_on_dispatched" {{if field $f "sms_on_dispatched" ""}}checked{{end}}> When the truck departs</label>
-    <label class="check"><input type="checkbox" name="sms_on_delayed" {{if field $f "sms_on_delayed" ""}}checked{{end}}> When it is delayed</label>
-    <label class="check"><input type="checkbox" name="sms_on_arrived" {{if field $f "sms_on_arrived" ""}}checked{{end}}> When the truck arrives</label>
-    <label class="check"><input type="checkbox" name="sms_on_delivered" {{if field $f "sms_on_delivered" ""}}checked{{end}}> When it is delivered, with a link to confirm receipt</label>
-    <label class="check"><input type="checkbox" name="sms_on_cancelled" {{if field $f "sms_on_cancelled" ""}}checked{{end}}> If it is cancelled</label>
-    <label>Language
-      <select name="customer_language" {{if index $e "customer_language"}}aria-invalid="true"{{end}}>
-        {{$lang := field $f "customer_language" "en"}}{{range $d.Languages}}<option value="{{.Code}}" lang="{{.Code}}" {{if eq $lang .Code}}selected{{end}}>{{.Name}}</option>{{end}}
-      </select>
-      {{template "field-error" (index $e "customer_language")}}
-    </label>
-    <p class="small muted">Customers get their texts in this language, and their tracking and confirmation pages open in it; they can switch on the page. A text in Amharic holds 70 characters to a part where one in English holds 160, so most go as two or three parts of your allowance.</p>
-  </fieldset>
-
-  <fieldset class="card">
-    <legend>Text messages to drivers</legend>
-    <label class="check"><input type="checkbox" name="sms_driver_on_assign" {{if field $f "sms_driver_on_assign" ""}}checked{{end}}> Text the driver when a shipment is assigned to them</label>
-    <p class="small muted">Useful for drivers who rarely open the app. Drivers always see new work in the app on their next sync.</p>
-  </fieldset>
-
-  <fieldset class="card">
-    <legend>Alerts</legend>
-    <label class="check"><input type="checkbox" name="alert_on_delivery" {{if field $f "alert_on_delivery" ""}}checked{{end}}> Alert the office when a shipment is delivered</label>
-    <p class="small muted">Problems, delays and late loads always raise an alert. Each person chooses which alerts are also emailed to them under <a href="/app/account">Account</a>.</p>
-  </fieldset>
-
-  <div class="form-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>
+  <section class="card" id="alerts">
+    <div class="card-head"><div><h2>Alerts</h2><p class="muted small">When to alert, and who gets them, are on the <a href="/app/alerts#rules">Alerts</a> page</p></div></div>
+    <div class="setting-rows">
+      {{template "setting-switch" (dict "Form" $f "Name" "alert_on_delivery" "Title" "Alert the office when a shipment is delivered" "Hint" "An information alert, with who received it.")}}
+    </div>
+    <div class="card-actions"><button class="btn btn-primary" type="submit">Save changes</button></div>
+  </section>
 </form>
 
-<aside class="col-side">
-  <section class="card" id="plan">
-    <div class="card-head"><h2>Plan</h2><span class="badge">{{$u.Plan.Name}}</span></div>
-    <dl class="facts">
-      <div><dt>Drivers</dt><dd>{{$u.ActiveDrivers}} of {{$u.MaxDrivers}}</dd></div>
-      <div><dt>Texts this month</dt><dd>{{grouped $u.SMSThisMonth}} of {{grouped $u.SMSIncluded}}</dd></div>
-    </dl>
-    <p><a class="btn" href="/app/billing">Plans, invoices and payments</a></p>
-  </section>
-  <section class="card" id="data">
-    <h2>Your data</h2>
-    <p class="small">Download everything {{.App.Name}} holds for {{.Me.TenantName}}: shipments and their history, documents and charges, deliveries with signatures and photos, people and vehicles, as spreadsheets in one ZIP file.</p>
-    <form method="post" action="/app/settings/export"><button class="btn" type="submit">{{icon "download"}} Download all data</button></form>
-    <p class="small muted">Customer and delivery details are kept for {{.Data.RetainDays}} days after a shipment finishes, then removed. Counts in reports stay. Each download is recorded in the <a href="/app/audit">audit log</a>.</p>
-  </section>
-</aside>
+<section class="card" id="integrations">
+  <div class="card-head"><div><h2>Integrations</h2><p class="muted small">Connect {{.App.Name}} to your own systems</p></div></div>
+  <ul class="link-rows">
+    <li><a href="/app/settings/api"><strong>API keys</strong><span class="muted small">Book and read shipments from your own software</span></a></li>
+    <li><a href="/app/settings/webhooks"><strong>Webhooks</strong><span class="muted small">Be told at your own address when a shipment changes</span></a></li>
+    <li><a href="/app/settings/sms"><strong>Text messages</strong><span class="muted small">Every text sent and received, and the replies drivers send</span></a></li>
+  </ul>
+</section>
+
+<section class="card" id="security">
+  <div class="card-head"><div><h2>Security</h2><p class="muted small">Who did what, and your own sign-in</p></div></div>
+  <ul class="link-rows">
+    <li><a href="/app/audit"><strong>Audit log</strong><span class="muted small">Sign-ins, settings and account changes, and data downloads</span></a></li>
+    <li><a href="/app/team"><strong>Team</strong><span class="muted small">Who can use the dashboard, and their roles</span></a></li>
+    <li><a href="/app/account"><strong>Your account</strong><span class="muted small">Your password and your own alerts</span></a></li>
+  </ul>
+</section>
+
+<section class="card" id="plan">
+  <div class="card-head"><h2>Plan</h2><span class="badge">{{$u.Plan.Name}}</span></div>
+  <dl class="facts">
+    <div><dt>Drivers</dt><dd>{{$u.ActiveDrivers}} of {{$u.MaxDrivers}}</dd></div>
+    <div><dt>Texts this month</dt><dd>{{grouped $u.SMSThisMonth}} of {{grouped $u.SMSIncluded}}</dd></div>
+  </dl>
+  <p><a class="btn" href="/app/billing">Plans, invoices and payments</a></p>
+</section>
+
+<section class="card" id="data">
+  <div class="card-head"><h2>Your data</h2></div>
+  <p class="small">Download everything {{.App.Name}} holds for {{.Me.TenantName}}: shipments and their history, documents and charges, deliveries with signatures and photos, people and vehicles, as spreadsheets in one ZIP file.</p>
+  <form method="post" action="/app/settings/export"><button class="btn" type="submit">{{icon "download"}} Download all data</button></form>
+  <p class="small muted">Customer and delivery details are kept for {{.Data.RetainDays}} days after a shipment finishes, then removed. Counts in reports stay. Each download is recorded in the <a href="/app/audit">audit log</a>.</p>
+</section>
+</div>
 </div>
 {{end}}
+
+{{define "setting-switch"}}<div class="setting-row">
+  <div><label for="set-{{.Name}}"><strong>{{.Title}}</strong></label><p class="muted small">{{.Hint}}</p></div>
+  <span class="switch"><input type="checkbox" id="set-{{.Name}}" name="{{.Name}}" {{if field .Form .Name ""}}checked{{end}}></span>
+</div>{{end}}

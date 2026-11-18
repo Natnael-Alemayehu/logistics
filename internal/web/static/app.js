@@ -127,6 +127,11 @@
   document.addEventListener("change", (e) => {
     if (e.target.matches("[data-autosubmit]")) e.target.form?.submit();
 
+    // The settings page previews the customer's text in the language chosen.
+    if (e.target.matches("[data-preview-language]")) {
+      $$("[data-sms-preview]").forEach((p) => { p.hidden = p.dataset.smsPreview !== e.target.value; });
+    }
+
     // Picking a driver selects their usual vehicle.
     if (e.target.matches("[data-driver-select]")) {
       const opt = e.target.selectedOptions[0];
@@ -437,6 +442,28 @@
     form.addEventListener("change", soon);
     update();
   }
+
+  // ---- help search ---------------------------------------------------------------
+  // Narrows the help answers to those that mention every word typed, and
+  // opens them; a topic with none left is hidden.
+  document.addEventListener("input", (e) => {
+    if (!e.target.matches("[data-help-search]")) return;
+    const words = e.target.value.toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    $$("[data-help-group]").forEach((g) => {
+      let n = 0;
+      $$("[data-help-item]", g).forEach((it) => {
+        const hit = words.every((w) => it.textContent.toLowerCase().includes(w));
+        it.hidden = !hit;
+        it.open = hit && words.length > 0;
+        if (hit) n++;
+      });
+      g.hidden = n === 0;
+      shown += n;
+    });
+    const none = $("[data-help-none]");
+    if (none) none.hidden = shown > 0;
+  });
 
   // ---- live updates --------------------------------------------------------------
   function setBadge(n) {

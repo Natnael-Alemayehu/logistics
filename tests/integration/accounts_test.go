@@ -483,3 +483,36 @@ func TestLiveFeedSessionCheck(t *testing.T) {
 	office.post("/logout", nil)
 	active(false, "signed out")
 }
+
+// TestTeamPage: the team page lists who has joined, who was invited and
+// hasn't signed in yet, and who left; its search narrows all three.
+func TestTeamPage(t *testing.T) {
+	e := newEnv(t)
+	office := e.company("Roster Freight")
+	for name, role := range map[string]string{"Kidist Abera": "dispatcher", "Rahel Mengistu": "fleet_manager"} {
+		if p := office.post("/app/team", url.Values{"full_name": {name}, "phone": {phoneNumber()}, "role": {role}}); p.Status != http.StatusOK || !strings.Contains(p.Body, name+" is added") {
+			t.Fatalf("invite %s: status %d %s", name, p.Status, errorText(p.Body))
+		}
+	}
+	rahel := scalar[string](t, `SELECT id::text FROM users WHERE full_name = 'Rahel Mengistu' AND tenant_id = (SELECT tenant_id FROM users WHERE phone = $1)`, office.phone)
+	office.mustPost("/app/team/"+rahel+"/active", url.Values{"active": {"false"}})
+
+	p := office.get("/app/team")
+	section := func(after, before string) string {
+		_, rest, _ := strings.Cut(p.Body, after)
+		out, _, _ := strings.Cut(rest, before)
+		return out
+	}
+	if members := section("<h2 class=\"card-title\">Members</h2>", "Waiting to join"); !strings.Contains(members, "Owner of Roster Freight") || strings.Contains(members, "Kidist Abera") {
+		t.Error("members should be those who have signed in")
+	}
+	if waiting := section("Waiting to join", "Former staff"); !strings.Contains(waiting, "Kidist Abera") || strings.Contains(waiting, "Rahel Mengistu") {
+		t.Error("Kidist was invited and hasn't signed in: she is waiting to join")
+	}
+	if former := section("Former staff", "Invite someone"); !strings.Contains(former, "Rahel Mengistu") {
+		t.Error("a deactivated member should be under former staff")
+	}
+	if p := office.get("/app/team?q=kidist"); !strings.Contains(p.Body, "No one matches “kidist”") || !strings.Contains(p.Body, "Kidist Abera") || strings.Contains(p.Body, "Former staff") {
+		t.Error("the search should narrow the list to Kidist")
+	}
+}

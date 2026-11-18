@@ -5,6 +5,7 @@ package integration
 import (
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -28,8 +29,19 @@ func TestCustomersInAmharic(t *testing.T) {
 	}
 	settings.Set("customer_language", "am")
 	office.mustPost("/app/settings", settings)
-	if p := office.get("/app/settings"); !strings.Contains(p.Body, `value="am" lang="am" selected`) {
+	sp := office.get("/app/settings")
+	if !strings.Contains(sp.Body, `value="am" lang="am" selected`) {
 		t.Error("the settings page should show Amharic chosen")
+	}
+	// The preview of the customer's text is shown in Amharic, with its
+	// cost; the English one waits hidden for the language to change.
+	_, am, _ := strings.Cut(sp.Body, `data-sms-preview="am" lang="am" >`)
+	am, _, _ = strings.Cut(am, "</div>")
+	if !strings.Contains(am, "Amharic Freight") || !strings.Contains(am, "Dire Dawa") || !regexp.MustCompile(`[2-9] SMS · \d+ characters`).MatchString(am) {
+		t.Errorf("the Amharic preview: %q", am)
+	}
+	if !strings.Contains(sp.Body, `data-sms-preview="en" lang="en" hidden`) {
+		t.Error("the English preview should be hidden while Amharic is chosen")
 	}
 	// A form without the field, as an older page would send, changes nothing.
 	settings.Del("customer_language")

@@ -25,6 +25,7 @@ func (s *Server) settingsData(r *http.Request) (map[string]any, error) {
 		"Tenant": tenant, "Usage": usage, "Towns": geo.Places(),
 		"RetainDays": int(s.svc.Data.RetainShipments().Hours() / 24),
 		"Languages":  text.Languages,
+		"Previews":   s.svc.Tenants.SMSPreviews(tenant),
 	}, nil
 }
 

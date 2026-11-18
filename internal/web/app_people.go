@@ -125,13 +125,38 @@ func navFor(u db.User) string {
 // Office staff
 // ---------------------------------------------------------------------------
 
+// teamList is the office staff in three groups: members, those who were
+// invited and haven't signed in yet, and those who left.
 func (s *Server) teamList(w http.ResponseWriter, r *http.Request) {
 	staff, err := s.svc.Users.Staff(r.Context(), principal(r).TenantID)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, http.StatusOK, "app/team", s.view(w, r, "Team", "team", map[string]any{"Staff": staff}))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	var members, waiting, former []db.User
+	for _, u := range staff {
+		if u.Role == model.RoleDriver {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(u.FullName+" "+deref(u.Email)+" "+deref(u.Phone)), q) {
+			continue
+		}
+		switch {
+		case !u.IsActive || u.AnonymisedAt.Valid:
+			former = append(former, u)
+		case u.PasswordResetRequired && !u.LastLoginAt.Valid:
+			waiting = append(waiting, u)
+		default:
+			members = append(members, u)
+		}
+	}
+	v := s.view(w, r, "Team", "team", map[string]any{
+		"Members": members, "Waiting": waiting, "Former": former, "Search": r.URL.Query().Get("q"),
+		"Roles": model.StaffRoles,
+	})
+	v.Form.Set("role", model.RoleDispatcher)
+	s.render(w, r, http.StatusOK, "app/team", v)
 }
 
 func (s *Server) teamNew(w http.ResponseWriter, r *http.Request) {

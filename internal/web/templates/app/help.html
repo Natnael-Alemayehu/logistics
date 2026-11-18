@@ -1,43 +1,93 @@
-{{define "content"}}{{$d := .Data}}
-<div class="page-head">
-  <div>
-    <h1>Help</h1>
-    <p class="muted">Questions to the {{.App.Name}} team. You get an email each time they answer.</p>
+{{define "content"}}{{$d := .Data}}{{$app := .App}}
+<div class="help-hero">
+  <h1>How can we help?</h1>
+  <p class="muted">Answers for dispatchers, drivers and the people who pay the bills.</p>
+  <label class="search-field help-search"><span class="sr-only">Search help</span>{{icon "search"}}<input type="search" placeholder="Search help" data-help-search autocomplete="off"></label>
+</div>
+
+<div class="help-topics" data-help-topics>
+  <section class="card help-topic" data-help-group>
+    <div class="help-topic-head">{{icon "rocket"}}<h2>Getting started</h2></div>
+    <details data-help-item><summary>Add your first truck and driver</summary>
+      <p>Under <a href="/app/vehicles/new">Vehicles → Add vehicle</a>, enter the plate, the type and what it carries, and when its insurance and inspection (ቦሎ) run out. Then under <a href="/app/drivers/new">Drivers → Add driver</a>, enter the driver's name and phone and choose their usual truck. They get a PIN by SMS and sign in to the driver app with their phone number.</p></details>
+    <details data-help-item><summary>Book and assign a shipment</summary>
+      <p><a href="/app/shipments/new">New shipment</a> asks for the customer, where to pick up and deliver, and the load. Choose a driver now or later: the shipment appears on their phone, and the customer gets a text with a tracking link. Many shipments at once can be imported from a spreadsheet with <a href="/app/shipments/import">Import CSV</a>.</p></details>
+    <details data-help-item><summary>Invite your team</summary>
+      <p>An administrator adds office staff under <a href="/app/team">Team</a>. Each person gets a temporary password, shown once and texted to them, and chooses their own when they first sign in.</p></details>
+  </section>
+
+  <section class="card help-topic" data-help-group>
+    <div class="help-topic-head">{{icon "package"}}<h2>Shipments and tracking</h2></div>
+    <details data-help-item><summary>What customers see on the tracking page</summary>
+      <p>The status, when the load is expected and whether it is running late, how far along the route it is, where the truck was last seen, each update so far, and your phone number to call. After delivery they can confirm they received it.</p></details>
+    <details data-help-item><summary>Change a shipment after it's booked</summary>
+      <p>Open the shipment and choose <strong>Edit</strong>. Anything can change until it is delivered or cancelled. If the driver is affected (a new destination, say), they get a text and the app updates. Every change is kept in the shipment's history with who made it.</p></details>
+    <details data-help-item><summary>Proof of delivery: photos and signatures</summary>
+      <p>At delivery the driver takes the receiver's name, a signature and photos in the app, even without signal; they upload when it comes back. They appear on the shipment's page, with whether the truck was at the drop-off.</p></details>
+    <details data-help-item><summary>Keep papers and charges with a load</summary>
+      <p>A shipment's <strong>Documents</strong> tab keeps the signed waybill, customs papers and invoices (PDFs or photos, up to 10 MB). Its <strong>Charges</strong> tab lists what the customer pays, line by line; a discount is a negative line.</p></details>
+  </section>
+
+  <section class="card help-topic" data-help-group>
+    <div class="help-topic-head">{{icon "smartphone"}}<h2>Drivers and the app</h2></div>
+    <details data-help-item><summary>Get drivers on the app</summary>
+      <p>On their phone, drivers open <strong>{{$app.PublicURL}}/driver</strong> in the browser and sign in with their phone number and PIN. The browser offers to add it to the home screen. There is nothing to download from an app store.</p></details>
+    <details data-help-item><summary>When a driver's phone goes offline</summary>
+      <p>The app keeps working without signal and sends what it saved when it reconnects, with the right times. A driver who has been quiet too long while carrying a load raises an alert; you choose how long under <a href="/app/alerts#rules">Alerts → When we alert you</a>.{{with $app.SMSNumber}} Without data, a driver can text updates to {{.}}: the text sent with each trip says what to reply.{{end}}</p></details>
+    <details data-help-item><summary>Battery and data use on the driver's phone</summary>
+      <p>The app records the truck's position every minute or so while on a trip. With the battery saver, which turns on by itself below 20%, it records one every 15 minutes and syncs less often. A driver's page shows their battery and how much the app stores.</p></details>
+    <details data-help-item><summary>A driver forgot their PIN</summary>
+      <p>They can reset it from the app's sign-in screen with a code texted to their phone, or a fleet manager can issue a temporary PIN from the driver's page.</p></details>
+  </section>
+
+  <section class="card help-topic" data-help-group>
+    <div class="help-topic-head">{{icon "receipt"}}<h2>Billing</h2></div>
+    <details data-help-item><summary>How plans are priced</summary>
+      <p>Each plan has a monthly price, a number of driver places and an allowance of texts. Texts beyond the allowance are charged per part. The <a href="/app/billing">Billing</a> page shows your plan, what you have used this month, and the other plans.</p></details>
+    <details data-help-item><summary>Pay with telebirr, CBE Birr or a bank transfer</summary>
+      <p>Open an invoice on the <a href="/app/billing">Billing</a> page and choose how to pay. A bank transfer is matched by hand when it arrives, which can take a working day; the invoice shows the account.</p></details>
+    <details data-help-item><summary>Invoices for your accountant</summary>
+      <p>Every invoice and receipt is on the Billing page, ready to print, with your TIN once it is set under <a href="/app/settings">Settings</a>.</p></details>
+    <details data-help-item><summary>Who changed something?</summary>
+      <p>Each shipment's history lists every change and who made it. An administrator can see sign-ins and account changes in the <a href="/app/audit">audit log</a>, and every text sent and received under Settings → Text messages.</p></details>
+  </section>
+</div>
+<p class="muted help-none" data-help-none hidden>Nothing matches. Ask the {{$app.Name}} team below.</p>
+
+<div class="grid-detail help-bottom">
+<section class="card card-flush col-main">
+  <div class="card-head card-pad"><div><h2>Your questions</h2><p class="muted small">Conversations with the {{$app.Name}} team. Each answer is also emailed to you.</p></div><a class="btn btn-sm btn-primary" href="/app/help/new">{{icon "plus"}}Ask a question</a></div>
+  {{if $d.Tickets}}
+  <div class="table-wrap">
+  <table class="table rows-link table-cards">
+    <thead><tr><th>Question</th><th>Status</th><th>Asked by</th><th class="num">Last update</th></tr></thead>
+    <tbody>
+    {{range $d.Tickets}}{{$href := printf "/app/help/%s" (uuid .ID)}}
+    <tr data-href="{{$href}}" {{if eq .Status "closed"}}class="is-muted"{{end}}>
+      <td><a href="{{$href}}"><strong>{{.Subject}}</strong></a><div class="small muted">#{{.Number}} · {{.Messages}} {{if eq .Messages 1}}message{{else}}messages{{end}}</div></td>
+      <td>{{template "ticket-status" .Status}}</td>
+      <td>{{or .OpenedByName "—"}}</td>
+      <td class="num nowrap">{{ago .UpdatedAt}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
   </div>
-  <div class="actions"><a class="btn btn-primary" href="/app/help/new">+ Ask a question</a></div>
-</div>
-{{if $d.Tickets}}
-<div class="card card-flush">
-<div class="table-wrap">
-<table class="table rows-link">
-  <thead><tr><th>Question</th><th>Status</th><th>Asked by</th><th class="num">Last update</th></tr></thead>
-  <tbody>
-  {{range $d.Tickets}}{{$href := printf "/app/help/%s" (uuid .ID)}}
-  <tr data-href="{{$href}}" {{if eq .Status "closed"}}class="is-muted"{{end}}>
-    <td><a href="{{$href}}"><strong>{{.Subject}}</strong></a><div class="small muted">#{{.Number}} · {{.Messages}} {{if eq .Messages 1}}message{{else}}messages{{end}}</div></td>
-    <td>{{template "ticket-status" .Status}}</td>
-    <td>{{or .OpenedByName "—"}}</td>
-    <td class="num nowrap">{{ago .UpdatedAt}}</td>
-  </tr>
+  {{else}}
+  <p class="card-pad muted">Stuck, found something wrong, or need a feature? Ask here. The conversation stays on this page.</p>
   {{end}}
-  </tbody>
-</table>
-</div>
-</div>
-{{else}}
-<section class="card empty">
-  <h2>No questions yet</h2>
-  <p class="muted">Stuck, found something wrong, or need a feature? Ask here. The conversation stays on this page and each answer is emailed to you.</p>
-  <p><a class="btn btn-primary" href="/app/help/new">Ask a question</a></p>
 </section>
-{{end}}
-<section class="card">
-  <h2>Quick answers</h2>
-  <dl class="facts facts-2">
-    <div><dt>A driver forgot their PIN</dt><dd>They can reset it from the sign-in screen of the driver app with a code texted to their phone, or a fleet manager can issue a temporary PIN from the driver's page.</dd></div>
-    <div><dt>A driver has no mobile data</dt><dd>The app keeps working offline and syncs later. A driver can also text updates to {{.App.SMSNumber}}: the text sent with each assignment says what to reply.</dd></div>
-    <div><dt>What did the customer receive?</dt><dd>An administrator can see every text sent and received under Settings → Text messages.</dd></div>
-    <div><dt>Who changed something?</dt><dd>Each shipment's history lists every change and who made it. An administrator can also see sign-ins and account changes in the audit log.</dd></div>
-  </dl>
-</section>
+
+<aside class="col-side">
+  <section class="card">
+    <div class="card-head"><div><h2>Talk to {{$app.Name}} support</h2><p class="muted small">We answer in English and Amharic</p></div></div>
+    <ul class="contact-list">
+      {{with $app.SupportPhone}}<li>{{icon "phone"}}<span><span class="muted small">Call</span><a href="{{telURL .}}">{{.}}</a></span></li>{{end}}
+      {{with $app.SupportTelegram}}<li>{{icon "send"}}<span><span class="muted small">Telegram</span><a href="https://t.me/{{.}}" target="_blank" rel="noopener">@{{.}}</a></span></li>{{end}}
+      {{with $app.SupportEmail}}<li>{{icon "mail"}}<span><span class="muted small">Email</span><a href="mailto:{{.}}">{{.}}</a></span></li>{{end}}
+      {{with $app.SupportHours}}<li>{{icon "clock"}}<span><span class="muted small">Open</span>{{.}}</span></li>{{end}}
+    </ul>
+  </section>
+</aside>
+</div>
 {{end}}

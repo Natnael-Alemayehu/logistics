@@ -1,59 +1,129 @@
-{{define "content"}}{{$d := .Data}}
+{{define "content"}}{{$d := .Data}}{{$f := .Form}}
 <div class="page-head">
   <div>
     <h1>Team</h1>
-    <p class="muted">Office staff who use this dashboard.</p>
+    <p class="muted">People at {{.Me.TenantName}} who use this dashboard</p>
   </div>
-  <div class="actions"><a class="btn btn-primary" href="/app/team/new">+ Invite a team member</a></div>
+  <div class="actions"><a class="btn btn-primary" href="#invite">{{icon "user-plus"}}Invite someone</a></div>
 </div>
-<div class="card card-flush">
-<div class="table-wrap">
-<table class="table">
-  <thead><tr><th>Name</th><th>Role</th><th>Signs in with</th><th>Last sign-in</th><th class="num"></th></tr></thead>
-  <tbody>
-  {{range $d.Staff}}{{$id := uuid .ID}}
-  <tr {{if not .IsActive}}class="is-muted"{{end}}>
-    <td><strong>{{.FullName}}</strong>{{if eq .ID $.Me.UserID}} <span class="badge">You</span>{{end}}{{if .AnonymisedAt.Valid}} <span class="badge">Details removed</span>{{else if not .IsActive}} <span class="badge">Deactivated</span>{{end}}{{if .PasswordResetRequired}} <span class="badge s-delayed" title="Must choose a new password at next sign-in">Temporary password</span>{{end}}</td>
-    <td>{{roleLabel .Role}}</td>
-    <td>{{with .Email}}{{.}}{{end}}{{if and .Email .Phone}}<br>{{end}}<span class="muted">{{str .Phone}}</span></td>
-    <td>{{if .LastLoginAt.Valid}}{{ago .LastLoginAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
-    <td class="num">
-      {{if .AnonymisedAt.Valid}}<span class="muted small">Left · details removed {{date .AnonymisedAt}}</span>
-      {{else if ne .ID $.Me.UserID}}
-      <div class="row-actions">
-        <a class="btn btn-sm btn-ghost" href="/app/team/{{$id}}/edit">Edit</a>
-        <details class="pop pop-right">
-          <summary class="btn btn-sm btn-ghost">More</summary>
-          <div class="pop-panel stack">
-            <form method="post" action="/app/team/{{$id}}/reset"><button class="btn btn-sm btn-block" type="submit">Issue temporary password</button></form>
-            <form method="post" action="/app/team/{{$id}}/active">
-              <input type="hidden" name="active" value="{{if .IsActive}}false{{else}}true{{end}}">
-              <button class="btn btn-sm btn-block {{if .IsActive}}btn-danger-ghost{{end}}" type="submit">{{if .IsActive}}Deactivate{{else}}Reactivate{{end}}</button>
-            </form>
-            {{if not .IsActive}}
-            <form method="post" action="/app/team/{{$id}}/anonymise" class="stack">
-              <p class="hint">Remove their name, email and phone for good. What they did stays in the history, under "Former staff member".</p>
-              <label class="check small"><input type="checkbox" required> I understand this can't be undone</label>
-              <button class="btn btn-sm btn-block btn-danger-ghost" type="submit">Remove their details</button>
-            </form>
-            {{end}}
-          </div>
-        </details>
-      </div>
-      {{else}}<a class="btn btn-sm btn-ghost" href="/app/account">Your account</a>{{end}}
-    </td>
-  </tr>
+
+<div class="grid-detail">
+<div class="col-main">
+  <section class="card card-flush">
+    <div class="list-toolbar">
+      <div><h2 class="card-title">Members</h2><p class="muted small">{{len $d.Members}} {{if eq (len $d.Members) 1}}person{{else}}people{{end}} · drivers are managed in <a href="/app/drivers">Drivers</a></p></div>
+      <form method="get" action="/app/team" class="list-search" role="search">
+        <label class="search-field"><span class="sr-only">Search the team</span>{{icon "search"}}<input type="search" name="q" value="{{$d.Search}}" placeholder="Search…"></label>
+      </form>
+    </div>
+    {{if $d.Members}}
+    <div class="table-wrap">
+    <table class="table table-cards">
+      <thead><tr><th>Name</th><th>Role</th><th>Last active</th><th class="num"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {{range $d.Members}}
+      <tr>
+        <td>{{template "team-person" (dict "U" . "Me" $.Me)}}</td>
+        <td data-label="Role">{{roleLabel .Role}}</td>
+        <td data-label="Last active">{{if .LastLoginAt.Valid}}{{ago .LastLoginAt}}{{else}}<span class="muted">Never</span>{{end}}</td>
+        <td class="num">{{template "team-actions" (dict "U" . "Me" $.Me)}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p class="card-pad muted">{{if $d.Search}}No one matches “{{$d.Search}}”.{{else}}No one yet.{{end}}</p>{{end}}
+  </section>
+
+  {{if $d.Waiting}}
+  <section class="card card-flush">
+    <div class="card-head card-pad"><div><h2>Waiting to join</h2><p class="muted small">Given a temporary password and not signed in yet</p></div></div>
+    <ul class="invite-list">
+      {{range $d.Waiting}}{{$id := uuid .ID}}
+      <li>
+        <span class="avatar avatar-sm" aria-hidden="true">{{initials .FullName}}</span>
+        <div class="invite-who">
+          <strong>{{.FullName}}</strong> <span class="muted small">· {{roleLabel .Role}}</span>
+          <p class="muted small">Invited {{ago .CreatedAt}} · {{with .Phone}}{{.}}{{else}}{{str .Email}}{{end}}</p>
+        </div>
+        <div class="row-actions">
+          <form method="post" action="/app/team/{{$id}}/reset"><button class="btn btn-sm" type="submit">{{icon "send"}}Resend</button></form>
+          <form method="post" action="/app/team/{{$id}}/active"><input type="hidden" name="active" value="false"><button class="btn btn-sm btn-ghost" type="submit">Cancel</button></form>
+        </div>
+      </li>
+      {{end}}
+    </ul>
+  </section>
   {{end}}
-  </tbody>
-</table>
+
+  {{if $d.Former}}
+  <details class="card former">
+    <summary><strong>Former staff</strong> <span class="muted small">· {{len $d.Former}}</span></summary>
+    <div class="table-wrap">
+    <table class="table table-cards">
+      <tbody>
+      {{range $d.Former}}
+      <tr class="is-muted">
+        <td>{{template "team-person" (dict "U" . "Me" $.Me)}}</td>
+        <td data-label="Role">{{roleLabel .Role}}</td>
+        <td class="num">{{template "team-actions" (dict "U" . "Me" $.Me)}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {{end}}
 </div>
+
+<aside class="col-side">
+  <section class="card" id="invite">
+    <div class="card-head"><div><h2>Invite someone</h2><p class="muted small">With a phone number we text them a temporary password</p></div></div>
+    <form method="post" action="/app/team" class="stack" novalidate>
+      <label>Full name<input name="full_name" required autocomplete="off"></label>
+      <label>Mobile number<input name="phone" type="tel" inputmode="tel" placeholder="09… or +251…" autocomplete="off"></label>
+      <label>Email <span class="muted">(optional)</span><input name="email" type="email" autocomplete="off"></label>
+      <label>Role
+        <select name="role">{{range $d.Roles}}<option value="{{.}}" {{if eq . "dispatcher"}}selected{{end}}>{{roleLabel .}}</option>{{end}}</select>
+      </label>
+      <button class="btn btn-primary btn-block" type="submit">{{icon "send"}}Send invite</button>
+    </form>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>What each role can do</h2></div>
+    <dl class="role-list">
+      <div><dt>Dispatcher</dt><dd>Books and assigns shipments, follows them on the map, deals with alerts.</dd></div>
+      <div><dt>Fleet manager</dt><dd>Everything a dispatcher does, plus drivers and vehicles.</dd></div>
+      <div><dt>Administrator</dt><dd>Everything, including the team, billing, settings, alert rules and the audit log.</dd></div>
+    </dl>
+  </section>
+</aside>
 </div>
-<section class="card">
-  <h2>Roles</h2>
-  <dl class="facts facts-3">
-    <div><dt>Dispatcher</dt><dd>Books and assigns shipments, follows them on the map, deals with alerts.</dd></div>
-    <div><dt>Fleet manager</dt><dd>Everything a dispatcher does, plus adding drivers and vehicles.</dd></div>
-    <div><dt>Administrator</dt><dd>Everything, plus the team, company settings, text messages and the audit log.</dd></div>
-  </dl>
-</section>
 {{end}}
+
+{{define "team-person"}}{{$u := .U}}<div class="person-cell"><span class="avatar avatar-sm" aria-hidden="true">{{initials $u.FullName}}</span><div><strong>{{$u.FullName}}</strong>{{if eq $u.ID .Me.UserID}} <span class="badge">You</span>{{end}}{{if $u.AnonymisedAt.Valid}} <span class="badge">Details removed</span>{{else if not $u.IsActive}} <span class="badge">Deactivated</span>{{else if $u.PasswordResetRequired}} <span class="badge s-delayed" title="Must choose a new password at next sign-in">Temporary password</span>{{end}}<div class="muted small">{{with $u.Phone}}{{.}}{{end}}{{if and $u.Phone $u.Email}} · {{end}}{{with $u.Email}}{{.}}{{end}}</div></div></div>{{end}}
+
+{{define "team-actions"}}{{$u := .U}}{{$id := uuid $u.ID}}
+{{if $u.AnonymisedAt.Valid}}<span class="muted small">Details removed {{date $u.AnonymisedAt}}</span>
+{{else if ne $u.ID .Me.UserID}}
+<div class="row-actions">
+  <a class="btn btn-sm btn-ghost" href="/app/team/{{$id}}/edit">Edit</a>
+  <details class="pop pop-right">
+    <summary class="btn btn-sm btn-ghost" aria-label="More for {{$u.FullName}}">{{icon "ellipsis"}}</summary>
+    <div class="pop-panel stack">
+      <form method="post" action="/app/team/{{$id}}/reset"><button class="btn btn-sm btn-block" type="submit">Issue temporary password</button></form>
+      <form method="post" action="/app/team/{{$id}}/active">
+        <input type="hidden" name="active" value="{{if $u.IsActive}}false{{else}}true{{end}}">
+        <button class="btn btn-sm btn-block {{if $u.IsActive}}btn-danger-ghost{{end}}" type="submit">{{if $u.IsActive}}Deactivate{{else}}Reactivate{{end}}</button>
+      </form>
+      {{if not $u.IsActive}}
+      <form method="post" action="/app/team/{{$id}}/anonymise" class="stack">
+        <p class="hint">Remove their name, email and phone for good. What they did stays in the history, under "Former staff member".</p>
+        <label class="check small"><input type="checkbox" required> I understand this can't be undone</label>
+        <button class="btn btn-sm btn-block btn-danger-ghost" type="submit">Remove their details</button>
+      </form>
+      {{end}}
+    </div>
+  </details>
+</div>
+{{else}}<a class="btn btn-sm btn-ghost" href="/app/account">Your account</a>{{end}}{{end}}

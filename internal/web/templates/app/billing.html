@@ -1,7 +1,7 @@
 {{define "content"}}{{$d := .Data}}{{$o := $d.O}}{{$t := $o.Tenant}}{{$st := $o.Standing}}{{$u := $d.Usage}}
 <div class="page-head">
-  <div><h1>Billing</h1><p class="muted">{{$t.Name}}{{with $t.Tin}} · TIN {{.}}{{end}}</p></div>
-  <div class="actions"><a class="btn" href="/app/settings">Company details</a></div>
+  <div><h1>Billing</h1><p class="muted">Your {{.App.Name}} plan, payments and invoices</p></div>
+  <div class="actions"><a class="btn" href="#plans">Compare plans</a></div>
 </div>
 
 <div class="grid-detail">
@@ -21,8 +21,8 @@
         <h2>{{$o.Current.Name}} plan</h2>
         {{if eq $st.State "read_only"}}<span class="badge s-issue">Read-only</span>{{else if eq $st.State "past_due"}}<span class="badge s-issue">Overdue</span>{{else if $o.Ending}}<span class="badge">Ends {{date $t.PeriodEnd}}</span>{{else}}<span class="badge s-delivered">Active</span>{{end}}
       </div>
+      <p class="plan-headline">{{if eq $t.BillingCycle "annual"}}{{birr $o.Current.Annual}}<span class="muted"> a year</span>{{else}}{{birr $o.Current.Monthly}}<span class="muted"> a month</span>{{end}} <span class="muted small">plus {{$d.VAT}}% VAT</span></p>
       <dl class="facts">
-        <div><dt>Price</dt><dd>{{if eq $t.BillingCycle "annual"}}{{birr $o.Current.Annual}} a year{{else}}{{birr $o.Current.Monthly}} a month{{end}}, plus {{$d.VAT}}% VAT</dd></div>
         <div><dt>{{if $t.PeriodStart.Time.After $.Now}}Starts{{else}}This period{{end}}</dt><dd>{{if $t.PeriodStart.Time.After $.Now}}{{date $t.PeriodStart}}, when your trial ends; paid until {{date $t.PeriodEnd}}{{else}}{{date $t.PeriodStart}} to {{date $t.PeriodEnd}}{{if $o.Ending}}, then ends: renewal is off{{else}}, then renews {{if eq $t.BillingCycle "annual"}}yearly{{else}}monthly{{end}}{{end}}{{end}}</dd></div>
         <div><dt>Includes</dt><dd>Up to {{$t.MaxDrivers}} drivers and {{grouped $t.SmsQuota}} text messages a month</dd></div>
       </dl>
@@ -68,6 +68,14 @@
     {{end}}
   </section>
 
+
+  <section class="kpis kpis-4" aria-label="This month so far">
+    <div class="kpi"><span class="kpi-n">{{grouped $u.ShipmentsThisMonth}}</span><span class="kpi-l">Booked this month</span>{{icon "package"}}</div>
+    <div class="kpi"><span class="kpi-n">{{grouped $u.DeliveredThisMonth}}</span><span class="kpi-l">Delivered</span>{{icon "circle-check-big"}}</div>
+    <div class="kpi"><span class="kpi-n">{{grouped $u.Vehicles}}</span><span class="kpi-l">Vehicles</span>{{icon "truck"}}</div>
+    <div class="kpi"><span class="kpi-n">{{grouped $u.Staff}}</span><span class="kpi-l">Office staff</span>{{icon "users"}}</div>
+  </section>
+
   {{if $o.Open}}
   <section class="card">
     <div class="card-head"><h2>To pay</h2></div>
@@ -84,7 +92,28 @@
   </section>
   {{end}}
 
-  <form method="post" action="/app/billing/plan" class="card plan-picker">
+  <section class="card card-flush" id="invoices">
+    <div class="card-head card-pad"><div><h2>Invoices</h2><p class="muted small">Each opens ready to print, with your TIN</p></div></div>
+    {{if $o.Invoices}}
+    <div class="table-wrap">
+    <table class="table table-cards rows-link">
+      <thead><tr><th>Invoice</th><th>For</th><th>Status</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+        {{range $o.Invoices}}{{$href := printf "/app/billing/invoices/%s" (uuid .ID)}}
+        <tr data-href="{{$href}}">
+          <td><a href="{{$href}}" class="mono">{{.Number}}</a></td>
+          <td data-label="For">{{invoiceKind .Kind}} <span class="muted small">· {{date .IssuedAt}}</span></td>
+          <td data-label="Status">{{template "inv-status" .}}</td>
+          <td data-label="Amount" class="num">{{birr .TotalSantim}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p class="muted card-pad">No invoices yet.</p>{{end}}
+  </section>
+
+  <form method="post" action="/app/billing/plan" class="card plan-picker" id="plans">
     <div class="card-head">
       <h2>{{if $o.Subscribed}}Change plan{{else}}Choose a plan{{end}}</h2>
       <fieldset class="segmented">
@@ -134,37 +163,29 @@
 
 <aside class="col-side stack">
   <section class="card">
-    <div class="card-head"><h2>This month</h2></div>
+    <div class="card-head"><h2>Your allowance</h2></div>
     {{template "meter" (dict "Label" "Active drivers" "Used" $u.ActiveDrivers "Limit" $u.MaxDrivers "Note" "Driver places on your plan")}}
     {{$texts := "Included in the free trial; texts stop there"}}{{if ne $t.Plan "trial"}}{{$texts = "Included this month; extra ones cost ETB 0.50 each"}}{{end}}
     {{template "meter" (dict "Label" "Text messages" "Used" $u.SMSThisMonth "Limit" $u.SMSIncluded "Note" $texts)}}
-    <dl class="facts facts-2 usage-facts">
-      <div><dt>Shipments booked</dt><dd>{{grouped $u.ShipmentsThisMonth}}</dd></div>
-      <div><dt>Delivered</dt><dd>{{grouped $u.DeliveredThisMonth}}</dd></div>
-      <div><dt>Vehicles</dt><dd>{{grouped $u.Vehicles}}</dd></div>
-      <div><dt>Office staff</dt><dd>{{grouped $u.Staff}}</dd></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>How you pay</h2></div>
+    <ul class="contact-list">
+      <li>{{icon "smartphone"}}<span><strong>telebirr or CBE Birr</strong><span class="muted small">From the invoice: you approve the payment on your phone</span></span></li>
+      {{with .App.BankDetails}}<li>{{icon "landmark"}}<span><strong>Bank transfer</strong><span class="muted small">{{.}}</span></span></li>{{end}}
+    </ul>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>On the invoice</h2>{{if .Me.CanManageCompany}}<a class="small" href="/app/settings#company">Edit</a>{{end}}</div>
+    <dl class="facts">
+      <div><dt>Company</dt><dd>{{$t.Name}}</dd></div>
+      <div><dt>TIN</dt><dd>{{with $t.Tin}}{{.}}{{else}}<span class="muted">Not set</span>{{end}}</dd></div>
+      {{with $t.ContactEmail}}<div><dt>Email</dt><dd>{{.}}</dd></div>{{end}}
     </dl>
   </section>
 
-  <section class="card card-flush">
-    <div class="card-head"><h2>Invoices</h2></div>
-    {{if $o.Invoices}}
-    <div class="table-wrap">
-    <table class="table table-compact">
-      <thead><tr><th>Invoice</th><th class="num">Total</th><th>Status</th></tr></thead>
-      <tbody>
-        {{range $o.Invoices}}
-        <tr>
-          <td><a href="/app/billing/invoices/{{uuid .ID}}" class="mono">{{.Number}}</a><div class="small muted">{{invoiceKind .Kind}} · {{date .IssuedAt}}</div></td>
-          <td class="num">{{birr .TotalSantim}}</td>
-          <td>{{template "inv-status" .}}</td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-    </div>
-    {{else}}<p class="muted card-pad">No invoices yet.</p>{{end}}
-  </section>
 </aside>
 </div>
 {{end}}

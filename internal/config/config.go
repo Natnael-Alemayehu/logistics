@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -90,6 +91,12 @@ type Config struct {
 	// SupportEmail is shown on invoices and is the sender companies see for
 	// support answers.
 	SupportEmail string
+	// SupportPhone, SupportTelegram (a username, without the @) and
+	// SupportHours are the other ways to reach support, shown on the Help
+	// page. Each is left off when empty.
+	SupportPhone    string
+	SupportTelegram string
+	SupportHours    string
 
 	// RetainShipmentDays is how long a delivered or cancelled shipment keeps
 	// its customer details, signatures and photos (FR-041).
@@ -133,6 +140,9 @@ type CBEBirrSettings struct {
 }
 
 // Load reads the environment.
+// telegramName is a Telegram username.
+var telegramName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{4,31}$`)
+
 func Load() (*Config, error) {
 	c := &Config{
 		Port:                    getEnv("PORT", "8080"),
@@ -188,6 +198,9 @@ func Load() (*Config, error) {
 		SandboxURL:         strings.TrimRight(getEnv("SANDBOX_URL", ""), "/"),
 		BankDetails:        getEnv("BILLING_BANK_DETAILS", ""),
 		SupportEmail:       getEnv("SUPPORT_EMAIL", ""),
+		SupportPhone:       getEnv("SUPPORT_PHONE", ""),
+		SupportTelegram:    strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(getEnv("SUPPORT_TELEGRAM", "")), "https://t.me/"), "@"),
+		SupportHours:       getEnv("SUPPORT_HOURS", ""),
 		AllowMockProviders: getBoolEnv("ALLOW_MOCK_PROVIDERS", false),
 	}
 	c.PrivateWebhooks = getBoolEnv("WEBHOOK_PRIVATE_TARGETS", !c.IsProduction())
@@ -258,6 +271,9 @@ func Load() (*Config, error) {
 			// stops working offline.
 			return nil, fmt.Errorf("PUBLIC_URL must be an https:// address in production, not %q", c.PublicURL)
 		}
+	}
+	if c.SupportTelegram != "" && !telegramName.MatchString(c.SupportTelegram) {
+		return nil, fmt.Errorf("SUPPORT_TELEGRAM must be a Telegram username (5 to 32 letters, digits or _), not %q", c.SupportTelegram)
 	}
 	if c.IsProduction() && c.PaymentProvider == "none" && c.BankDetails == "" {
 		return nil, errors.New("BILLING_BANK_DETAILS must be set in production: without a payment provider, a bank transfer is the only way companies can pay")

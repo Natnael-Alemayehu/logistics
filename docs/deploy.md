@@ -4,7 +4,7 @@ One machine with Docker runs it: the app, PostGIS, and Caddy, which gets a
 TLS certificate for `DOMAIN` and serves HTTP/2 and HTTP/3.
 
 ```bash
-cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_* and SMTP_* settings, BILLING_BANK_DETAILS
+cp .env.example .env    # set DOMAIN, DB_PASSWORD, SMS_* and SMTP_* settings, BILLING_BANK_DETAILS, SUPPORT_*
 docker compose -f deployments/docker-compose.prod.yml --env-file .env up -d --build --wait
 ```
 
