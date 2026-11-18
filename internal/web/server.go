@@ -278,6 +278,7 @@ func (s *Server) Handler() http.Handler {
 				r.Post("/shipments/{id}/edit", s.shipmentUpdate)
 				r.Get("/shipments/{id}/waybill", s.shipmentWaybill)
 				r.Get("/shipments/{id}/locations.csv", s.shipmentLocationsCSV)
+				r.Get("/shipments/{id}/trail", s.shipmentTrail)
 				r.Post("/shipments/{id}/assign", s.shipmentAssign)
 				r.Post("/shipments/{id}/unassign", s.shipmentUnassign)
 				r.Post("/shipments/{id}/status", s.shipmentStatus)

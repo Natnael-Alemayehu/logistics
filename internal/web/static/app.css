@@ -65,27 +65,30 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    /* Night */
-    --bg: #0d1315; --surface: #141c1f; --surface-2: #1e292c; --surface-3: #263336;
-    --border: #263336; --border-strong: #2e3d40;
-    --text: #e6edec; --text-2: #c3cfcc; --muted: #9aa9a6;
-    --accent: #34d3bc; --accent-hover: #5eead4; --accent-text: #5eead4; --on-accent: #062420;
-    --good: #4ade80; --warn: #f5a524; --bad: #f87171; --info: #34d3bc; --focus: #5eead4;
-    --sidebar: #10181a; --sidebar-text: #b4c2bf; --sidebar-strong: #ffffff; --sidebar-hover: #1b2528; --sidebar-line: #1f2a2d;
-    --sidebar-mark: #34d3bc; --sidebar-mark-text: #062420;
+    /* Night: a neutral dark grey, not black, lighter as surfaces rise; text
+       off-white; the accent the light theme's ink inverted; status colours
+       desaturated so they don't glare. Every text colour is at least
+       4.5:1 (WCAG AA) on every surface. */
+    --bg: #131312; --surface: #1c1c1b; --surface-2: #262625; --surface-3: #30302e;
+    --border: #2c2c2a; --border-strong: #3a3a37;
+    --text: #ededeb; --text-2: #c9c8c3; --muted: #a3a29c;
+    --accent: #ededeb; --accent-hover: #ffffff; --accent-text: #ededeb; --on-accent: #131312;
+    --good: #81c995; --warn: #f4b46a; --bad: #f28b82; --info: #8ab4f8; --focus: #8a8984;
+    --sidebar: #171716; --sidebar-text: #c9c8c3; --sidebar-strong: #ffffff; --sidebar-hover: #242423; --sidebar-line: #2a2a28;
+    --sidebar-mark: #ededeb; --sidebar-mark-text: #131312;
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4); --shadow: 0 1px 3px rgba(0, 0, 0, 0.5); --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.6);
     --map-tiles: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d1315; --surface: #141c1f; --surface-2: #1e292c; --surface-3: #263336;
-  --border: #263336; --border-strong: #2e3d40;
-  --text: #e6edec; --text-2: #c3cfcc; --muted: #9aa9a6;
-  --accent: #34d3bc; --accent-hover: #5eead4; --accent-text: #5eead4; --on-accent: #062420;
-  --good: #4ade80; --warn: #f5a524; --bad: #f87171; --info: #34d3bc; --focus: #5eead4;
-  --sidebar: #10181a; --sidebar-text: #b4c2bf; --sidebar-strong: #ffffff; --sidebar-hover: #1b2528; --sidebar-line: #1f2a2d;
-  --sidebar-mark: #34d3bc; --sidebar-mark-text: #062420;
+  --bg: #131312; --surface: #1c1c1b; --surface-2: #262625; --surface-3: #30302e;
+  --border: #2c2c2a; --border-strong: #3a3a37;
+  --text: #ededeb; --text-2: #c9c8c3; --muted: #a3a29c;
+  --accent: #ededeb; --accent-hover: #ffffff; --accent-text: #ededeb; --on-accent: #131312;
+  --good: #81c995; --warn: #f4b46a; --bad: #f28b82; --info: #8ab4f8; --focus: #8a8984;
+  --sidebar: #171716; --sidebar-text: #c9c8c3; --sidebar-strong: #ffffff; --sidebar-hover: #242423; --sidebar-line: #2a2a28;
+  --sidebar-mark: #ededeb; --sidebar-mark-text: #131312;
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4); --shadow: 0 1px 3px rgba(0, 0, 0, 0.5); --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.6);
   --map-tiles: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85);
 }

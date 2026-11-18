@@ -296,6 +296,24 @@ func TestHeadingAwayFromTheDestination(t *testing.T) {
 	if q := e.company("Snoop Freight").get("/app/shipments/" + shipmentID + "/locations.csv"); q.Status != http.StatusNotFound {
 		t.Errorf("another company got the trip's positions: %d", q.Status)
 	}
+
+	// The overview's map fetches the trail of a load picked on it. The phone
+	// was quiet for 55 minutes while the truck moved 75 km: a gap, which the
+	// map draws dashed rather than as road driven.
+	tr := office.get("/app/shipments/" + shipmentID + "/trail")
+	var trail struct {
+		Route [][]float64
+		Gaps  []struct{ At, Minutes int }
+	}
+	if err := json.Unmarshal([]byte(tr.Body), &trail); err != nil {
+		t.Fatalf("trail %d %q: %v", tr.Status, tr.Body, err)
+	}
+	if len(trail.Route) != 2 || len(trail.Gaps) != 1 || trail.Gaps[0].At != 1 || trail.Gaps[0].Minutes != 55 {
+		t.Errorf("trail = %+v, want two positions with a 55-minute gap before the second", trail)
+	}
+	if q := e.company("Snoop Freight").get("/app/shipments/" + shipmentID + "/trail"); q.Status != http.StatusNotFound {
+		t.Errorf("another company's shipment trail: %d", q.Status)
+	}
 }
 
 // TestALongTripEndsWhereTheTruckIs: the shipment page draws a long trip's
