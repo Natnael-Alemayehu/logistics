@@ -452,8 +452,9 @@ func TestPlatformAuditAndHealth(t *testing.T) {
 	started := time.Now()
 	ctx, stop := context.WithCancel(context.Background())
 	go e.svc.Jobs.Run(ctx)
+	// The first round runs every job; retention is the last of them.
 	deadline := time.Now().Add(15 * time.Second)
-	for scalar[int64](t, `SELECT COUNT(*) FROM job_runs WHERE started_at >= $1`, started) < 8 && time.Now().Before(deadline) {
+	for scalar[int64](t, `SELECT COUNT(*) FROM job_runs WHERE started_at >= $1 AND name = 'retention'`, started) < 1 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	stop()
