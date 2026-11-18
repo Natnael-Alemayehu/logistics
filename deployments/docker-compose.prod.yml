@@ -123,7 +123,7 @@ services:
     security_opt: [no-new-privileges:true]
     logging: *logging
   caddy:
-    image: caddy:2.10-alpine
+    image: caddy:2.11-alpine
     restart: unless-stopped
     ports:
       - "80:80"
