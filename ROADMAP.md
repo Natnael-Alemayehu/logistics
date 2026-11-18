@@ -37,14 +37,10 @@ once it is done: this file should only ever hold what is still ahead.
 The dashboard is being rebuilt to the design called Direction D, made on
 the Claude Design canvas: a light theme ("Desk"), a dark one ("Night"),
 Geist type and lucide icons. The shell, the overview, the shipment list, a
-shipment's page with its documents and charges, and the booking form are
-done. Each part below is a pull
+shipment's page with its documents and charges, the booking form, and
+the drivers and vehicles with their papers are done. Each part below is a pull
 request; the design's pages are named after it.
 
-- [ ] **Drivers and vehicles.** A driver's licence expiry, and a vehicle's
-      insurance and annual inspection (ቦሎ) dates, each with a reminder
-      before it runs out; a "papers due in 30 days" figure and a banner
-      for what has lapsed (D-Drivers, D-Vehicles).
 - [ ] **Alerts and their rules.** The alerts page with rules a company
       sets: running late by more than a set time, a phone not heard from,
       a long stop, leaving the route; and who gets each alert (D-Alerts).

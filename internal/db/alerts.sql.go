@@ -47,6 +47,34 @@ func (q *Queries) AcknowledgeDriverAlerts(ctx context.Context, arg AcknowledgeDr
 	return err
 }
 
+const acknowledgePapersAlerts = `-- name: AcknowledgePapersAlerts :exec
+UPDATE alerts
+SET acknowledged_at = NOW(), read_at = COALESCE(read_at, NOW())
+WHERE tenant_id = $1 AND alert_type = $2 AND acknowledged_at IS NULL
+  AND (driver_id = $3 OR vehicle_id = $4)
+  AND episode IS DISTINCT FROM $5
+`
+
+type AcknowledgePapersAlertsParams struct {
+	TenantID    pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	AlertType   string      `db:"alert_type" json:"alert_type"`
+	DriverID    pgtype.UUID `db:"driver_id" json:"driver_id"`
+	VehicleID   pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
+	KeepEpisode *string     `db:"keep_episode" json:"keep_episode"`
+}
+
+// Papers renewed: what was open about the old date is resolved.
+func (q *Queries) AcknowledgePapersAlerts(ctx context.Context, arg AcknowledgePapersAlertsParams) error {
+	_, err := q.db.Exec(ctx, acknowledgePapersAlerts,
+		arg.TenantID,
+		arg.AlertType,
+		arg.DriverID,
+		arg.VehicleID,
+		arg.KeepEpisode,
+	)
+	return err
+}
+
 const acknowledgeShipmentAlerts = `-- name: AcknowledgeShipmentAlerts :exec
 UPDATE alerts
 SET acknowledged_at = NOW(), read_at = COALESCE(read_at, NOW())
@@ -146,10 +174,10 @@ func (q *Queries) CountUnreadAlerts(ctx context.Context, arg CountUnreadAlertsPa
 }
 
 const createAlert = `-- name: CreateAlert :one
-INSERT INTO alerts (tenant_id, shipment_id, driver_id, alert_type, severity, message, episode)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO alerts (tenant_id, shipment_id, driver_id, vehicle_id, alert_type, severity, message, episode)
+VALUES ($1, $2, $3, $7, $4, $5, $6, $8)
 ON CONFLICT DO NOTHING
-RETURNING id, tenant_id, shipment_id, driver_id, alert_type, severity, message, created_at, read_at, acknowledged_at, acknowledged_by, episode
+RETURNING id, tenant_id, shipment_id, driver_id, alert_type, severity, message, created_at, read_at, acknowledged_at, acknowledged_by, episode, vehicle_id
 `
 
 type CreateAlertParams struct {
@@ -159,6 +187,7 @@ type CreateAlertParams struct {
 	AlertType  string      `db:"alert_type" json:"alert_type"`
 	Severity   string      `db:"severity" json:"severity"`
 	Message    string      `db:"message" json:"message"`
+	VehicleID  pgtype.UUID `db:"vehicle_id" json:"vehicle_id"`
 	Episode    *string     `db:"episode" json:"episode"`
 }
 
@@ -173,6 +202,7 @@ func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert
 		arg.AlertType,
 		arg.Severity,
 		arg.Message,
+		arg.VehicleID,
 		arg.Episode,
 	)
 	var i Alert
@@ -189,6 +219,7 @@ func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert
 		&i.AcknowledgedAt,
 		&i.AcknowledgedBy,
 		&i.Episode,
+		&i.VehicleID,
 	)
 	return i, err
 }
@@ -203,10 +234,12 @@ func (q *Queries) DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestam
 }
 
 const listAlerts = `-- name: ListAlerts :many
-SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, a.episode, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone
+SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, a.episode, a.vehicle_id, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone,
+       vh.plate_number AS vehicle_plate
 FROM alerts a
 LEFT JOIN shipments s ON s.id = a.shipment_id
 LEFT JOIN users d ON d.id = a.driver_id
+LEFT JOIN vehicles vh ON vh.id = a.vehicle_id
 WHERE a.tenant_id = $1
   AND (NOT $2::bool OR a.acknowledged_at IS NULL)
   AND (cardinality($3::text[]) = 0 OR a.severity = ANY($3::text[]))
@@ -235,12 +268,14 @@ type ListAlertsRow struct {
 	AcknowledgedAt  pgtype.Timestamptz `db:"acknowledged_at" json:"acknowledged_at"`
 	AcknowledgedBy  pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
 	Episode         *string            `db:"episode" json:"episode"`
+	VehicleID       pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
 	TrackingNumber  *string            `db:"tracking_number" json:"tracking_number"`
 	DestinationCity *string            `db:"destination_city" json:"destination_city"`
 	CustomerName    *string            `db:"customer_name" json:"customer_name"`
 	CustomerPhone   *string            `db:"customer_phone" json:"customer_phone"`
 	DriverName      *string            `db:"driver_name" json:"driver_name"`
 	DriverPhone     *string            `db:"driver_phone" json:"driver_phone"`
+	VehiclePlate    *string            `db:"vehicle_plate" json:"vehicle_plate"`
 }
 
 func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error) {
@@ -271,12 +306,14 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 			&i.AcknowledgedAt,
 			&i.AcknowledgedBy,
 			&i.Episode,
+			&i.VehicleID,
 			&i.TrackingNumber,
 			&i.DestinationCity,
 			&i.CustomerName,
 			&i.CustomerPhone,
 			&i.DriverName,
 			&i.DriverPhone,
+			&i.VehiclePlate,
 		); err != nil {
 			return nil, err
 		}

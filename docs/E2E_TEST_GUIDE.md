@@ -46,9 +46,11 @@ you to confirm your email before paying; section 9 continues from there.
 
 ## 2. Vehicles, drivers and the team
 
-1. **Vehicles → Add vehicle**: plate `3-A12345 AA`, type, capacity.
-2. **Drivers → Add driver**: name, phone, default vehicle. A one-time PIN is
-   shown once (and texted to the driver).
+1. **Vehicles → Add vehicle**: plate `3-A12345 AA`, type, capacity, and
+   the insurance and annual inspection (ቦሎ) dates.
+2. **Drivers → Add driver**: name, phone, default vehicle and when their
+   licence runs out. A one-time PIN is shown once (and texted to the
+   driver).
 3. **Team → Add person**: a dispatcher with an email. A temporary password is
    shown once, and texted if you gave a phone. The terminal also shows an
    email to the dispatcher saying who added them, with a link to confirm the
@@ -333,6 +335,20 @@ CSV** has all of them.
 - Each driver is **On duty** or **Off duty**. On duty means carrying a load
   that has left, or having the app open and sharing location in the last half
   hour. The overview counts the same way.
+- The drivers page groups them: **On a trip** (with a load, shown with
+  its status), **Available** (on duty with none, and a link to the loads
+  waiting) and **Off duty**. A driver on the road whose phone has gone
+  quiet shows **Phone offline**. **Last seen** names the nearest town.
+- Set a driver's licence to run out in 10 days. Within ten minutes a
+  **Driving licence running out** alert appears, and the drivers page has a
+  banner with **Send a reminder**, which texts the driver. Set it to a day
+  that has passed: the alert turns critical, the driver is marked "licence
+  ran out" in every driver picker, and assigning them is refused. Record a
+  new date: the alert goes, and they can be assigned again.
+- Set a vehicle's inspection to fall in 6 days. The vehicles page counts it
+  under **Papers due in 30 days** and shows a banner; an **Inspection (ቦሎ)
+  due** alert links to the vehicle. Insurance works the same way, with its
+  own alert.
 - A driver's page shows the phone's battery, app version and storage used.
   **Reset PIN** texts the new temporary PIN to the driver.
 - **Message drivers on the road** writes once to every driver with a load

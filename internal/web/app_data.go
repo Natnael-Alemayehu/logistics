@@ -190,20 +190,21 @@ it from the shipment's page while it is kept.
 		return err
 	}
 	err = writeCSV(zw, "people.csv", []string{
-		"Name", "Role", "Phone", "Email", "Active", "Vehicle", "Added", "Last sign-in", "Details removed",
+		"Name", "Role", "Phone", "Email", "Active", "Vehicle", "Licence valid to", "Added", "Last sign-in", "Details removed",
 	}, len(ex.People), func(i int) []string {
 		u := ex.People[i]
 		return []string{
 			csvSafe(u.FullName), model.RoleLabel(u.Role), u.Phone, csvSafe(u.Email), yesNo(u.IsActive), u.VehiclePlate,
-			ts(u.CreatedAt), ts(u.LastLoginAt), ts(u.AnonymisedAt),
+			formDay(u.LicenceExpiresOn), ts(u.CreatedAt), ts(u.LastLoginAt), ts(u.AnonymisedAt),
 		}
 	})
 	if err != nil {
 		return err
 	}
-	err = writeCSV(zw, "vehicles.csv", []string{"Plate", "Type", "Capacity (kg)", "Active", "Added"}, len(ex.Vehicles), func(i int) []string {
+	err = writeCSV(zw, "vehicles.csv", []string{"Plate", "Type", "Capacity (kg)", "Active", "Insurance valid to", "Inspection due", "Added"}, len(ex.Vehicles), func(i int) []string {
 		v := ex.Vehicles[i]
-		return []string{v.PlateNumber, service.VehicleTypeLabel(deref(v.VehicleType)), numStr(v.CapacityKg), yesNo(v.IsActive), ts(v.CreatedAt)}
+		return []string{v.PlateNumber, service.VehicleTypeLabel(deref(v.VehicleType)), numStr(v.CapacityKg), yesNo(v.IsActive),
+			formDay(v.InsuranceExpiresOn), formDay(v.InspectionDueOn), ts(v.CreatedAt)}
 	})
 	if err != nil {
 		return err

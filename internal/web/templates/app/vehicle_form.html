@@ -23,6 +23,17 @@
     <input name="capacity_kg" inputmode="decimal" value="{{field $f "capacity_kg" ""}}" {{if index $e "capacity_kg"}}aria-invalid="true"{{end}}>
     {{template "field-error" (index $e "capacity_kg")}}
   </label>
+  <div class="row-2">
+    <label>Insurance valid to <span class="muted">(optional)</span>
+      <input name="insurance_expires_on" type="date" value="{{field $f "insurance_expires_on" ""}}" {{if index $e "insurance_expires_on"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "insurance_expires_on")}}
+    </label>
+    <label>Annual inspection (ቦሎ) due <span class="muted">(optional)</span>
+      <input name="inspection_due_on" type="date" value="{{field $f "inspection_due_on" ""}}" {{if index $e "inspection_due_on"}}aria-invalid="true"{{end}}>
+      {{template "field-error" (index $e "inspection_due_on")}}
+    </label>
+  </div>
+  <p class="hint">You're reminded 30 days before each date.</p>
   <label class="check"><input type="checkbox" name="active" value="on" {{if field $f "active" ""}}checked{{end}}> In service</label>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">{{if $v}}Save changes{{else}}Add vehicle{{end}}</button>

@@ -29,6 +29,15 @@
   </section>
 </div>
 <div class="col-side">
+  {{$ins := paper $v.InsuranceExpiresOn}}{{$insp := paper $v.InspectionDueOn}}
+  <section class="card">
+    <div class="card-head"><h2>Papers</h2>{{if .Me.CanManageFleet}}<a class="small" href="/app/vehicles/{{uuid $v.ID}}/edit">Edit</a>{{end}}</div>
+    <dl class="facts">
+      <div><dt>Insurance valid to</dt><dd>{{if $ins.State}}<span class="paper paper-{{$ins.State}}">{{day $v.InsuranceExpiresOn}}</span>{{else}}<span class="muted">Not recorded</span>{{end}}</dd></div>
+      <div><dt>Annual inspection (ቦሎ) due</dt><dd>{{if $insp.State}}<span class="paper paper-{{$insp.State}}">{{day $v.InspectionDueOn}}</span>{{else}}<span class="muted">Not recorded</span>{{end}}</dd></div>
+    </dl>
+    <p class="hint">You're reminded under Alerts 30 days before each date.</p>
+  </section>
   <section class="card">
     <div class="card-head"><h2>Usual drivers</h2></div>
     {{range $d.Drivers}}<p><a href="/app/drivers/{{uuid .ID}}">{{.FullName}}</a>{{if not .IsActive}} <span class="muted small">(deactivated)</span>{{end}}</p>

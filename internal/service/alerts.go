@@ -27,6 +27,7 @@ const (
 	AlertSMSPaused          = "sms_paused"
 	AlertDelivered          = "delivered"
 	AlertRouteDeviation     = "route_deviation"
+	// AlertLicenceDue, AlertInsuranceDue and AlertInspectionDue are in papers.go.
 )
 
 // Severities.
@@ -57,6 +58,9 @@ var alertLabels = map[string]string{
 	AlertSMSPaused:          "Texts paused",
 	AlertDelivered:          "Delivered",
 	AlertRouteDeviation:     "Moving away from the destination",
+	AlertLicenceDue:         "Driving licence running out",
+	AlertInsuranceDue:       "Insurance running out",
+	AlertInspectionDue:      "Inspection (ቦሎ) due",
 }
 
 // AlertTypes lists the alert types in the order the account page offers
@@ -65,6 +69,7 @@ var AlertTypes = []string{
 	AlertIssueReported, AlertDeliveryHeld, AlertCustomerIssue, AlertDeliveryOnCanceled,
 	AlertDelayReported, AlertETAExceeded, AlertPickupOverdue, AlertRouteDeviation, AlertDriverOffline,
 	AlertPODLocation, AlertDeliveredNoPOD, AlertSyncConflict,
+	AlertLicenceDue, AlertInsuranceDue, AlertInspectionDue,
 	AlertDelivered, AlertDriverMessage, AlertDriverLimitNear, AlertSMSQuotaNear, AlertSMSPaused,
 }
 
@@ -83,6 +88,7 @@ type newAlert struct {
 	TenantID   pgtype.UUID
 	ShipmentID pgtype.UUID
 	DriverID   pgtype.UUID
+	VehicleID  pgtype.UUID
 	Type       string
 	Severity   string
 	Message    string
@@ -100,6 +106,7 @@ func (c *core) raise(ctx context.Context, q *db.Queries, after *afterCommit, a n
 		TenantID:   a.TenantID,
 		ShipmentID: a.ShipmentID,
 		DriverID:   a.DriverID,
+		VehicleID:  a.VehicleID,
 		AlertType:  a.Type,
 		Severity:   a.Severity,
 		Message:    a.Message,
@@ -134,8 +141,13 @@ func (c *core) emailAlert(ctx context.Context, q *db.Queries, after *afterCommit
 		return
 	}
 	link := c.cfg.BaseURL + "/app/alerts"
-	if a.ShipmentID.Valid {
+	switch {
+	case a.ShipmentID.Valid:
 		link = c.cfg.BaseURL + "/app/shipments/" + a.ShipmentID.String()
+	case a.VehicleID.Valid:
+		link = c.cfg.BaseURL + "/app/vehicles/" + a.VehicleID.String()
+	case a.DriverID.Valid:
+		link = c.cfg.BaseURL + "/app/drivers/" + a.DriverID.String()
 	}
 	for _, r := range to {
 		c.enqueueEmail(ctx, q, after, outboundEmail{

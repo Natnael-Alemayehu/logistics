@@ -80,6 +80,19 @@
 </div>
 
 <div class="col-side">
+  {{if not $u.AnonymisedAt.Valid}}{{$lic := paper $u.LicenceExpiresOn}}
+  <section class="card">
+    <div class="card-head"><h2>Papers</h2>{{if .Me.CanManageFleet}}<a class="small" href="/app/drivers/{{$id}}/edit">Edit</a>{{end}}</div>
+    <dl class="facts">
+      <div><dt>Driving licence valid to</dt><dd>{{if $lic.State}}<span class="paper paper-{{$lic.State}}">{{day $u.LicenceExpiresOn}}</span>{{else}}<span class="muted">Not recorded</span>{{end}}</dd></div>
+    </dl>
+    {{if eq $lic.State "lapsed"}}<p class="callout callout-bad">The licence has run out: {{firstName $u.FullName}} can't be given trips until the renewed one is recorded.</p>
+    {{else if eq $lic.State "due"}}<p class="callout callout-warn">The licence runs out soon. After that day {{firstName $u.FullName}} can't be given trips.</p>{{end}}
+    {{if and (eq $lic.State "due" "lapsed") .Me.CanManageFleet $u.Phone $u.IsActive}}
+    <form method="post" action="/app/drivers/{{$id}}/licence-reminder" class="card-actions"><input type="hidden" name="back" value="/app/drivers/{{$id}}"><button class="btn btn-sm" type="submit">{{icon "send"}}Text {{firstName $u.FullName}} a reminder</button></form>
+    {{end}}
+  </section>
+  {{end}}
   <section class="card">
     <div class="card-head"><h2>Driver app</h2></div>
     {{if $u.AnonymisedAt.Valid}}

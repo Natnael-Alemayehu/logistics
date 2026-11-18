@@ -111,6 +111,8 @@ func (s *Server) funcs() template.FuncMap {
 		"docKind":   service.DocumentKindLabel,
 		"fileSize":  fileSize,
 		"santim":    santim,
+		"paper":     s.paper,
+		"day":       service.FormatDay,
 		// section is the part of the dashboard a page belongs to, for the
 		// breadcrumb: its name and address.
 		"section": func(nav string) navSection { return navSections[nav] },
@@ -651,6 +653,9 @@ var alertIcons = map[string]string{
 	service.AlertSMSPaused:          "mail",
 	service.AlertDelivered:          "package-check",
 	service.AlertRouteDeviation:     "route",
+	service.AlertLicenceDue:         "id-card",
+	service.AlertInsuranceDue:       "calendar-clock",
+	service.AlertInspectionDue:      "calendar-clock",
 }
 
 // statusIcons are the icons on the status badges.

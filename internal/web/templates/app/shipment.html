@@ -293,7 +293,7 @@ driver card and the note form are left alone, being forms in use. */}}
         <label>Driver
           <select name="driver_id" required data-driver-select>
             <option value="">Choose…</option>
-            {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive) (ne .ID $s.DriverID)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if eq .ID $s.DriverID}}selected{{end}} {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}
+            {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive) (ne .ID $s.DriverID)}}{{$lapsed := and (eq (paper .LicenceExpiresOn).State "lapsed") (ne .ID $s.DriverID)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if eq .ID $s.DriverID}}selected{{end}} {{if or $full $lapsed}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $lapsed}} (licence ran out){{else if $full}} (full){{end}}</option>{{end}}
           </select>
         </label>
         <label>Vehicle

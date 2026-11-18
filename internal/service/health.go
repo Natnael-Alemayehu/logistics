@@ -24,6 +24,7 @@ var jobSchedule = []struct {
 	{"outbox_requeue", "Stuck texts and emails", time.Minute},
 	{"billing", "Renewals, reminders and read-only", time.Minute},
 	{"plan_limits", "Plan limits", usageEvery},
+	{"papers_check", "Licences, insurance and inspections running out", usageEvery},
 	{"retention", "Data retention", time.Hour},
 }
 

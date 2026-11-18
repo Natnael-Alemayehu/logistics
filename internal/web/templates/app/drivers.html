@@ -1,50 +1,89 @@
-{{define "content"}}{{$d := .Data}}
+{{define "content"}}{{$d := .Data}}{{$c := $d.Counts}}
 <div class="page-head">
   <div>
     <h1>Drivers</h1>
-    <p class="muted">{{$d.Usage.ActiveDrivers}} of {{$d.Usage.MaxDrivers}} driver places on your {{$d.Usage.Plan.Name}} plan</p>
+    <p class="muted">{{index $c "all"}} {{if eq (index $c "all") 1}}driver{{else}}drivers{{end}} · {{index $c "trip"}} on a trip · {{$d.Usage.ActiveDrivers}} of {{$d.Usage.MaxDrivers}} places on your {{$d.Usage.Plan.Name}} plan</p>
   </div>
   <div class="actions">
-    <a class="btn" href="/app/drivers/message">Message drivers on the road</a>
-    {{if .Me.CanManageFleet}}<a class="btn btn-primary" href="/app/drivers/new">+ Add a driver</a>{{end}}
+    <a class="btn" href="/app/drivers/message">{{icon "message-circle"}}Message drivers on the road</a>
+    {{if .Me.CanManageFleet}}<a class="btn btn-primary" href="/app/drivers/new">{{icon "plus"}}Add driver</a>{{end}}
   </div>
 </div>
 
-<form class="toolbar" method="get" action="/app/drivers">
-  <input type="search" name="q" value="{{.Query.Get "q"}}" placeholder="Name or phone" aria-label="Search drivers">
-  <label class="check"><input type="checkbox" name="inactive" value="1" {{if $d.ShowInactive}}checked{{end}} data-autosubmit> Show deactivated</label>
-  <button class="btn" type="submit">Search</button>
-</form>
+{{with $d.Due}}{{$first := index . 0}}
+<div class="notice {{if eq $first.Licence.State "lapsed"}}notice-bad{{else}}notice-warn{{end}}" role="status">
+  {{icon "id-card"}}
+  <div class="notice-body">
+    <strong>{{$first.FullName}}'s driving licence {{if eq $first.Licence.State "lapsed"}}ran out{{else}}runs out{{end}} on {{$first.Licence.Text}}</strong>
+    <p>{{if eq $first.Licence.State "lapsed"}}They can't be given trips until the renewed licence is recorded on their page.{{else}}Remind them to renew it. They can't be given trips after that date.{{end}}{{if gt (len .) 1}} {{sub (len .) 1}} more {{if eq (len .) 2}}licence needs{{else}}licences need{{end}} renewing soon: {{range $i, $x := .}}{{if $i}}{{if gt $i 1}}, {{end}}<a href="/app/drivers/{{uuid $x.ID}}">{{$x.FullName}}</a>{{end}}{{end}}.{{end}}</p>
+  </div>
+  {{if $.Me.CanManageFleet}}
+  <div class="notice-actions">
+    {{if $first.Phone}}<form method="post" action="/app/drivers/{{uuid $first.ID}}/licence-reminder"><button class="btn btn-sm" type="submit">{{icon "send"}}Send a reminder</button></form>{{end}}
+    <a class="btn btn-sm btn-ghost" href="/app/drivers/{{uuid $first.ID}}/edit">Record the new date</a>
+  </div>
+  {{end}}
+</div>
+{{end}}
 
-<p class="small muted">On duty: carrying a load that has left, or with the driver app open and sharing location in the last half hour.</p>
+<nav class="tabs" aria-label="Driver groups">
+  <a href="/app/drivers{{with $d.Search}}?q={{.}}{{end}}" {{if not $d.Tab}}aria-current="page"{{end}}>All <span class="badge">{{index $c "all"}}</span></a>
+  <a href="/app/drivers?tab=trip{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "trip"}}aria-current="page"{{end}}>On a trip <span class="badge">{{index $c "trip"}}</span></a>
+  <a href="/app/drivers?tab=available{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "available"}}aria-current="page"{{end}}>Available <span class="badge">{{index $c "available"}}</span></a>
+  <a href="/app/drivers?tab=off{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "off"}}aria-current="page"{{end}}>Off duty <span class="badge">{{index $c "off"}}</span></a>
+  {{with index $c "inactive"}}<a href="/app/drivers?tab=inactive{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "inactive"}}aria-current="page"{{end}}>Deactivated <span class="badge">{{.}}</span></a>{{end}}
+</nav>
+
+<section class="card card-flush">
+<div class="list-toolbar">
+  <form method="get" action="/app/drivers" class="list-search" role="search">
+    {{with $d.Tab}}<input type="hidden" name="tab" value="{{.}}">{{end}}
+    <label class="search-field"><span class="sr-only">Search drivers</span>{{icon "search"}}<input type="search" name="q" value="{{$d.Search}}" placeholder="Search name or phone"></label>
+  </form>
+</div>
 
 {{if $d.Drivers}}
-<div class="card card-flush">
-<div class="table-wrap">
-<table class="table rows-link">
-  <thead><tr><th>Driver</th><th>Duty</th><th>Vehicle</th><th class="num">Active</th><th class="num">Delivered this month</th><th>Driver app</th></tr></thead>
+<div class="table-wrap" data-live-region id="driver-rows">
+<table class="table rows-link table-cards">
+  <thead><tr><th>Driver</th><th>Status</th><th>Current shipment</th><th>Vehicle</th><th>Last seen</th><th>Licence valid to</th><th class="row-menu"><span class="sr-only">Actions</span></th></tr></thead>
   <tbody>
-  {{range $d.Drivers}}
+  {{range $d.Drivers}}{{$conn := connState .LastSyncAt}}
   <tr data-href="/app/drivers/{{uuid .ID}}" {{if not .IsActive}}class="is-muted"{{end}}>
-    <td><a href="/app/drivers/{{uuid .ID}}"><strong>{{.FullName}}</strong></a>{{if not .IsActive}} <span class="badge">Deactivated</span>{{end}}<div class="muted small">{{str .Phone}}</div></td>
-    <td>{{if .OnDuty}}<span class="badge s-in_transit">On duty</span>{{else if .IsActive}}<span class="muted">Off duty</span>{{else}}<span class="muted">—</span>{{end}}</td>
-    <td>{{with .VehiclePlate}}{{.}}{{else}}<span class="muted">—</span>{{end}}</td>
-    <td class="num">{{.ActiveShipments}}</td>
-    <td class="num">{{.DeliveredThisMonth}}</td>
-    <td>{{$st := connState .LastSyncAt}}{{template "conn" $st}} {{if eq $st "never"}}<span class="muted">Not signed in yet</span>{{else}}{{ago .LastSyncAt}}{{end}}
-      <div class="muted small">{{with .BatteryLevel}}Battery {{.}}%{{end}}{{if bool .TrackingPaused}} · <span class="text-warn">location off</span>{{end}}</div></td>
+    <td><div class="person-cell"><span class="avatar avatar-sm" aria-hidden="true">{{initials .FullName}}</span><div><a href="/app/drivers/{{uuid .ID}}"><strong>{{mark $d.Search .FullName}}</strong></a><div class="muted small">{{mark $d.Search (str .Phone)}}</div></div></div></td>
+    <td>{{if eq .Group "inactive"}}<span class="badge">Deactivated</span>
+      {{else if eq .Group "trip"}}{{if and (isOnRoad .CurrentStatus) (eq $conn "offline" "never")}}<span class="badge s-issue">Phone offline</span>{{else}}<span class="badge s-in_transit">On a trip</span>{{end}}
+      {{else if eq .Group "available"}}<span class="badge s-delivered">Available</span>
+      {{else}}<span class="badge">Off duty</span>{{end}}</td>
+    <td>{{if .CurrentShipmentID.Valid}}<a class="mono" href="/app/shipments/{{uuid .CurrentShipmentID}}">{{shortRef .CurrentTracking}}</a> <span class="muted small">· {{statusLabel .CurrentStatus}}</span>{{if gt .ActiveShipments 1}}<div class="muted small">{{.ActiveShipments}} active loads</div>{{end}}
+      {{else if eq .Group "available"}}<a href="/app/shipments?tab=pending">Give a trip</a>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td>{{with .VehiclePlate}}<span class="mono">{{.}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td>{{if eq $conn "never"}}<span class="muted">Not signed in yet</span>{{else}}{{with .Near}}{{.}} · {{end}}{{ago .LastSyncAt}}
+      <div class="muted small">{{with .BatteryLevel}}{{.}}% battery{{end}}{{if bool .TrackingPaused}}{{if .BatteryLevel}} · {{end}}<span class="text-warn">location off</span>{{end}}</div>{{end}}</td>
+    <td data-label="Licence to">{{template "paper" .Licence}}</td>
+    <td class="row-menu">
+      <details class="pop pop-right">
+        <summary class="icon-btn" aria-label="Actions for {{.FullName}}">{{icon "ellipsis-vertical"}}</summary>
+        <div class="pop-panel menu-panel">
+          <a href="/app/drivers/{{uuid .ID}}">{{icon "user-round"}}Open</a>
+          {{with .Phone}}<a href="tel:{{.}}">{{icon "phone"}}Call</a>{{end}}
+          {{if $.Me.CanManageFleet}}<a href="/app/drivers/{{uuid .ID}}/edit">{{icon "pencil"}}Edit</a>{{end}}
+        </div>
+      </details>
+    </td>
   </tr>
   {{end}}
   </tbody>
 </table>
 </div>
-</div>
+<div class="card-foot list-foot"><span>{{len $d.Drivers}} {{if eq (len $d.Drivers) 1}}driver{{else}}drivers{{end}}</span><span class="muted">Drivers sign in to the app at {{.App.PublicURL}}/driver with their phone number</span></div>
 {{else}}
-<div class="card empty">
-  {{if .Query.Get "q"}}<h2>No drivers match “{{.Query.Get "q"}}”</h2>
+<div class="empty">
+  {{if $d.Search}}<h2>No drivers match “{{$d.Search}}”</h2><p class="muted"><a href="/app/drivers">Clear the search</a></p>
+  {{else if $d.Tab}}<h2>Nobody here</h2><p class="muted">No driver is in this group right now.</p>
   {{else}}<h2>No drivers yet</h2>
   <p class="muted">Add your drivers with their phone numbers. Each gets a PIN by SMS and signs in to the driver app at <strong>{{.App.PublicURL}}/driver</strong>.</p>
-  {{if .Me.CanManageFleet}}<p><a class="btn btn-primary" href="/app/drivers/new">+ Add a driver</a></p>{{end}}{{end}}
+  {{if .Me.CanManageFleet}}<p><a class="btn btn-primary" href="/app/drivers/new">{{icon "plus"}}Add a driver</a></p>{{end}}{{end}}
 </div>
 {{end}}
+</section>
 {{end}}
