@@ -126,7 +126,7 @@ func TestMessageEveryDriverOnTheRoad(t *testing.T) {
 	}
 
 	// The driver with the app open is on duty; the others aren't.
-	if home := office.get("/app").Body; !strings.Contains(home, `1<span class="kpi-of"> of 3</span>`) || !strings.Contains(home, `id="map-meta"`) {
+	if home := office.get("/app").Body; !strings.Contains(home, `1<span class="kpi-of"> / 3</span>`) || !strings.Contains(home, `id="map-meta"`) {
 		t.Error("the overview should count one of three drivers on duty")
 	}
 
@@ -317,10 +317,12 @@ func TestALongTripEndsWhereTheTruckIs(t *testing.T) {
 		       NOW() - (2500 - i) * INTERVAL '1 minute'
 		FROM shipments s, generate_series(1, 2500) i WHERE s.id = $1`, shipmentID)
 
-	p := office.get("/app/shipments/" + shipmentID)
-	if !strings.Contains(p.Body, "the newest 2,000 positions") || !strings.Contains(p.Body, "The newest 200 are listed here.") {
+	// The location history is on the shipment's Activity tab, the map on its
+	// overview.
+	if p := office.get("/app/shipments/" + shipmentID + "?tab=activity"); !strings.Contains(p.Body, "the newest 2,000 positions") || !strings.Contains(p.Body, "The newest 200 are listed here.") {
 		t.Error("the page should say it shows only the newest positions")
 	}
+	p := office.get("/app/shipments/" + shipmentID)
 	_, rest, _ := strings.Cut(p.Body, `id="shipment-map">`)
 	raw, _, _ := strings.Cut(rest, "</script>")
 	var m struct{ Route [][]float64 }

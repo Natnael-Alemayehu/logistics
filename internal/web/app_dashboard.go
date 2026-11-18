@@ -32,7 +32,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	alerts, openAlerts, err := s.svc.Alerts.List(ctx, p.TenantID, service.AlertFilter{OpenOnly: true, PerPage: 6})
+	alerts, openAlerts, err := s.svc.Alerts.List(ctx, p.TenantID, service.AlertFilter{OpenOnly: true, PerPage: 4})
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -84,6 +84,22 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	board := dashboardBoards[0]
+	for _, b := range dashboardBoards {
+		if b.Key == r.URL.Query().Get("board") {
+			board = b
+		}
+	}
+	rows, boardTotal, err := s.svc.Shipments.List(ctx, p.TenantID, service.ShipmentFilter{Statuses: board.Statuses, Sort: board.Sort, PerPage: 8})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	onRoad := make([]boardRow, 0, len(rows))
+	progress := progressFrom(mapData, rows)
+	for _, row := range rows {
+		onRoad = append(onRoad, boardRow{ListShipmentsRow: row, Progress: progress[row.Shipment.ID.String()]})
+	}
 
 	active := int64(0)
 	for _, st := range model.ActiveStatuses {
@@ -97,6 +113,11 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		"Alerts":         alerts,
 		"OpenAlerts":     openAlerts,
 		"Activity":       items,
+		"Board":          board,
+		"Boards":         dashboardBoards,
+		"OnRoad":         onRoad,
+		"BoardTotal":     boardTotal,
+		"BoardCounts":    boardCounts(counts),
 		"Map":            mapData,
 		"MapMeta":        fleetMapMeta(tenant.RegionCity),
 		"Drivers":        drivers,
@@ -106,6 +127,68 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		"GettingStarted": usage.ActiveDrivers == 0 || usage.Vehicles == 0 || len(counts) == 0,
 	})
 	s.render(w, r, http.StatusOK, "app/dashboard", v)
+}
+
+// boardRow is a shipment in the overview's table, with how far along it is.
+type boardRow struct {
+	db.ListShipmentsRow
+	Progress *int
+}
+
+// dashboardBoard is a tab of the overview's table of shipments.
+type dashboardBoard struct {
+	Key, Label string
+	Statuses   []string
+	Sort       string
+	// Tab is the same list on the Shipments page.
+	Tab string
+}
+
+var dashboardBoards = []dashboardBoard{
+	{"active", "On the road", []string{model.StatusInTransit, model.StatusDelayed, model.StatusIssue, model.StatusArrived}, "eta_asc", "active"},
+	{"attention", "Attention", []string{model.StatusDelayed, model.StatusIssue}, "eta_asc", "attention"},
+	{"waiting", "Waiting", []string{model.StatusPending, model.StatusAssigned}, "created_asc", "pending"},
+	{"delivered", "Delivered", []string{model.StatusDelivered}, "updated_desc", "delivered"},
+}
+
+// progress says how far along its route each of the rows is, by shipment ID.
+func (s *Server) progress(ctx context.Context, tenantID pgtype.UUID, rows []db.ListShipmentsRow) (map[string]*int, error) {
+	m, err := s.svc.Tracking.Map(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return progressFrom(m, rows), nil
+}
+
+func progressFrom(m *service.MapData, rows []db.ListShipmentsRow) map[string]*int {
+	positions := make(map[string]*service.DriverPin, len(m.Drivers))
+	for i := range m.Drivers {
+		positions[m.Drivers[i].ID] = &m.Drivers[i]
+	}
+	out := make(map[string]*int, len(rows))
+	for _, row := range rows {
+		var pos *service.DriverPin
+		if row.Shipment.DriverID.Valid {
+			pos = positions[row.Shipment.DriverID.String()]
+		}
+		out[row.Shipment.ID.String()] = service.Progress(row.Shipment, pos)
+	}
+	return out
+}
+
+// boardCounts counts the shipments under each tab of the overview's table;
+// delivered ones are many and old, so that tab has no count.
+func boardCounts(counts map[string]int64) map[string]int64 {
+	out := map[string]int64{}
+	for _, b := range dashboardBoards {
+		if b.Key == "delivered" {
+			continue
+		}
+		for _, st := range b.Statuses {
+			out[b.Key] += counts[st]
+		}
+	}
+	return out
 }
 
 // mapMeta frames the fleet map: where it opens when there is nothing on it

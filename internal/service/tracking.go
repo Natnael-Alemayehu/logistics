@@ -243,3 +243,31 @@ func (s *TrackingService) record(ctx context.Context, a Actor, deviceID string, 
 	}
 	return stored, rejected
 }
+
+// Progress is how far along its route a load is, in percent, for the
+// progress bars: the share of the straight line from origin to destination
+// that the driver's last position has covered. A load that has arrived is
+// at 100. It is nil when it can't be told: the load isn't under way, an end
+// has no coordinates, or the driver has sent no position.
+func Progress(sh db.Shipment, pos *DriverPin) *int {
+	full := 100
+	switch sh.Status {
+	case model.StatusArrived, model.StatusDelivered:
+		return &full
+	case model.StatusInTransit, model.StatusDelayed, model.StatusIssue:
+	default:
+		return nil
+	}
+	if pos == nil || sh.OriginLat == nil || sh.OriginLng == nil || sh.DestinationLat == nil || sh.DestinationLng == nil {
+		return nil
+	}
+	whole := geo.DistanceMeters(*sh.OriginLat, *sh.OriginLng, *sh.DestinationLat, *sh.DestinationLng)
+	if whole < 1000 {
+		return nil
+	}
+	left := geo.DistanceMeters(pos.Lat, pos.Lng, *sh.DestinationLat, *sh.DestinationLng)
+	// Short of arriving, a load is never shown as done, nor as not started.
+	p := int(math.Round(100 * (1 - left/whole)))
+	p = max(1, min(p, 99))
+	return &p
+}

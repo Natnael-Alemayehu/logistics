@@ -1,116 +1,277 @@
 {{define "head"}}<link rel="stylesheet" href="{{asset "vendor/leaflet/leaflet.css"}}">{{end}}
 {{define "scripts"}}<script src="{{asset "vendor/leaflet/leaflet.js"}}" defer></script><script src="{{asset "map.js"}}" defer></script>{{end}}
-{{define "content"}}{{$d := .Data}}{{$s := $d.S}}{{$id := uuid $s.ID}}
+{{define "content"}}{{$d := .Data}}{{$s := $d.S}}{{$id := uuid $s.ID}}{{$t := $d.Trip}}
 {{/* The parts marked data-live-region are fetched again when the driver
 or another dispatcher changes the shipment. The map updates itself; the
 driver card and the note form are left alone, being forms in use. */}}
-<div class="page-head" data-shipment="{{$id}}" id="shipment-head" data-live-region>
+<div class="page-head ship-head" data-shipment="{{$id}}" id="shipment-head" data-live-region>
   <div>
-    <p class="crumbs"><a href="/app/shipments">Shipments</a></p>
-    <h1 class="mono">{{$s.TrackingNumber}} <button type="button" class="icon-btn" data-copy="{{$s.TrackingNumber}}" aria-label="Copy tracking number" title="Copy">{{icon "copy"}}</button></h1>
-    <p>{{template "status" $s.Status}} {{template "priority" $s.Priority}}{{with $s.StatusReason}} <span class="muted">{{reasonLabel .}}</span>{{end}} <span class="muted small">· booked {{when $s.CreatedAt}}</span></p>
+    <p class="ship-ref"><span class="mono">{{$s.TrackingNumber}}</span><button type="button" class="icon-btn icon-btn-sm" data-copy="{{$s.TrackingNumber}}" aria-label="Copy tracking number" title="Copy">{{icon "copy"}}</button></p>
+    <div class="ship-title">
+      <h1>{{with $s.OriginCity}}{{.}}{{else}}Pickup{{end}} to {{with $s.DestinationCity}}{{.}}{{else}}drop-off{{end}}</h1>
+      {{template "status" $s.Status}}
+      {{if eq $s.Status "delivered"}}{{if and $s.EstimatedDelivery.Valid $s.ActualDelivery.Valid}}{{if $s.ActualDelivery.Time.After $s.EstimatedDelivery.Time}}<span class="badge s-delayed">{{icon "clock"}}Delivered late</span>{{else}}<span class="badge s-delivered">{{icon "circle-check-big"}}On time</span>{{end}}{{end}}
+      {{else if and $s.EstimatedDelivery.Valid (not (isFinal $s.Status))}}{{if late $s.EstimatedDelivery $s.Status}}<span class="badge s-delayed">{{icon "clock"}}Running late</span>{{else}}<span class="badge s-delivered">{{icon "circle-check-big"}}On time</span>{{end}}{{end}}
+      {{template "priority" $s.Priority}}
+    </div>
+    <p class="muted">{{$s.CustomerName}} · booked {{when $s.CreatedAt}}{{with $t.BookedBy}} by {{.}}{{end}}{{with $s.StatusReason}} · {{reasonLabel .}}{{end}}</p>
   </div>
   <div class="actions">
-    {{if $d.CanEdit}}<a class="btn" href="/app/shipments/{{$id}}/edit">Edit</a>{{end}}
-    <a class="btn" href="/app/shipments/{{$id}}/waybill" target="_blank" rel="noopener">{{icon "printer"}} Waybill</a>
-    {{if not $s.AnonymisedAt.Valid}}<a class="btn" href="/app/shipments/new?copy={{$id}}" title="Book a new shipment with the same details">Book again</a>{{end}}
-    {{if and $d.CanReopen (not $s.AnonymisedAt.Valid)}}
-    <form method="post" action="/app/shipments/{{$id}}/reopen"><button class="btn" type="submit">Reopen</button></form>
-    {{end}}
-    {{if $d.CanCancel}}
+    <a class="btn" href="{{$d.TrackURL}}" target="_blank" rel="noopener">{{icon "external-link"}}Customer view</a>
+    {{if and $s.DriverID.Valid (not (isFinal $s.Status))}}<a class="btn" href="/app/shipments/{{$id}}?tab=activity#note">{{icon "message-circle"}}Message driver</a>{{end}}
+    {{if $d.CanEdit}}<a class="btn" href="/app/shipments/{{$id}}/edit">{{icon "pencil"}}Edit</a>{{end}}
     <details class="pop pop-right">
-      <summary class="btn btn-danger-ghost">Cancel shipment</summary>
-      <form method="post" action="/app/shipments/{{$id}}/cancel" class="pop-panel stack">
-        <p><strong>Cancel {{$s.TrackingNumber}}?</strong>{{if $s.DriverID.Valid}} The driver is told on their next sync.{{end}}</p>
-        <label>Reason
-          <select name="reason" required>
-            <option value="">Choose…</option>
-            {{range $d.CancelReasons}}<option value="{{.}}">{{reasonLabel .}}</option>{{end}}
-          </select>
-        </label>
-        <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2"></textarea></label>
-        <button class="btn btn-danger" type="submit">Cancel shipment</button>
-      </form>
+      <summary class="btn btn-icon" aria-label="More actions" title="More actions">{{icon "ellipsis"}}</summary>
+      <div class="pop-panel menu-panel">
+        <a href="/app/shipments/{{$id}}/waybill" target="_blank" rel="noopener">{{icon "printer"}}Print the waybill</a>
+        {{if not $s.AnonymisedAt.Valid}}<a href="/app/shipments/new?copy={{$id}}" title="Book a new shipment with the same details">{{icon "copy"}}Book again</a>{{end}}
+        <button type="button" data-copy="{{$d.TrackURL}}">{{icon "link"}}Copy the tracking link</button>
+        {{if and $d.CanReopen (not $s.AnonymisedAt.Valid)}}
+        <form method="post" action="/app/shipments/{{$id}}/reopen"><button type="submit">{{icon "history"}}Reopen</button></form>
+        {{end}}
+        {{if $d.CanCancel}}
+        <details class="menu-sub">
+          <summary class="text-bad">{{icon "circle-x"}}Cancel shipment</summary>
+          <form method="post" action="/app/shipments/{{$id}}/cancel" class="stack">
+            <p class="small"><strong>Cancel {{$s.TrackingNumber}}?</strong>{{if $s.DriverID.Valid}} The driver is told on their next sync.{{end}}</p>
+            <label>Reason
+              <select name="reason" required>
+                <option value="">Choose…</option>
+                {{range $d.CancelReasons}}<option value="{{.}}">{{reasonLabel .}}</option>{{end}}
+              </select>
+            </label>
+            <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2"></textarea></label>
+            <button class="btn btn-danger btn-sm" type="submit">Cancel shipment</button>
+          </form>
+        </details>
+        {{end}}
+      </div>
     </details>
-    {{end}}
   </div>
 </div>
+
+<nav class="tabs" aria-label="Shipment sections">
+  <a href="/app/shipments/{{$id}}" {{if eq $d.Tab "overview"}}aria-current="page"{{end}}>Overview</a>
+  <a href="/app/shipments/{{$id}}?tab=activity" {{if eq $d.Tab "activity"}}aria-current="page"{{end}}>Activity <span class="badge">{{len $d.Timeline}}</span></a>
+</nav>
 
 {{if $s.AnonymisedAt.Valid}}
 <p class="banner info">The customer's and recipient's details, signatures and photos were removed {{date $s.AnonymisedAt}}, at the end of the keeping period. The dates, route, driver and cargo stay for reports.</p>
 {{end}}
-<div id="shipment-actions" data-live-region>
-{{if $d.Next}}
-<section class="card status-bar">
-  <p class="status-bar-label">Update status <span class="muted small">— normally the driver does this from the app</span></p>
-  <div class="status-actions">
-  {{range $d.Next}}{{$reasons := reasonsFor .}}
-    {{if or $reasons (eq . "delivered")}}
-    <details class="pop">
-      <summary class="btn btn-sm s-btn-{{.}}">{{if eq . "delivered"}}Confirm delivered{{else}}{{statusLabel .}}{{end}}</summary>
-      <form method="post" action="/app/shipments/{{$id}}/status" class="pop-panel stack">
-        <input type="hidden" name="status" value="{{.}}">
-        {{if eq . "delivered"}}
-        <p class="small">Use this when the driver has confirmed delivery by phone. It is recorded without a signature or photo, and flagged as such.</p>
-        {{else}}
-        <label>Reason
-          <select name="reason" required>
-            <option value="">Choose…</option>
-            {{range $reasons}}<option value="{{.}}">{{reasonLabel .}}</option>{{end}}
-          </select>
-        </label>
-        {{end}}
-        <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2"></textarea></label>
-        <button class="btn btn-primary" type="submit">Save</button>
-      </form>
-    </details>
-    {{else}}
-    <form method="post" action="/app/shipments/{{$id}}/status">
-      <input type="hidden" name="status" value="{{.}}">
-      <button class="btn btn-sm s-btn-{{.}}" type="submit">{{if eq . "in_transit"}}{{if eq $s.Status "assigned"}}Mark departed{{else}}Back on the road{{end}}{{else}}{{statusLabel .}}{{end}}</button>
-    </form>
-    {{end}}
-  {{end}}
-  </div>
-</section>
-{{end}}
-</div>
 
 <div class="grid-detail">
 <div class="col-main">
-  <section class="card card-flush">
-    <div class="route-head" id="shipment-route" data-live-region>
-      <div class="route-end">
-        <span class="route-label">From</span>
-        <strong>{{with $s.OriginCity}}{{.}}{{else}}—{{end}}</strong>
-        <span class="muted">{{$s.OriginAddress}}</span>
-        {{if $s.PickedUpAt.Valid}}<span class="small muted">Departed {{when $s.PickedUpAt}}</span>{{else if $s.PlannedPickupAt.Valid}}<span class="small {{if late $s.PlannedPickupAt $s.Status}}text-warn{{else}}muted{{end}}">Pickup {{when $s.PlannedPickupAt}}</span>{{end}}
-      </div>
-      <div class="route-arrow" aria-hidden="true">→</div>
-      <div class="route-end">
-        <span class="route-label">To</span>
-        <strong>{{with $s.DestinationCity}}{{.}}{{else}}—{{end}}</strong>
-        <span class="muted">{{$s.DestinationAddress}}</span>
-        {{if $s.DestinationPrecise}}<span class="small muted">{{icon "map-pin"}} Exact drop-off pinned</span>{{end}}
-      </div>
-      <div class="route-end">
-        <span class="route-label">{{if $s.ActualDelivery.Valid}}Delivered{{else if eq $s.Status "cancelled"}}Cancelled{{else}}Due{{end}}</span>
-        {{if $s.ActualDelivery.Valid}}
-          <strong>{{when $s.ActualDelivery}}</strong>
-          {{if $s.EstimatedDelivery.Valid}}<span class="small {{if $s.ActualDelivery.Time.After $s.EstimatedDelivery.Time}}text-bad{{else}}text-good{{end}}">{{if $s.ActualDelivery.Time.After $s.EstimatedDelivery.Time}}Late{{else}}On time{{end}} · due {{when $s.EstimatedDelivery}}</span>{{end}}
-        {{else if eq $s.Status "cancelled"}}
-          <strong>{{if $s.StatusChangedAt.Valid}}{{when $s.StatusChangedAt}}{{else}}—{{end}}</strong>
-          {{if $s.EstimatedDelivery.Valid}}<span class="small muted">was due {{when $s.EstimatedDelivery}}</span>{{end}}
-        {{else if $s.EstimatedDelivery.Valid}}
-          <strong class="{{if late $s.EstimatedDelivery $s.Status}}text-bad{{end}}">{{when $s.EstimatedDelivery}}</strong>
-          <span class="small muted">{{until $s.EstimatedDelivery}}{{if $s.EtaManual}} · set by the office{{else}} · estimated{{end}}</span>
-        {{else}}<strong>—</strong>{{end}}
-      </div>
+{{if eq $d.Tab "overview"}}
+  <div id="shipment-actions" data-live-region>
+  {{if $d.Next}}
+  <section class="card status-bar">
+    <p class="status-bar-label">Update status <span class="muted small">— normally the driver does this from the app</span></p>
+    <div class="status-actions">
+    {{range $d.Next}}{{$reasons := reasonsFor .}}
+      {{if or $reasons (eq . "delivered")}}
+      <details class="pop">
+        <summary class="btn btn-sm s-btn-{{.}}">{{if eq . "delivered"}}Confirm delivered{{else}}{{statusLabel .}}{{end}}</summary>
+        <form method="post" action="/app/shipments/{{$id}}/status" class="pop-panel stack">
+          <input type="hidden" name="status" value="{{.}}">
+          {{if eq . "delivered"}}
+          <p class="small">Use this when the driver has confirmed delivery by phone. It is recorded without a signature or photo, and flagged as such.</p>
+          {{else}}
+          <label>Reason
+            <select name="reason" required>
+              <option value="">Choose…</option>
+              {{range $reasons}}<option value="{{.}}">{{reasonLabel .}}</option>{{end}}
+            </select>
+          </label>
+          {{end}}
+          <label>Note <span class="muted">(optional)</span><textarea name="note" rows="2"></textarea></label>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+      </details>
+      {{else}}
+      <form method="post" action="/app/shipments/{{$id}}/status">
+        <input type="hidden" name="status" value="{{.}}">
+        <button class="btn btn-sm s-btn-{{.}}" type="submit">{{if eq . "in_transit"}}{{if eq $s.Status "assigned"}}Mark departed{{else}}Back on the road{{end}}{{else}}{{statusLabel .}}{{end}}</button>
+      </form>
+      {{end}}
+    {{end}}
     </div>
-    <div class="map map-mid" data-map="shipment" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}} data-source="shipment-map" data-shipment-id="{{$id}}" data-driver-id="{{uuid $s.DriverID}}"></div>
-    <script type="application/json" id="shipment-map">{{$d.Map}}</script>
+  </section>
+  {{end}}
+  </div>
+
+  <section class="card trip" id="shipment-trip" data-live-region>
+    <dl class="trip-stats">
+      <div><dt>{{if $s.PickedUpAt.Valid}}Picked up{{else}}Pickup{{end}}</dt><dd>{{if $s.PickedUpAt.Valid}}{{when $s.PickedUpAt}}{{else if $s.PlannedPickupAt.Valid}}<span class="{{if late $s.PlannedPickupAt $s.Status}}text-warn{{end}}">{{when $s.PlannedPickupAt}}</span>{{else}}Not yet{{end}}</dd></div>
+      <div><dt>Distance left</dt><dd>{{if $t.HasKm}}{{printf "%.0f" $t.KmLeft}} of {{printf "%.0f" $t.KmTotal}} km{{else}}—{{end}}</dd></div>
+      <div><dt>{{if $s.ActualDelivery.Valid}}Delivered{{else if eq $s.Status "cancelled"}}Was due{{else}}Arrives{{end}}</dt><dd>
+        {{if $s.ActualDelivery.Valid}}{{when $s.ActualDelivery}}
+        {{else if $s.EstimatedDelivery.Valid}}<span class="{{if late $s.EstimatedDelivery $s.Status}}text-bad{{end}}" title="{{if $s.EtaManual}}Set by the office{{else}}Estimated{{end}}">{{when $s.EstimatedDelivery}}</span>{{if late $s.EstimatedDelivery $s.Status}} <span class="small text-warn">{{lateBy $s.EstimatedDelivery}}</span>{{end}}
+        {{else}}—{{end}}</dd></div>
+      <div><dt>Speed</dt><dd>{{if and $t.HasSpeed $t.Fresh (eq (tripStage $s.Status) 2)}}{{printf "%.0f" $t.SpeedKPH}} km/h{{else}}—{{end}}</dd></div>
+    </dl>
+    <ol class="stepper" aria-label="Progress">
+      {{range $t.Steps}}<li class="{{if .Done}}is-done{{end}}{{if .Current}} is-current{{end}}">
+        {{if and .Current (eq .Label "On the way") $t.Progress}}<span class="bar bar-{{$s.Status}}" role="progressbar" aria-label="Route progress" aria-valuenow="{{$t.Progress}}" aria-valuemin="0" aria-valuemax="100"><span style="width: {{$t.Progress}}%"></span></span>{{else}}<span class="step-line"></span>{{end}}
+        <span class="step-label">{{.Label}}</span>
+        <span class="step-at">{{if .Done}}{{if eq .Label "On the way"}}since {{end}}{{when .At}}{{else if and (eq .Label "Arrived") $s.EstimatedDelivery.Valid (ne $s.Status "cancelled")}}≈ {{when $s.EstimatedDelivery}}{{else if eq .Label "Delivered"}}{{if eq $s.Status "cancelled"}}cancelled{{else}}with proof of delivery{{end}}{{else}}—{{end}}</span>
+      </li>{{end}}
+    </ol>
   </section>
 
+  <section class="card card-flush">
+    <div class="map map-mid" data-map="shipment" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}} data-source="shipment-map" data-shipment-id="{{$id}}" data-driver-id="{{uuid $s.DriverID}}"></div>
+    <script type="application/json" id="shipment-map">{{$d.Map}}</script>
+    <div class="card-foot map-foot" id="shipment-route" data-live-region>
+      {{if and $t.Active (not $t.LastAt.IsZero)}}<span>{{icon "map-pin"}}<span>Last seen <strong>{{if lt $t.NearKm 15.0}}near {{$t.Near}}{{else}}{{printf "%.0f" $t.NearKm}} km from {{$t.Near}}{{end}}</strong>, <time datetime="{{rfc3339 $t.LastAt}}" title="{{when $t.LastAt}}">{{ago $t.LastAt}}</time></span></span>
+      {{else}}<span>{{icon "map-pin"}}<span>{{with $s.OriginAddress}}{{.}}{{else}}{{$s.OriginCity}}{{end}} → {{with $s.DestinationAddress}}{{.}}{{else}}{{$s.DestinationCity}}{{end}}</span></span>{{end}}
+      <span class="small muted">{{if $s.DestinationPrecise}}Exact drop-off pinned · {{end}}Positions from the driver's phone</span>
+    </div>
+  </section>
+
+  {{template "pod-sections" .}}
+
+  <section class="card" id="shipment-history" data-live-region>
+    <div class="card-head"><div><h2>Activity</h2><p class="card-sub">Everything that happened to this load</p></div>
+      {{if not (isFinal $s.Status)}}<a class="btn btn-sm" href="/app/shipments/{{$id}}?tab=activity#note">{{icon "plus"}}Add note</a>{{end}}
+    </div>
+    {{template "timeline" (dict "Items" $d.Timeline)}}
+  </section>
+{{else}}
+  {{if not (isFinal $s.Status)}}
+  <section class="card" id="note">
+    <div class="card-head"><h2>Message or note</h2></div>
+    <form method="post" action="/app/shipments/{{$id}}/note" class="stack">
+      <textarea name="note" rows="3" required maxlength="1000" data-quick-target placeholder="{{if $s.DriverID.Valid}}Write to the driver, or add a note for the office{{else}}Add a note for the office{{end}}"></textarea>
+      {{if $s.DriverID.Valid}}<div class="quick" role="group" aria-label="Quick messages">{{range $d.Quick}}<button class="chip" type="button" data-quick="{{.}}">{{.}}</button>{{end}}</div>{{end}}
+      <div class="row-wrap">
+        {{if $s.DriverID.Valid}}
+        <label class="radio"><input type="radio" name="to" value="driver" checked> To the driver</label>
+        <label class="radio"><input type="radio" name="to" value="office"> Office note</label>
+        <label class="check"><input type="checkbox" name="sms" value="1"> Also by SMS</label>
+        {{else}}<input type="hidden" name="to" value="office">{{end}}
+      </div>
+      <div><button class="btn btn-primary" type="submit">{{icon "send"}}Send</button></div>
+    </form>
+  </section>
+  {{end}}
+
+  <section class="card" id="shipment-history" data-live-region>
+    <div class="card-head"><div><h2>History</h2><p class="card-sub">Everything that happened to this load, newest first</p></div></div>
+    {{template "timeline" (dict "Items" $d.Timeline)}}
+  </section>
+
+  {{with $d.D.Route}}{{$listed := 200}}
+  <section class="card card-flush">
+    <details class="locations">
+      <summary class="card-head"><h2>Location history</h2><span class="small muted">{{if $d.D.RouteCapped}}the newest {{end}}{{grouped (len .)}} {{if eq (len .) 1}}position{{else}}positions{{end}}</span></summary>
+      <p class="card-pad small">{{if gt (len .) $listed}}The newest {{$listed}} are listed here. {{end}}<a href="/app/shipments/{{$id}}/locations.csv" download>{{icon "download"}} Download every position as CSV</a></p>
+      <div class="table-wrap">
+      <table class="table table-compact">
+        <thead><tr><th>Recorded</th><th>Latitude, longitude</th><th class="num">Accuracy</th><th class="num">Speed</th><th class="num">Battery</th></tr></thead>
+        <tbody>{{range newestFirst $listed .}}
+          <tr><td>{{when .RecordedAt}}</td><td class="mono small">{{printf "%.5f" .Latitude}}, {{printf "%.5f" .Longitude}}</td>
+            <td class="num">{{if hasNum .AccuracyMeters}}{{printf "%.0f" (num .AccuracyMeters)}} m{{else}}—{{end}}</td>
+            <td class="num">{{if hasNum .SpeedKph}}{{printf "%.0f" (num .SpeedKph)}} km/h{{else}}—{{end}}</td>
+            <td class="num">{{with .BatteryLevel}}{{.}}%{{else}}—{{end}}</td></tr>
+        {{end}}</tbody>
+      </table>
+      </div>
+    </details>
+  </section>
+  {{else}}
+  <section class="card"><div class="card-head"><h2>Location history</h2></div><p class="muted">No positions yet. They arrive from the driver's phone once the trip starts.</p></section>
+  {{end}}
+{{end}}
+</div>
+
+<aside class="col-side">
+  <section class="card">
+    <div class="card-head"><h2>Driver and vehicle</h2>
+      {{if and $d.CanAssign $s.DriverID.Valid}}<a class="btn btn-sm btn-ghost" href="#assign" data-open="assign">Change</a>{{end}}
+    </div>
+    {{with $d.D.Driver}}
+    <div class="person">
+      <span class="avatar avatar-lg" aria-hidden="true">{{initials .FullName}}</span>
+      <div>
+        <a href="/app/drivers/{{uuid .ID}}"><strong>{{.FullName}}</strong></a>
+        {{with .Phone}}<br><a class="small" href="{{telURL .}}">{{.}}</a>{{end}}
+      </div>
+    </div>
+    <div class="btn-pair">
+      {{with .Phone}}<a class="btn btn-sm" href="{{telURL .}}">{{icon "phone"}}Call</a>{{end}}
+      {{if not (isFinal $s.Status)}}<a class="btn btn-sm" href="/app/shipments/{{$id}}?tab=activity#note">{{icon "message-circle"}}Message</a>{{end}}
+    </div>
+    <dl class="facts facts-row">
+      <div><dt>Vehicle</dt><dd>{{with $d.D.Vehicle}}<span class="mono">{{.PlateNumber}}</span>{{with .VehicleType}} · {{vehicleType .}}{{end}}{{else}}—{{end}}</dd></div>
+      {{if $t.Active}}<div><dt>Phone</dt><dd>{{with $t.Battery}}{{icon "battery-medium"}}{{.}}%{{if not $t.LastAt.IsZero}} · heard {{ago $t.LastAt}}{{end}}{{else}}{{if not $t.LastAt.IsZero}}heard {{ago $t.LastAt}}{{else}}—{{end}}{{end}}</dd></div>{{end}}
+    </dl>
+    {{else}}
+    <p class="muted">Nobody is assigned yet.</p>
+    {{end}}
+    {{if $d.CanAssign}}
+    <details class="assign" id="assign" {{if not $s.DriverID.Valid}}open{{end}}>
+      <summary class="btn btn-sm {{if not $s.DriverID.Valid}}btn-primary{{end}}">{{if $s.DriverID.Valid}}Reassign{{else}}Assign a driver{{end}}</summary>
+      <form method="post" action="/app/shipments/{{$id}}/assign" class="stack" data-assign-form>
+        <label>Driver
+          <select name="driver_id" required data-driver-select>
+            <option value="">Choose…</option>
+            {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive) (ne .ID $s.DriverID)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if eq .ID $s.DriverID}}selected{{end}} {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}
+          </select>
+        </label>
+        <label>Vehicle
+          <select name="vehicle_id" data-vehicle-select>
+            <option value="">The driver's usual vehicle</option>
+            {{range $d.Vehicles}}<option value="{{uuid .ID}}" {{if eq .ID $s.VehicleID}}selected{{end}}>{{.PlateNumber}}</option>{{end}}
+          </select>
+        </label>
+        <button class="btn btn-primary" type="submit">{{if $s.DriverID.Valid}}Reassign{{else}}Assign{{end}}</button>
+      </form>
+    </details>
+    {{end}}
+    {{if $d.CanUnassign}}
+    <form method="post" action="/app/shipments/{{$id}}/unassign" class="mt-s"><button class="btn btn-sm btn-ghost" type="submit">Take the driver off this shipment</button></form>
+    {{end}}
+  </section>
+
+  <section class="card" id="shipment-details" data-live-region>
+    <div class="card-head"><h2>Customer</h2>{{if $d.CanEdit}}<a class="btn btn-sm btn-ghost" href="/app/shipments/{{$id}}/edit">Edit</a>{{end}}</div>
+    <dl class="facts facts-row">
+      <div><dt>Company</dt><dd>{{$s.CustomerName}}</dd></div>
+      <div><dt>SMS updates</dt><dd><a href="{{telURL $s.CustomerPhone}}">{{$s.CustomerPhone}}</a></dd></div>
+      {{if $s.ConsigneePhone}}<div><dt>Receiver</dt><dd>{{str $s.ConsigneeName}}<br><a href="{{telURL (str $s.ConsigneePhone)}}">{{str $s.ConsigneePhone}}</a></dd></div>{{end}}
+      <div><dt>Pick up at</dt><dd>{{with $s.OriginAddress}}{{.}}{{else}}{{$s.OriginCity}}{{end}}</dd></div>
+      <div><dt>Deliver to</dt><dd>{{with $s.DestinationAddress}}{{.}}{{else}}{{$s.DestinationCity}}{{end}}</dd></div>
+    </dl>
+    <div class="track-link">
+      <span class="small muted">Customer tracking link</span>
+      <div class="row-wrap"><a href="{{$d.TrackURL}}" target="_blank" rel="noopener" class="mono small">{{$d.TrackURL}}</a> <button type="button" class="btn btn-sm btn-ghost" data-copy="{{$d.TrackURL}}">{{icon "copy"}}Copy</button></div>
+    </div>
+  </section>
+
+  <section class="card" id="shipment-load" data-live-region>
+    <div class="card-head"><h2>Load</h2></div>
+    <dl class="facts facts-row">
+      <div><dt>Cargo</dt><dd>{{with $s.CargoDescription}}{{.}}{{else}}—{{end}}</dd></div>
+      <div><dt>Weight</dt><dd>{{if hasNum $s.CargoWeight}}{{kg $s.CargoWeight}}{{else}}—{{end}}</dd></div>
+      {{if hasNum $s.CargoValue}}<div><dt>Value</dt><dd>{{money $s.CargoValue}}</dd></div>{{end}}
+      {{with $s.SpecialInstructions}}<div><dt>For the driver</dt><dd class="pre">{{.}}</dd></div>{{end}}
+    </dl>
+  </section>
+
+  {{if and (not $d.D.POD) (not $d.Review) (ne $s.Status "cancelled")}}
+  <section class="card">
+    <div class="empty-state">
+      <span class="empty-icon">{{icon "signature"}}</span>
+      <p class="empty-title">No proof of delivery yet</p>
+      <p class="small muted">Photos, the receiver's signature and the hand-over time show up here once {{with $d.D.Driver}}{{firstName .FullName}}{{else}}the driver{{end}} delivers.</p>
+    </div>
+  </section>
+  {{end}}
+</aside>
+</div>
+{{end}}
+
+{{define "pod-sections"}}{{$d := .Data}}{{$s := $d.S}}{{$id := uuid $s.ID}}
   <div id="shipment-review" data-live-region>
   {{range $d.Review}}{{$pod := uuid .ID}}
   <section class="card pod" id="pod-{{$pod}}">
@@ -167,101 +328,4 @@ driver card and the note form are left alone, being forms in use. */}}
   </section>
   {{end}}
   </div>
-
-  <section class="card" id="shipment-details" data-live-region>
-    <div class="card-head"><h2>Details</h2></div>
-    <dl class="facts facts-2">
-      <div><dt>Customer</dt><dd>{{$s.CustomerName}}<br><a href="{{telURL $s.CustomerPhone}}">{{$s.CustomerPhone}}</a></dd></div>
-      {{if $s.ConsigneePhone}}<div><dt>Receiver</dt><dd>{{str $s.ConsigneeName}}<br><a href="{{telURL (str $s.ConsigneePhone)}}">{{str $s.ConsigneePhone}}</a></dd></div>{{end}}
-      <div><dt>Cargo</dt><dd>{{with $s.CargoDescription}}{{.}}{{else}}—{{end}}{{if hasNum $s.CargoWeight}}<br>{{kg $s.CargoWeight}}{{end}}{{if hasNum $s.CargoValue}} · {{money $s.CargoValue}}{{end}}</dd></div>
-      {{with $s.SpecialInstructions}}<div class="span-2"><dt>Instructions for the driver</dt><dd class="pre">{{.}}</dd></div>{{end}}
-      <div class="span-2"><dt>Customer tracking link</dt><dd><a href="{{$d.TrackURL}}" target="_blank" rel="noopener" class="mono small">{{$d.TrackURL}}</a> <button type="button" class="btn btn-sm btn-ghost" data-copy="{{$d.TrackURL}}">Copy</button></dd></div>
-    </dl>
-  </section>
-
-  {{with $d.D.Route}}{{$listed := 200}}
-  <section class="card card-flush">
-    <details class="locations">
-      <summary class="card-head"><h2>Location history</h2><span class="small muted">{{if $d.D.RouteCapped}}the newest {{end}}{{grouped (len .)}} {{if eq (len .) 1}}position{{else}}positions{{end}}</span></summary>
-      <p class="card-pad small">{{if gt (len .) $listed}}The newest {{$listed}} are listed here. {{end}}<a href="/app/shipments/{{$id}}/locations.csv" download>{{icon "download"}} Download every position as CSV</a></p>
-      <div class="table-wrap">
-      <table class="table table-compact">
-        <thead><tr><th>Recorded</th><th>Latitude, longitude</th><th class="num">Accuracy</th><th class="num">Speed</th><th class="num">Battery</th></tr></thead>
-        <tbody>{{range newestFirst $listed .}}
-          <tr><td>{{when .RecordedAt}}</td><td class="mono small">{{printf "%.5f" .Latitude}}, {{printf "%.5f" .Longitude}}</td>
-            <td class="num">{{if hasNum .AccuracyMeters}}{{printf "%.0f" (num .AccuracyMeters)}} m{{else}}—{{end}}</td>
-            <td class="num">{{if hasNum .SpeedKph}}{{printf "%.0f" (num .SpeedKph)}} km/h{{else}}—{{end}}</td>
-            <td class="num">{{with .BatteryLevel}}{{.}}%{{else}}—{{end}}</td></tr>
-        {{end}}</tbody>
-      </table>
-      </div>
-    </details>
-  </section>
-  {{end}}
-</div>
-
-<div class="col-side">
-  <section class="card">
-    <div class="card-head"><h2>Driver</h2></div>
-    {{with $d.D.Driver}}
-    <div class="person">
-      <span class="avatar avatar-lg">{{initials .FullName}}</span>
-      <div>
-        <a href="/app/drivers/{{uuid .ID}}"><strong>{{.FullName}}</strong></a>
-        {{with .Phone}}<br><a href="{{telURL .}}">{{icon "phone"}} {{.}}</a>{{end}}
-        {{with $d.D.Vehicle}}<br><span class="muted">{{.PlateNumber}}{{with .VehicleType}} · {{vehicleType .}}{{end}}</span>{{end}}
-      </div>
-    </div>
-    {{else}}
-    <p class="muted">Nobody is assigned yet.</p>
-    {{end}}
-    {{if $d.CanAssign}}
-    <details class="assign" {{if not $s.DriverID.Valid}}open{{end}}>
-      <summary class="btn btn-sm {{if not $s.DriverID.Valid}}btn-primary{{end}}">{{if $s.DriverID.Valid}}Reassign{{else}}Assign a driver{{end}}</summary>
-      <form method="post" action="/app/shipments/{{$id}}/assign" class="stack" data-assign-form>
-        <label>Driver
-          <select name="driver_id" required data-driver-select>
-            <option value="">Choose…</option>
-            {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive) (ne .ID $s.DriverID)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if eq .ID $s.DriverID}}selected{{end}} {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}
-          </select>
-        </label>
-        <label>Vehicle
-          <select name="vehicle_id" data-vehicle-select>
-            <option value="">The driver's usual vehicle</option>
-            {{range $d.Vehicles}}<option value="{{uuid .ID}}" {{if eq .ID $s.VehicleID}}selected{{end}}>{{.PlateNumber}}</option>{{end}}
-          </select>
-        </label>
-        <button class="btn btn-primary" type="submit">{{if $s.DriverID.Valid}}Reassign{{else}}Assign{{end}}</button>
-      </form>
-    </details>
-    {{end}}
-    {{if $d.CanUnassign}}
-    <form method="post" action="/app/shipments/{{$id}}/unassign" class="mt-s"><button class="btn btn-sm btn-ghost" type="submit">Take the driver off this shipment</button></form>
-    {{end}}
-  </section>
-
-  {{if not (isFinal $s.Status)}}
-  <section class="card">
-    <div class="card-head"><h2>Message or note</h2></div>
-    <form method="post" action="/app/shipments/{{$id}}/note" class="stack">
-      <textarea name="note" rows="3" required maxlength="1000" data-quick-target placeholder="{{if $s.DriverID.Valid}}Write to the driver, or add a note for the office{{else}}Add a note for the office{{end}}"></textarea>
-      {{if $s.DriverID.Valid}}<div class="quick" role="group" aria-label="Quick messages">{{range $d.Quick}}<button class="chip" type="button" data-quick="{{.}}">{{.}}</button>{{end}}</div>{{end}}
-      <div class="row-wrap">
-        {{if $s.DriverID.Valid}}
-        <label class="radio"><input type="radio" name="to" value="driver" checked> To the driver</label>
-        <label class="radio"><input type="radio" name="to" value="office"> Office note</label>
-        <label class="check"><input type="checkbox" name="sms" value="1"> Also by SMS</label>
-        {{else}}<input type="hidden" name="to" value="office">{{end}}
-      </div>
-      <button class="btn" type="submit">Send</button>
-    </form>
-  </section>
-  {{end}}
-
-  <section class="card" id="shipment-history" data-live-region>
-    <div class="card-head"><h2>History</h2></div>
-    {{template "timeline" (dict "Items" $d.Timeline)}}
-  </section>
-</div>
-</div>
 {{end}}

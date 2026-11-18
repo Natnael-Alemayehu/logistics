@@ -23,9 +23,11 @@ func TestMonitoring(t *testing.T) {
 	}
 
 	// The app is up as Prometheus sees it, and the figures are the app's:
-	// the requests it served, the texts it sent and the jobs it ran.
+	// the requests it served, the texts it sent and the jobs it ran. Each
+	// query comes to one number: staging runs two instances, and up has a
+	// series for each, so every one of them must be up.
 	for _, q := range []string{
-		`up{job="kiflet"}`,
+		`min(up{job="kiflet"})`,
 		`sum(kiflet_http_requests_total{job="kiflet"})`,
 		`sum(kiflet_messages_total{job="kiflet",channel="sms",result="sent"})`,
 		`count(kiflet_job_last_success_timestamp_seconds{job="kiflet"})`,
@@ -59,7 +61,8 @@ func grafana(t *testing.T, path string, out any) int {
 	return res.StatusCode
 }
 
-// query asks Prometheus, through Grafana, for one number; -1 if it has none.
+// query asks Prometheus, through Grafana, for one number; -1 if it has none,
+// or more than one (a query over several instances must aggregate them).
 func query(t *testing.T, q string) float64 {
 	t.Helper()
 	var res struct {

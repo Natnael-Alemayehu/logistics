@@ -61,6 +61,19 @@
 
     if (t.closest("[data-print]")) window.print();
 
+    // A link that opens a <details> elsewhere on the page, e.g. "Change"
+    // on the shipment's driver card opening the assign form.
+    const opener = t.closest("[data-open]");
+    if (opener) {
+      const target = document.getElementById(opener.dataset.open);
+      if (target instanceof HTMLDetailsElement) {
+        e.preventDefault();
+        target.open = true;
+        target.scrollIntoView({ block: "nearest" });
+        target.querySelector("select, input, button")?.focus();
+      }
+    }
+
     // A quick message goes into the form's message box (FR-035).
     const quick = t.closest("[data-quick]");
     if (quick) {
