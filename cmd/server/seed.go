@@ -276,6 +276,20 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 		if err := backdate(ctx, pool, sh.ID, created, picked, eta, delivered, rng.IntN(3) > 0); err != nil {
 			return err
 		}
+		// The trip's GPS trail, a position every five minutes on the road.
+		steps := max(6, int(delivered.Sub(picked).Minutes()/5))
+		trail := roadTrail(rng, r, *sh.OriginLat, *sh.OriginLng, lat, lng, 1, steps)
+		lats, lngs, ats := make([]float64, len(trail)), make([]float64, len(trail)), make([]time.Time, len(trail))
+		for k, pt := range trail {
+			lats[k], lngs[k] = pt[0], pt[1]
+			ats[k] = picked.Add(time.Duration(float64(delivered.Sub(picked)) * float64(k) / float64(steps)))
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO tracking_events (tenant_id, shipment_id, driver_id, coordinates, speed_kph, event_type, recorded_at, synced_at)
+		    SELECT $1, $2, $3, ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326), 40 + random() * 30, 'gps_ping', p.at, p.at
+		    FROM unnest($4::float8[], $5::float8[], $6::timestamptz[]) AS p(lat, lng, at)`,
+			tenantID, sh.ID, drivers[dr].ID, lats, lngs, ats); err != nil {
+			return fmt.Errorf("history trail: %w", err)
+		}
 		history = append(history, sh.ID)
 	}
 	// Their texts were for the past; don't send them now.
@@ -339,12 +353,9 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 			return err
 		}
 		var locs []service.SyncLocation
-		steps := max(6, int(hours*4))
-		for i := 0; i <= steps; i++ {
-			f := b.progress * float64(i) / float64(steps)
-			lat := *sh.OriginLat + (*sh.DestinationLat-*sh.OriginLat)*f
-			lng := *sh.OriginLng + (*sh.DestinationLng-*sh.OriginLng)*f
-			lat, lng = jitter(rng, lat, lng, 0.01*math.Sin(f*math.Pi))
+		steps := max(6, int(hours*30)) // a position every two minutes
+		for i, pt := range roadTrail(rng, b.route, *sh.OriginLat, *sh.OriginLng, *sh.DestinationLat, *sh.DestinationLng, b.progress, steps) {
+			lat, lng := pt[0], pt[1]
 			at := start.Add(time.Duration(float64(now.Sub(start)-3*time.Minute) * float64(i) / float64(steps)))
 			speed := 45 + rng.Float64()*25
 			locs = append(locs, service.SyncLocation{

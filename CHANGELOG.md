@@ -19,6 +19,22 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **A new dark theme.** Night is now a neutral dark grey instead of a teal
+  one, in the dashboard, the public pages and the driver app: surfaces
+  lighten as they rise, text is off-white, buttons are the light theme's
+  ink inverted, and the status colours are toned down so they don't glare
+  on a dark screen. Every text colour is at least 4.5:1 against every
+  surface (WCAG AA).
+- **The road a truck took, on the maps.** Picking a load on the overview's
+  map draws its truck's GPS trail so far, then a straight line for the
+  rest of the way; it was a straight line from the pickup before. On the
+  overview and a shipment's page, a stretch where the phone sent nothing
+  for over 20 minutes while the truck moved (the app was closed, or no
+  signal) is dashed, with how long, rather than drawn as road driven.
+- **Demo trails along the roads.** `make seed` gives every demo trip,
+  delivered ones included, a GPS trail along the real road (through Adama
+  and Awash to Djibouti, for one), not a straight line, and none at all
+  for the delivered ones before.
 - **The driver app in the dashboard's look** (the redesign, part 9). The
   same colours (Desk, and Night in dark mode), the Geist font, bundled so
   it works offline, the dark mark in place of the blue one, and the

@@ -105,10 +105,36 @@
     line: tok("--focus", "#8a867d"), surface: tok("--surface", "#fff"),
   };
 
+  // ---- a GPS trail -------------------------------------------------------------
+  // The road a truck took: its phone's positions joined up. Where the phone
+  // went quiet and the truck moved meanwhile (a gap), the line is dashed and
+  // says so, rather than passing for road driven. Returns the last solid
+  // line, which live positions extend.
+  const TRAIL = { color: C.info, weight: 3, opacity: 0.9 };
+  const TRAIL_GAP = { color: C.muted, weight: 2, opacity: 0.8, dashArray: "4 6" };
+
+  function minutes(n) {
+    return n < 90 ? n + " min" : Math.round(n / 60) + " h";
+  }
+
+  function drawTrail(layer, route, gaps) {
+    route = route || [];
+    let from = 0;
+    (gaps || []).forEach((g) => {
+      if (g.at <= from || g.at >= route.length) return;
+      if (g.at - from > 1) L.polyline(route.slice(from, g.at), TRAIL).addTo(layer);
+      L.polyline([route[g.at - 1], route[g.at]], TRAIL_GAP)
+        .bindTooltip("No positions for " + minutes(g.minutes) + ": the driver's app was closed or had no signal")
+        .addTo(layer);
+      from = g.at;
+    });
+    return L.polyline(route.slice(from), TRAIL).addTo(layer);
+  }
+
   // ---- fleet map --------------------------------------------------------------
   // Drivers at their last position, the destinations of active shipments and
   // a line from where each was collected, filtered by status, driver and
-  // region (FR-028).
+  // region (FR-028). Picking a load draws the road its truck took so far.
   const ROAD = ["in_transit", "delayed", "arrived", "issue"];
   const ATTENTION = ["delayed", "issue"];
   const ROUTE = { color: C.line, weight: 1.5, opacity: 0.7, dashArray: "5 6" };
@@ -119,6 +145,8 @@
     const meta = readJSON(el, "meta") || {};
     const drivers = new Map();
     const routes = L.layerGroup().addTo(map);
+    const picked = L.layerGroup().addTo(map);
+    const trails = new Map(); // shipment ID → its trail, fetched once a minute at most
     const dests = L.layerGroup().addTo(map);
     map.layersControl?.addOverlay(routes, "Routes");
     const controls = document.querySelector("[data-map-filters]");
@@ -233,17 +261,44 @@
             ),
           )
           .addTo(dests);
-        // The selected shipment's route stands out.
-        if (line) {
-          pin.on("popupopen", () => line.setStyle(ROUTE_ON).bringToFront());
-          pin.on("popupclose", () => line.setStyle(ROUTE));
-        }
+        // The picked shipment's route stands out: the road taken so far,
+        // or the straight line until its truck has sent a position.
+        pin.on("popupopen", () => {
+          if (line) line.setStyle(ROUTE_ON).bringToFront();
+          showTrail(s, line, pin);
+        });
+        pin.on("popupclose", () => {
+          if (line) line.setStyle(ROUTE);
+          picked.clearLayers();
+        });
       });
       if (count) {
         const on = filter.status || filter.driver || filter.region;
         count.textContent = on ? shown + (shown === 1 ? " shipment" : " shipments") : "";
       }
       if (refit) frame();
+    }
+
+    function showTrail(s, line, pin) {
+      const known = trails.get(s.id);
+      const fresh = known && Date.now() - known.at < 60000;
+      const draw = (t) => {
+        picked.clearLayers();
+        if (!t.route || t.route.length < 2) return;
+        if (line) line.setStyle(ROUTE);
+        drawTrail(picked, t.route, t.gaps);
+        // The rest of the way, as the crow flies.
+        L.polyline([t.route[t.route.length - 1], [s.lat, s.lng]], { ...ROUTE, interactive: false }).addTo(picked);
+      };
+      if (fresh) return draw(known.trail);
+      fetch("/app/shipments/" + s.id + "/trail", { headers: { Accept: "application/json" } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((t) => {
+          if (!t) return;
+          trails.set(s.id, { trail: t, at: Date.now() });
+          if (pin.isPopupOpen()) draw(t); // not if it was closed meanwhile
+        })
+        .catch(() => {});
     }
 
     function frame() {
@@ -314,7 +369,7 @@
       }).bindTooltip("Deliveries recorded inside this circle count as at the destination").addTo(map);
       pts.push([data.destination.lat, data.destination.lng]);
     }
-    const route = L.polyline(data.route || [], { color: C.info, weight: 3, opacity: 0.85 }).addTo(map);
+    const route = drawTrail(map, data.route, data.gaps);
     (data.route || []).forEach((p) => pts.push(p));
     let truck = null;
     const last = (data.route || []).slice(-1)[0];

@@ -23,9 +23,60 @@ type shipmentMapData struct {
 	Origin      *mapPoint   `json:"origin"`
 	Destination *mapPoint   `json:"destination"`
 	Route       [][]float64 `json:"route"`
+	Gaps        []routeGap  `json:"gaps"`
 	POD         *mapPoint   `json:"pod"`
 	Precise     bool        `json:"precise"`
 	Tolerance   float64     `json:"tolerance"`
+}
+
+// routeGap is where the trail has a hole: the phone sent nothing for a
+// while (the app was closed, or no signal) and the truck moved meanwhile.
+// The map draws the hole as a dashed line, not as road driven. At is the
+// index of the first position after the hole.
+type routeGap struct {
+	At      int `json:"at"`
+	Minutes int `json:"minutes"`
+}
+
+// A hole is a silence longer than the slowest the app reports (every 15
+// minutes, saving battery) over which the truck moved more than 2 km.
+const (
+	gapSilence = 20 * time.Minute
+	gapMoved   = 2000.0
+)
+
+// trail turns a shipment's positions into the map's line and its holes.
+func trail(pts []db.ListShipmentRouteRow) ([][]float64, []routeGap) {
+	route, gaps := make([][]float64, 0, len(pts)), []routeGap{}
+	for i, pt := range pts {
+		if i > 0 {
+			prev := pts[i-1]
+			silence := pt.RecordedAt.Time.Sub(prev.RecordedAt.Time)
+			if silence > gapSilence && geo.DistanceMeters(prev.Latitude, prev.Longitude, pt.Latitude, pt.Longitude) > gapMoved {
+				gaps = append(gaps, routeGap{At: i, Minutes: int(silence.Minutes())})
+			}
+		}
+		route = append(route, []float64{pt.Latitude, pt.Longitude})
+	}
+	return route, gaps
+}
+
+// shipmentTrail is a shipment's trail for the overview's map, fetched when
+// a load is picked on it.
+func (s *Server) shipmentTrail(w http.ResponseWriter, r *http.Request) {
+	p := principal(r)
+	id, err := pathID(r, "id")
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	pts, err := s.svc.Shipments.Trail(r.Context(), p.TenantID, id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	route, gaps := trail(pts)
+	writeJSON(w, http.StatusOK, map[string]any{"route": route, "gaps": gaps})
 }
 
 type mapPoint struct {
@@ -53,16 +104,14 @@ func (s *Server) shipmentDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sh := d.Shipment
-	m := shipmentMapData{Route: [][]float64{}, Precise: sh.DestinationPrecise, Tolerance: geo.DeliveryTolerance(sh.DestinationPrecise)}
+	m := shipmentMapData{Precise: sh.DestinationPrecise, Tolerance: geo.DeliveryTolerance(sh.DestinationPrecise)}
 	if sh.OriginLat != nil && sh.OriginLng != nil {
 		m.Origin = &mapPoint{*sh.OriginLat, *sh.OriginLng, sh.OriginAddress}
 	}
 	if sh.DestinationLat != nil && sh.DestinationLng != nil {
 		m.Destination = &mapPoint{*sh.DestinationLat, *sh.DestinationLng, sh.DestinationAddress}
 	}
-	for _, pt := range d.Route {
-		m.Route = append(m.Route, []float64{pt.Latitude, pt.Longitude})
-	}
+	m.Route, m.Gaps = trail(d.Route)
 	if d.POD != nil && (d.POD.DeliveryLatitude != 0 || d.POD.DeliveryLongitude != 0) {
 		m.POD = &mapPoint{d.POD.DeliveryLatitude, d.POD.DeliveryLongitude, "Delivered to " + d.POD.RecipientName}
 	}

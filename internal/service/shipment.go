@@ -947,6 +947,16 @@ func (s *ShipmentService) Positions(ctx context.Context, tenantID, id pgtype.UUI
 	return sh, pts, err
 }
 
+// Trail is the shipment's GPS trail as its page draws it (the newest
+// routePoints positions), for the overview's map.
+func (s *ShipmentService) Trail(ctx context.Context, tenantID, id pgtype.UUID) ([]db.ListShipmentRouteRow, error) {
+	sh, err := s.Get(ctx, tenantID, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.route(ctx, sh, routePoints)
+}
+
 func (s *ShipmentService) route(ctx context.Context, sh db.Shipment, max int32) ([]db.ListShipmentRouteRow, error) {
 	start, end := shipmentWindow(sh, s.now())
 	return s.q.ListShipmentRoute(ctx, db.ListShipmentRouteParams{
