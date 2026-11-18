@@ -24,7 +24,7 @@
 </section>
 {{end}}
 
-<section class="kpis" data-live-region id="dash-kpis" aria-label="Today at a glance">
+<section class="kpis kpis-5" data-live-region id="dash-kpis" aria-label="Today at a glance">
   <a class="kpi" href="/app/shipments?tab=active"><span class="kpi-n">{{$d.Active}}</span><span class="kpi-l">Active</span>{{icon "package"}}</a>
   <a class="kpi" href="/app/drivers"><span class="kpi-n">{{$d.OnDuty}}<span class="kpi-of"> / {{$d.ActiveDrivers}}</span></span><span class="kpi-l">Drivers on duty</span>{{icon "user-round"}}</a>
   <a class="kpi {{if $d.Attention}}kpi-warn{{end}}" href="/app/shipments?tab=attention"><span class="kpi-n">{{$d.Attention}}</span><span class="kpi-l">Late or with a problem</span>{{icon "triangle-alert"}}</a>
