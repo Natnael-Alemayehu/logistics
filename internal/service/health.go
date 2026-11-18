@@ -21,6 +21,7 @@ var jobSchedule = []struct {
 	{"eta_check", "Shipments past their due time", time.Minute},
 	{"pickup_check", "Late pickups", time.Minute},
 	{"route_check", "Trucks heading away from the destination", time.Minute},
+	{"stop_check", "Long stops outside a town", time.Minute},
 	{"outbox_requeue", "Stuck texts and emails", time.Minute},
 	{"billing", "Renewals, reminders and read-only", time.Minute},
 	{"plan_limits", "Plan limits", usageEvery},

@@ -292,12 +292,15 @@ LIMIT 500;
 -- ListPickupOverdue. The episode identifies the ETA the alert is about.
 -- Loads already alerted for that ETA are left out, so a backlog of more
 -- than a run's worth is worked through, oldest first, over the next runs.
+-- How late counts is the company's rule (alert_rules.late_minutes).
 SELECT s.id, s.tenant_id, s.tracking_number, s.driver_id, s.estimated_delivery,
        floor(extract(epoch FROM s.estimated_delivery))::bigint::text AS episode
 FROM shipments s
+LEFT JOIN alert_rules r ON r.tenant_id = s.tenant_id
 WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
+  AND COALESCE(r.late_on, true)
   AND s.estimated_delivery IS NOT NULL
-  AND s.estimated_delivery < NOW()
+  AND s.estimated_delivery < NOW() - make_interval(mins => COALESCE(r.late_minutes, 0))
   AND NOT EXISTS (
       SELECT 1 FROM alerts a
       WHERE a.tenant_id = s.tenant_id AND a.alert_type = 'eta_exceeded' AND a.shipment_id = s.id

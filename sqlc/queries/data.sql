@@ -109,7 +109,7 @@ WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 -- (AC-041.6).
 UPDATE users
 SET full_name = sqlc.arg(full_name), phone = NULL, email = NULL, password_hash = NULL, pin_hash = NULL,
-    email_verified_at = NULL, alert_emails = '{}', language = NULL, vehicle_id = NULL, licence_expires_on = NULL,
+    email_verified_at = NULL, alert_emails = '{}', alert_sms = '{}', language = NULL, vehicle_id = NULL, licence_expires_on = NULL,
     anonymised_at = NOW(), updated_at = NOW()
 WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id) AND NOT is_active AND anonymised_at IS NULL
 RETURNING id;

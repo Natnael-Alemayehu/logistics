@@ -1077,6 +1077,15 @@ the requirement, what Kiflet does instead, and why.
   are emailed about, rather than one setting per company.
 - **History (AC-033.5)**: alerts are kept 90 days, not 30, the same as GPS
   points, so an alert can be read alongside the route it was about.
+- **Rules (AC-033.1)**: the thresholds are the company's to set, not fixed:
+  late after 0 to 1,440 minutes past the ETA, offline after 15 minutes to a
+  day, off the route at 2 to 200 km, and each of these and drivers' reports
+  can be turned off. Customer reports, deliveries to check and papers are
+  always alerted. A long stop (standing still outside a town) is an alert
+  the requirements don't have.
+- **SMS copies**: besides email (AC-033.4), an administrator can have
+  alerts, all or only problems, texted to members of staff. They count
+  against the company's texts.
 - **Papers (not in the requirements)**: a driver's licence and a vehicle's
   insurance and annual inspection (ቦሎ) each have an expiry date. The office
   is alerted 30 days before, and critically once it has passed; recording

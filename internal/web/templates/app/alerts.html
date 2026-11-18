@@ -1,18 +1,105 @@
-{{define "content"}}{{$d := .Data}}
+{{define "content"}}{{$d := .Data}}{{$r := $d.Rules}}{{$admin := .Me.CanManageCompany}}
 <div class="page-head">
   <div>
     <h1>Alerts</h1>
-    <p class="muted">{{if $d.All}}All alerts{{else}}{{$d.Total}} waiting to be dealt with{{end}}</p>
+    <p class="muted">Problems on the road that need someone to act</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/app/account#alerts">{{icon "bell"}}My alert emails</a>
   </div>
 </div>
-<nav class="tabs" aria-label="Alert filter">
-  <a href="/app/alerts" {{if and (not $d.All) (not $d.Severity)}}aria-current="page"{{end}}>Open</a>
-  <a href="/app/alerts?severity=critical" {{if eq $d.Severity "critical"}}aria-current="page"{{end}}>Critical</a>
-  <a href="/app/alerts?all=1" {{if $d.All}}aria-current="page"{{end}}>All, including dismissed</a>
-</nav>
-<section class="card">
-  {{template "alert-items" (dict "Alerts" $d.Alerts "Back" (print .Path "?" .Query.Encode))}}
-</section>
-{{template "pager" (dict "Page" $d.Page "Pages" $d.Pages "Query" .Query)}}
-<p class="muted small">Alerts are raised when a shipment passes its due time, a driver reports a delay or problem, a delivery is recorded away from the destination, a driver's app has been silent for four hours with work assigned, or a customer reports a problem.</p>
+
+<div class="grid-detail">
+<div class="col-main">
+  <nav class="tabs" aria-label="Alert groups">
+    <a href="/app/alerts{{with $d.Type}}?type={{.}}{{end}}" {{if eq $d.Tab ""}}aria-current="page"{{end}}>Open <span class="badge">{{index $d.Counts ""}}</span></a>
+    <a href="/app/alerts?tab=resolved{{with $d.Type}}&amp;type={{.}}{{end}}" {{if eq $d.Tab "resolved"}}aria-current="page"{{end}}>Resolved today <span class="badge">{{index $d.Counts "resolved"}}</span></a>
+    <a href="/app/alerts?tab=all{{with $d.Type}}&amp;type={{.}}{{end}}" {{if eq $d.Tab "all"}}aria-current="page"{{end}}>All</a>
+  </nav>
+  <section class="card card-flush">
+    <div class="list-toolbar">
+      <form method="get" action="/app/alerts" class="alert-type-filter">
+        {{with $d.Tab}}<input type="hidden" name="tab" value="{{.}}">{{end}}
+        <label><span class="sr-only">Type</span>
+          <select name="type" data-autosubmit>
+            <option value="">Every type</option>
+            {{range $d.Types}}<option value="{{.}}" {{if eq . $d.Type}}selected{{end}}>{{alertLabel .}}</option>{{end}}
+          </select>
+        </label>
+        <noscript><button class="btn btn-sm" type="submit">Show</button></noscript>
+      </form>
+      <span class="muted small">{{$d.Total}} {{if eq $d.Total 1}}alert{{else}}alerts{{end}}</span>
+    </div>
+    <div data-live-region id="alert-items">
+    {{template "alert-items" (dict "Alerts" $d.Alerts "Back" (print .Path "?" .Query.Encode))}}
+    </div>
+    {{if gt $d.Pages 1}}<div class="card-foot list-foot"><span></span>{{template "pager" (dict "Page" $d.Page "Pages" $d.Pages "Query" .Query)}}</div>{{end}}
+  </section>
+
+  {{if and (eq $d.Tab "") $d.Resolved}}
+  <section class="card">
+    <div class="card-head"><div><h2>Resolved today</h2><p class="muted small">{{index $d.Counts "resolved"}} closed since midnight</p></div>{{if gt (index $d.Counts "resolved") (len $d.Resolved)}}<a class="small" href="/app/alerts?tab=resolved">All of them</a>{{end}}</div>
+    <ul class="resolved-list">
+      {{range $d.Resolved}}
+      <li>
+        <time class="mono small muted" datetime="{{rfc3339 .AcknowledgedAt}}">{{clock .AcknowledgedAt}}</time>
+        <div>
+          <p>{{.Message}}</p>
+          <p class="muted small">{{with .ResolutionNote}}{{.}} · {{end}}{{with .ResolvedByName}}{{.}}{{else}}Resolved by itself{{end}}</p>
+        </div>
+      </li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
+</div>
+
+<aside class="col-side">
+  <section class="card" id="rules">
+    <div class="card-head"><div><h2>When we alert you</h2><p class="muted small">Applies to every shipment</p></div></div>
+    <form method="post" action="/app/alerts/rules" class="rules">
+      <fieldset {{if not $admin}}disabled{{end}} class="plain">
+      <div class="rule">
+        <label class="switch"><input type="checkbox" name="problems_on" value="1" {{if $r.ProblemsOn}}checked{{end}}><span class="sr-only">On</span></label>
+        <div><strong>Driver reports a problem</strong><p class="muted small">A breakdown, an accident, a police stop or a closed road, and delays</p></div>
+      </div>
+      <div class="rule">
+        <label class="switch"><input type="checkbox" name="late_on" value="1" {{if $r.LateOn}}checked{{end}}><span class="sr-only">On</span></label>
+        <div><strong>Running late</strong><p class="muted small"><label>More than <input class="num-in" name="late_minutes" type="number" inputmode="numeric" min="0" max="1440" value="{{$r.LateMinutes}}"> min behind the ETA</label></p></div>
+      </div>
+      <div class="rule">
+        <label class="switch"><input type="checkbox" name="offline_on" value="1" {{if $r.OfflineOn}}checked{{end}}><span class="sr-only">On</span></label>
+        <div><strong>Phone offline</strong><p class="muted small"><label>Not heard from for <input class="num-in" name="offline_minutes" type="number" inputmode="numeric" min="15" max="1440" value="{{$r.OfflineMinutes}}"> min while carrying a load</label></p></div>
+      </div>
+      <div class="rule">
+        <label class="switch"><input type="checkbox" name="stop_on" value="1" {{if $r.StopOn}}checked{{end}}><span class="sr-only">On</span></label>
+        <div><strong>Long stop</strong><p class="muted small"><label>Stopped over <input class="num-in" name="stop_minutes" type="number" inputmode="numeric" min="10" max="720" value="{{$r.StopMinutes}}"> min outside a town</label></p></div>
+      </div>
+      <div class="rule">
+        <label class="switch"><input type="checkbox" name="route_on" value="1" {{if $r.RouteOn}}checked{{end}}><span class="sr-only">On</span></label>
+        <div><strong>Off the route</strong><p class="muted small"><label><input class="num-in" name="route_km" type="number" inputmode="numeric" min="2" max="200" value="{{$r.RouteKm}}"> km further from the destination than an hour before</label></p></div>
+      </div>
+      {{if $admin}}<button class="btn btn-sm" type="submit">Save rules</button>{{else}}<p class="hint">An administrator can change these.</p>{{end}}
+      </fieldset>
+    </form>
+    <p class="hint">Problems customers report, deliveries that need checking, and papers about to run out are always alerted.</p>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Who gets them</h2>{{if $admin}}<a class="small" href="/app/alerts/recipients">Edit</a>{{end}}</div>
+    <ul class="people-list">
+      {{range $d.Recipients}}
+      <li>
+        <span class="avatar avatar-sm" aria-hidden="true">{{initials .User.FullName}}</span>
+        <div><strong>{{.User.FullName}}</strong> <span class="muted small">· {{roleLabel .User.Role}}</span>
+          <p class="muted small">{{template "alert-channels" .}}</p></div>
+      </li>
+      {{end}}
+    </ul>
+    <p class="hint">Everyone sees every alert here. These are the copies sent by email or text.</p>
+  </section>
+</aside>
+</div>
 {{end}}
+
+{{define "alert-channels"}}{{$e := .Email}}{{$s := .SMS}}{{if and (eq $e "none") (eq $s "none")}}On this page only{{else}}{{if ne $e "none"}}{{if eq $e "all"}}Every alert{{else if eq $e "problems"}}Problems only{{else}}Some alerts{{end}} by email{{end}}{{if and (ne $e "none") (ne $s "none")}}; {{end}}{{if ne $s "none"}}{{if eq $s "all"}}every alert{{else if eq $s "problems"}}problems only{{else}}some alerts{{end}} by SMS{{end}}{{end}}{{end}}

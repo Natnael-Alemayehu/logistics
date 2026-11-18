@@ -15,6 +15,7 @@ const acknowledgeAlert = `-- name: AcknowledgeAlert :exec
 UPDATE alerts
 SET acknowledged_at = COALESCE(acknowledged_at, NOW()),
     acknowledged_by = COALESCE(acknowledged_by, $3),
+    resolution_note = COALESCE(resolution_note, $4),
     read_at = COALESCE(read_at, NOW())
 WHERE id = $1 AND tenant_id = $2
 `
@@ -23,10 +24,16 @@ type AcknowledgeAlertParams struct {
 	ID             pgtype.UUID `db:"id" json:"id"`
 	TenantID       pgtype.UUID `db:"tenant_id" json:"tenant_id"`
 	AcknowledgedBy pgtype.UUID `db:"acknowledged_by" json:"acknowledged_by"`
+	ResolutionNote *string     `db:"resolution_note" json:"resolution_note"`
 }
 
 func (q *Queries) AcknowledgeAlert(ctx context.Context, arg AcknowledgeAlertParams) error {
-	_, err := q.db.Exec(ctx, acknowledgeAlert, arg.ID, arg.TenantID, arg.AcknowledgedBy)
+	_, err := q.db.Exec(ctx, acknowledgeAlert,
+		arg.ID,
+		arg.TenantID,
+		arg.AcknowledgedBy,
+		arg.ResolutionNote,
+	)
 	return err
 }
 
@@ -44,6 +51,19 @@ type AcknowledgeDriverAlertsParams struct {
 // A driver who syncs again is no longer offline.
 func (q *Queries) AcknowledgeDriverAlerts(ctx context.Context, arg AcknowledgeDriverAlertsParams) error {
 	_, err := q.db.Exec(ctx, acknowledgeDriverAlerts, arg.DriverID, arg.AlertType)
+	return err
+}
+
+const acknowledgeMovedStops = `-- name: AcknowledgeMovedStops :exec
+UPDATE alerts
+SET acknowledged_at = NOW(), read_at = COALESCE(read_at, NOW())
+WHERE alert_type = 'long_stop' AND acknowledged_at IS NULL
+  AND NOT (shipment_id = ANY($1::uuid[]))
+`
+
+// A truck that has moved on is no longer on a long stop.
+func (q *Queries) AcknowledgeMovedStops(ctx context.Context, stillStopped []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, acknowledgeMovedStops, stillStopped)
 	return err
 }
 
@@ -137,16 +157,26 @@ SELECT COUNT(*) FROM alerts
 WHERE tenant_id = $1
   AND (NOT $2::bool OR acknowledged_at IS NULL)
   AND (cardinality($3::text[]) = 0 OR severity = ANY($3::text[]))
+  AND ($4::text IS NULL OR alert_type = $4::text)
+  AND ($5::timestamptz IS NULL OR acknowledged_at >= $5::timestamptz)
 `
 
 type CountAlertsParams struct {
-	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	OpenOnly   bool        `db:"open_only" json:"open_only"`
-	Severities []string    `db:"severities" json:"severities"`
+	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	OpenOnly      bool               `db:"open_only" json:"open_only"`
+	Severities    []string           `db:"severities" json:"severities"`
+	AlertType     *string            `db:"alert_type" json:"alert_type"`
+	ResolvedSince pgtype.Timestamptz `db:"resolved_since" json:"resolved_since"`
 }
 
 func (q *Queries) CountAlerts(ctx context.Context, arg CountAlertsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countAlerts, arg.TenantID, arg.OpenOnly, arg.Severities)
+	row := q.db.QueryRow(ctx, countAlerts,
+		arg.TenantID,
+		arg.OpenOnly,
+		arg.Severities,
+		arg.AlertType,
+		arg.ResolvedSince,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -177,7 +207,7 @@ const createAlert = `-- name: CreateAlert :one
 INSERT INTO alerts (tenant_id, shipment_id, driver_id, vehicle_id, alert_type, severity, message, episode)
 VALUES ($1, $2, $3, $7, $4, $5, $6, $8)
 ON CONFLICT DO NOTHING
-RETURNING id, tenant_id, shipment_id, driver_id, alert_type, severity, message, created_at, read_at, acknowledged_at, acknowledged_by, episode, vehicle_id
+RETURNING id, tenant_id, shipment_id, driver_id, alert_type, severity, message, created_at, read_at, acknowledged_at, acknowledged_by, episode, vehicle_id, resolution_note
 `
 
 type CreateAlertParams struct {
@@ -220,6 +250,7 @@ func (q *Queries) CreateAlert(ctx context.Context, arg CreateAlertParams) (Alert
 		&i.AcknowledgedBy,
 		&i.Episode,
 		&i.VehicleID,
+		&i.ResolutionNote,
 	)
 	return i, err
 }
@@ -233,26 +264,55 @@ func (q *Queries) DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestam
 	return err
 }
 
+const getAlertRules = `-- name: GetAlertRules :one
+SELECT tenant_id, problems_on, late_on, late_minutes, offline_on, offline_minutes, stop_on, stop_minutes, route_on, route_km, updated_at, updated_by FROM alert_rules WHERE tenant_id = $1
+`
+
+func (q *Queries) GetAlertRules(ctx context.Context, tenantID pgtype.UUID) (AlertRule, error) {
+	row := q.db.QueryRow(ctx, getAlertRules, tenantID)
+	var i AlertRule
+	err := row.Scan(
+		&i.TenantID,
+		&i.ProblemsOn,
+		&i.LateOn,
+		&i.LateMinutes,
+		&i.OfflineOn,
+		&i.OfflineMinutes,
+		&i.StopOn,
+		&i.StopMinutes,
+		&i.RouteOn,
+		&i.RouteKm,
+		&i.UpdatedAt,
+		&i.UpdatedBy,
+	)
+	return i, err
+}
+
 const listAlerts = `-- name: ListAlerts :many
-SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, a.episode, a.vehicle_id, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone,
-       vh.plate_number AS vehicle_plate
+SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, a.episode, a.vehicle_id, a.resolution_note, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone,
+       vh.plate_number AS vehicle_plate, rb.full_name AS resolved_by_name
 FROM alerts a
 LEFT JOIN shipments s ON s.id = a.shipment_id
 LEFT JOIN users d ON d.id = a.driver_id
 LEFT JOIN vehicles vh ON vh.id = a.vehicle_id
+LEFT JOIN users rb ON rb.id = a.acknowledged_by
 WHERE a.tenant_id = $1
   AND (NOT $2::bool OR a.acknowledged_at IS NULL)
   AND (cardinality($3::text[]) = 0 OR a.severity = ANY($3::text[]))
+  AND ($4::text IS NULL OR a.alert_type = $4::text)
+  AND ($5::timestamptz IS NULL OR a.acknowledged_at >= $5::timestamptz)
 ORDER BY a.created_at DESC
-LIMIT $5 OFFSET $4
+LIMIT $7 OFFSET $6
 `
 
 type ListAlertsParams struct {
-	TenantID   pgtype.UUID `db:"tenant_id" json:"tenant_id"`
-	OpenOnly   bool        `db:"open_only" json:"open_only"`
-	Severities []string    `db:"severities" json:"severities"`
-	RowOffset  int32       `db:"row_offset" json:"row_offset"`
-	RowLimit   int32       `db:"row_limit" json:"row_limit"`
+	TenantID      pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	OpenOnly      bool               `db:"open_only" json:"open_only"`
+	Severities    []string           `db:"severities" json:"severities"`
+	AlertType     *string            `db:"alert_type" json:"alert_type"`
+	ResolvedSince pgtype.Timestamptz `db:"resolved_since" json:"resolved_since"`
+	RowOffset     int32              `db:"row_offset" json:"row_offset"`
+	RowLimit      int32              `db:"row_limit" json:"row_limit"`
 }
 
 type ListAlertsRow struct {
@@ -269,6 +329,7 @@ type ListAlertsRow struct {
 	AcknowledgedBy  pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
 	Episode         *string            `db:"episode" json:"episode"`
 	VehicleID       pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
+	ResolutionNote  *string            `db:"resolution_note" json:"resolution_note"`
 	TrackingNumber  *string            `db:"tracking_number" json:"tracking_number"`
 	DestinationCity *string            `db:"destination_city" json:"destination_city"`
 	CustomerName    *string            `db:"customer_name" json:"customer_name"`
@@ -276,6 +337,7 @@ type ListAlertsRow struct {
 	DriverName      *string            `db:"driver_name" json:"driver_name"`
 	DriverPhone     *string            `db:"driver_phone" json:"driver_phone"`
 	VehiclePlate    *string            `db:"vehicle_plate" json:"vehicle_plate"`
+	ResolvedByName  *string            `db:"resolved_by_name" json:"resolved_by_name"`
 }
 
 func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error) {
@@ -283,6 +345,8 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 		arg.TenantID,
 		arg.OpenOnly,
 		arg.Severities,
+		arg.AlertType,
+		arg.ResolvedSince,
 		arg.RowOffset,
 		arg.RowLimit,
 	)
@@ -307,6 +371,7 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 			&i.AcknowledgedBy,
 			&i.Episode,
 			&i.VehicleID,
+			&i.ResolutionNote,
 			&i.TrackingNumber,
 			&i.DestinationCity,
 			&i.CustomerName,
@@ -314,6 +379,7 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 			&i.DriverName,
 			&i.DriverPhone,
 			&i.VehiclePlate,
+			&i.ResolvedByName,
 		); err != nil {
 			return nil, err
 		}
@@ -337,5 +403,73 @@ type MarkAlertsSeenParams struct {
 
 func (q *Queries) MarkAlertsSeen(ctx context.Context, arg MarkAlertsSeenParams) error {
 	_, err := q.db.Exec(ctx, markAlertsSeen, arg.UserID, arg.TenantID)
+	return err
+}
+
+const setAlertChannels = `-- name: SetAlertChannels :exec
+UPDATE users SET alert_emails = $1, alert_sms = $2
+WHERE id = $3 AND tenant_id = $4 AND role <> 'driver'
+`
+
+type SetAlertChannelsParams struct {
+	AlertEmails []string    `db:"alert_emails" json:"alert_emails"`
+	AlertSms    []string    `db:"alert_sms" json:"alert_sms"`
+	ID          pgtype.UUID `db:"id" json:"id"`
+	TenantID    pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+// Which alert types a member of staff is emailed and texted.
+func (q *Queries) SetAlertChannels(ctx context.Context, arg SetAlertChannelsParams) error {
+	_, err := q.db.Exec(ctx, setAlertChannels,
+		arg.AlertEmails,
+		arg.AlertSms,
+		arg.ID,
+		arg.TenantID,
+	)
+	return err
+}
+
+const upsertAlertRules = `-- name: UpsertAlertRules :exec
+INSERT INTO alert_rules (tenant_id, problems_on, late_on, late_minutes, offline_on, offline_minutes,
+                         stop_on, stop_minutes, route_on, route_km, updated_by)
+VALUES ($1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        $11)
+ON CONFLICT (tenant_id) DO UPDATE
+SET problems_on = EXCLUDED.problems_on, late_on = EXCLUDED.late_on, late_minutes = EXCLUDED.late_minutes,
+    offline_on = EXCLUDED.offline_on, offline_minutes = EXCLUDED.offline_minutes,
+    stop_on = EXCLUDED.stop_on, stop_minutes = EXCLUDED.stop_minutes,
+    route_on = EXCLUDED.route_on, route_km = EXCLUDED.route_km,
+    updated_by = EXCLUDED.updated_by, updated_at = NOW()
+`
+
+type UpsertAlertRulesParams struct {
+	TenantID       pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	ProblemsOn     bool        `db:"problems_on" json:"problems_on"`
+	LateOn         bool        `db:"late_on" json:"late_on"`
+	LateMinutes    int32       `db:"late_minutes" json:"late_minutes"`
+	OfflineOn      bool        `db:"offline_on" json:"offline_on"`
+	OfflineMinutes int32       `db:"offline_minutes" json:"offline_minutes"`
+	StopOn         bool        `db:"stop_on" json:"stop_on"`
+	StopMinutes    int32       `db:"stop_minutes" json:"stop_minutes"`
+	RouteOn        bool        `db:"route_on" json:"route_on"`
+	RouteKm        int32       `db:"route_km" json:"route_km"`
+	UpdatedBy      pgtype.UUID `db:"updated_by" json:"updated_by"`
+}
+
+func (q *Queries) UpsertAlertRules(ctx context.Context, arg UpsertAlertRulesParams) error {
+	_, err := q.db.Exec(ctx, upsertAlertRules,
+		arg.TenantID,
+		arg.ProblemsOn,
+		arg.LateOn,
+		arg.LateMinutes,
+		arg.OfflineOn,
+		arg.OfflineMinutes,
+		arg.StopOn,
+		arg.StopMinutes,
+		arg.RouteOn,
+		arg.RouteKm,
+		arg.UpdatedBy,
+	)
 	return err
 }

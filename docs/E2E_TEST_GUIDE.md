@@ -363,16 +363,34 @@ The alert types are:
 - late shipments;
 - loads not collected;
 - problems and delays;
-- drivers quiet for four hours while carrying cargo;
+- drivers quiet while carrying cargo (four hours by default);
 - deliveries far from the destination;
 - **Moving away from the destination**: a load in transit that has got more
-  than 20 km further from its destination over the last hour. Testing this
-  takes an hour of real positions, so `TestHeadingAwayFromTheDestination`
-  covers it.
+  than 20 km (by default) further from its destination over the last hour.
+  Testing this takes an hour of real positions, so
+  `TestHeadingAwayFromTheDestination` covers it;
+- **Long stop**: a truck on the road standing within 300 m of one spot,
+  more than 3 km from any town, for 45 minutes (by default). It resolves
+  itself when the truck moves on. `TestLongStop` covers it;
+- licences, insurance and inspections running out.
+
+**When we alert you**, beside the list, holds the company's rules: each of
+problems reported by drivers, running late, phone offline, long stop and off
+the route can be turned off, and the last four have a threshold. Only an
+administrator can change them. Set **Running late** to 60 minutes and save:
+a load 30 minutes past its ETA raises nothing until the hour has passed.
 
 Each delivery also raises an information alert. Turn it off with **Settings →
-Alert the office when a shipment is delivered**. Dismiss alerts one at a time,
-or mark all read.
+Alert the office when a shipment is delivered**.
+
+**Resolve** asks what was done (optional). The alert moves to **Resolved
+today**, under the open ones, with the note and who resolved it; one that
+resolved itself says so. The **Type** list shows one kind of alert.
+
+**Who gets them → Edit** (administrators): for each member of staff, every
+alert or problems only, by email and by SMS. Give yourself **Problems only**
+by SMS, then send `ET 7K3M 5 flat tyre` from the driver's phone: the alert
+is texted to you (the server terminal shows it). A late load is not.
 
 The bell's count is each person's own: it counts alerts raised since that
 person last opened the list. Opening it as the dispatcher leaves the admin's

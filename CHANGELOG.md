@@ -6,6 +6,15 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **Alerts redesigned, with rules** (the redesign, part 6). A company sets
+  when it is alerted: problems reported by drivers, running late (by how
+  much), phone offline (for how long), a long stop outside a town (new) and
+  leaving the route (by how far), each of which can be turned off. An
+  alert is resolved with a note of what was done, and the page lists what
+  was resolved today and by whom. An administrator chooses who also gets
+  alerts by email or SMS, every alert or problems only. The office's
+  "customer reported a problem" alerts now offer to text the customer, as
+  they were meant to.
 - **Drivers and vehicles redesigned, with their papers** (the redesign,
   part 5). A driver has a licence expiry date, and a vehicle its insurance
   and annual inspection (ቦሎ) dates. The office is alerted 30 days before

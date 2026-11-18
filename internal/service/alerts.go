@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -38,7 +41,7 @@ const (
 )
 
 // resolvedByCompletion are the alerts a shipment's completion makes moot.
-var resolvedByCompletion = []string{AlertETAExceeded, AlertDelayReported, AlertIssueReported, AlertDriverOffline, AlertPickupOverdue}
+var resolvedByCompletion = []string{AlertETAExceeded, AlertDelayReported, AlertIssueReported, AlertDriverOffline, AlertPickupOverdue, AlertLongStop}
 
 var alertLabels = map[string]string{
 	AlertIssueReported:      "Issue reported",
@@ -58,6 +61,7 @@ var alertLabels = map[string]string{
 	AlertSMSPaused:          "Texts paused",
 	AlertDelivered:          "Delivered",
 	AlertRouteDeviation:     "Moving away from the destination",
+	AlertLongStop:           "Long stop",
 	AlertLicenceDue:         "Driving licence running out",
 	AlertInsuranceDue:       "Insurance running out",
 	AlertInspectionDue:      "Inspection (ቦሎ) due",
@@ -67,7 +71,7 @@ var alertLabels = map[string]string{
 // them for email, most urgent first.
 var AlertTypes = []string{
 	AlertIssueReported, AlertDeliveryHeld, AlertCustomerIssue, AlertDeliveryOnCanceled,
-	AlertDelayReported, AlertETAExceeded, AlertPickupOverdue, AlertRouteDeviation, AlertDriverOffline,
+	AlertDelayReported, AlertETAExceeded, AlertPickupOverdue, AlertRouteDeviation, AlertLongStop, AlertDriverOffline,
 	AlertPODLocation, AlertDeliveredNoPOD, AlertSyncConflict,
 	AlertLicenceDue, AlertInsuranceDue, AlertInspectionDue,
 	AlertDelivered, AlertDriverMessage, AlertDriverLimitNear, AlertSMSQuotaNear, AlertSMSPaused,
@@ -102,6 +106,9 @@ type newAlert struct {
 // dashboards after commit. An identical open alert, or an earlier alert of
 // the same episode, makes this a no-op.
 func (c *core) raise(ctx context.Context, q *db.Queries, after *afterCommit, a newAlert) {
+	if !c.ruleAllows(ctx, q, a.TenantID, a.Type) {
+		return
+	}
 	row, err := q.CreateAlert(ctx, db.CreateAlertParams{
 		TenantID:   a.TenantID,
 		ShipmentID: a.ShipmentID,
@@ -120,6 +127,7 @@ func (c *core) raise(ctx context.Context, q *db.Queries, after *afterCommit, a n
 		return
 	}
 	c.emailAlert(ctx, q, after, row)
+	c.smsAlert(ctx, q, after, row)
 	after.do(func() {
 		c.publish(row.TenantID, "alert", map[string]any{
 			"id":          row.ID.String(),
@@ -175,10 +183,14 @@ func (s *AlertService) SetAlertEmails(ctx context.Context, p *Principal, types [
 
 // AlertFilter narrows the alert list.
 type AlertFilter struct {
-	OpenOnly   bool
-	Severities []string
-	Page       int
-	PerPage    int
+	OpenOnly bool
+	// Type is one alert type, or empty for all.
+	Type string
+	// ResolvedSince, when set, keeps the alerts resolved since then.
+	ResolvedSince time.Time
+	Severities    []string
+	Page          int
+	PerPage       int
 }
 
 // List returns a page of alerts and the total matching.
@@ -188,13 +200,19 @@ func (s *AlertService) List(ctx context.Context, tenantID pgtype.UUID, f AlertFi
 	if sev == nil {
 		sev = []string{}
 	}
+	var since pgtype.Timestamptz
+	if !f.ResolvedSince.IsZero() {
+		since = toTimestamp(f.ResolvedSince)
+	}
 	rows, err := s.q.ListAlerts(ctx, db.ListAlertsParams{
-		TenantID: tenantID, OpenOnly: f.OpenOnly, Severities: sev, RowLimit: limit, RowOffset: offset,
+		TenantID: tenantID, OpenOnly: f.OpenOnly, Severities: sev, AlertType: toText(f.Type), ResolvedSince: since,
+		RowLimit: limit, RowOffset: offset,
 	})
 	if err != nil {
 		return nil, 0, err
 	}
-	total, err := s.q.CountAlerts(ctx, db.CountAlertsParams{TenantID: tenantID, OpenOnly: f.OpenOnly, Severities: sev})
+	total, err := s.q.CountAlerts(ctx, db.CountAlertsParams{TenantID: tenantID, OpenOnly: f.OpenOnly, Severities: sev,
+		AlertType: toText(f.Type), ResolvedSince: since})
 	return rows, total, err
 }
 
@@ -205,9 +223,16 @@ func (s *AlertService) Unread(ctx context.Context, p *Principal) (int64, error) 
 }
 
 // Acknowledge marks an alert handled.
-func (s *AlertService) Acknowledge(ctx context.Context, p *Principal, id pgtype.UUID) error {
-	return s.q.AcknowledgeAlert(ctx, db.AcknowledgeAlertParams{ID: id, TenantID: p.TenantID, AcknowledgedBy: p.UserID})
+func (s *AlertService) Acknowledge(ctx context.Context, p *Principal, id pgtype.UUID, note string) error {
+	note = strings.TrimSpace(note)
+	if utf8.RuneCountInString(note) > 300 {
+		return invalid("note", "Keep the note to 300 characters.")
+	}
+	return s.q.AcknowledgeAlert(ctx, db.AcknowledgeAlertParams{ID: id, TenantID: p.TenantID, AcknowledgedBy: p.UserID, ResolutionNote: toText(note)})
 }
+
+// TodayStart is when the company's day began, for "resolved today".
+func (s *AlertService) TodayStart() time.Time { return s.startOfDay() }
 
 // MarkSeen clears this person's badge, not anyone else's.
 func (s *AlertService) MarkSeen(ctx context.Context, p *Principal) error {

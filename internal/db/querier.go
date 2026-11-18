@@ -14,6 +14,8 @@ type Querier interface {
 	AcknowledgeAlert(ctx context.Context, arg AcknowledgeAlertParams) error
 	// A driver who syncs again is no longer offline.
 	AcknowledgeDriverAlerts(ctx context.Context, arg AcknowledgeDriverAlertsParams) error
+	// A truck that has moved on is no longer on a long stop.
+	AcknowledgeMovedStops(ctx context.Context, stillStopped []pgtype.UUID) error
 	// Papers renewed: what was open about the old date is resolved.
 	AcknowledgePapersAlerts(ctx context.Context, arg AcknowledgePapersAlertsParams) error
 	// A shipment that reaches a final state resolves whatever was open on it.
@@ -180,6 +182,7 @@ type Querier interface {
 	GetAPIKeyByHash(ctx context.Context, keyHash string) (GetAPIKeyByHashRow, error)
 	GetActiveSessionByTokenHash(ctx context.Context, arg GetActiveSessionByTokenHashParams) (Session, error)
 	GetActiveVerificationCode(ctx context.Context, arg GetActiveVerificationCodeParams) (VerificationCode, error)
+	GetAlertRules(ctx context.Context, tenantID pgtype.UUID) (AlertRule, error)
 	GetCompanyTicket(ctx context.Context, arg GetCompanyTicketParams) (GetCompanyTicketRow, error)
 	GetDriverDeliveryCounts(ctx context.Context, arg GetDriverDeliveryCountsParams) (GetDriverDeliveryCountsRow, error)
 	// One driver's record over a period, for the driver page.
@@ -256,6 +259,8 @@ type Querier interface {
 	// Office staff who asked to have alerts of this type emailed to them, at a
 	// confirmed address.
 	ListAlertEmailRecipients(ctx context.Context, arg ListAlertEmailRecipientsParams) ([]ListAlertEmailRecipientsRow, error)
+	// Office staff who asked to have alerts of this type texted to them.
+	ListAlertSMSRecipients(ctx context.Context, arg ListAlertSMSRecipientsParams) ([]ListAlertSMSRecipientsRow, error)
 	ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error)
 	ListAllInvoices(ctx context.Context, arg ListAllInvoicesParams) ([]ListAllInvoicesRow, error)
 	ListAllUsersForPlatform(ctx context.Context, tenantID pgtype.UUID) ([]ListAllUsersForPlatformRow, error)
@@ -285,6 +290,12 @@ type Querier interface {
 	ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error)
 	ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]Invoice, error)
 	ListJobRuns(ctx context.Context) ([]JobRun, error)
+	// Across tenants. Loads on the road whose truck has stood within 300 m of
+	// where it is now for the company's stop_minutes (alert_rules) or longer,
+	// going by fixes from the last 20 minutes. The stop began at the first fix
+	// after the last one more than 300 m away; it is the episode, so each stop
+	// is raised once. Whether it is in a town is decided by the caller.
+	ListLongStops(ctx context.Context) ([]ListLongStopsRow, error)
 	// Unpaid renewal and usage invoices past their due date, until the company
 	// has been told it is read-only.
 	ListOverdueDebts(ctx context.Context, dueAt pgtype.Timestamptz) ([]Invoice, error)
@@ -293,6 +304,7 @@ type Querier interface {
 	// ListPickupOverdue. The episode identifies the ETA the alert is about.
 	// Loads already alerted for that ETA are left out, so a backlog of more
 	// than a run's worth is worked through, oldest first, over the next runs.
+	// How late counts is the company's rule (alert_rules.late_minutes).
 	ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error)
 	ListPODMediaForShipments(ctx context.Context, ids []pgtype.UUID) ([]ListPODMediaForShipmentsRow, error)
 	// The papers check: every active driver's licence and every vehicle's
@@ -325,11 +337,11 @@ type Querier interface {
 	ListReviewPODs(ctx context.Context, arg ListReviewPODsParams) ([]ListReviewPODsRow, error)
 	// Across tenants. Loads on the road whose truck is heading away from the
 	// destination: its latest fix, from the last half hour, is more than
-	// min_gain metres further from the destination than a fix from about an
-	// hour earlier. There is no road routing offline, so this is the deviation
+	// the company's route_km (alert_rules) further from the destination than a
+	// fix from about an hour earlier. There is no road routing offline, so this is the deviation
 	// that can be told from GPS alone (FR-033). The episode, the six-hour
 	// window of the latest fix, raises at most one alert per load that often.
-	ListRouteDeviations(ctx context.Context, minGain float64) ([]ListRouteDeviationsRow, error)
+	ListRouteDeviations(ctx context.Context) ([]ListRouteDeviationsRow, error)
 	ListSMSByTenant(ctx context.Context, arg ListSMSByTenantParams) ([]ListSMSByTenantRow, error)
 	ListSavedFilters(ctx context.Context, arg ListSavedFiltersParams) ([]SavedFilter, error)
 	ListShipmentCharges(ctx context.Context, arg ListShipmentChargesParams) ([]ShipmentCharge, error)
@@ -363,8 +375,9 @@ type Querier interface {
 	// Drivers carrying a shipment who have not been heard from since the cutoff.
 	// Last contact is the later of the last app sync and the shipment's last
 	// status change, so a driver reporting by SMS counts as in touch and one who
-	// never installed the app is still caught.
-	ListStaleActiveDrivers(ctx context.Context, lastSyncAt pgtype.Timestamptz) ([]ListStaleActiveDriversRow, error)
+	// never installed the app is still caught. How long counts as quiet is the
+	// company's rule (alert_rules.offline_minutes, four hours by default).
+	ListStaleActiveDrivers(ctx context.Context) ([]ListStaleActiveDriversRow, error)
 	// Every company's tickets for the platform: waiting for an answer first.
 	ListSupportInbox(ctx context.Context, status *string) ([]ListSupportInboxRow, error)
 	ListTenantActivity(ctx context.Context, arg ListTenantActivityParams) ([]ListTenantActivityRow, error)
@@ -488,6 +501,8 @@ type Querier interface {
 	// the request that opened them: not signed out or expired, the person
 	// active, and their company not suspended.
 	SessionStillValid(ctx context.Context, id pgtype.UUID) (bool, error)
+	// Which alert types a member of staff is emailed and texted.
+	SetAlertChannels(ctx context.Context, arg SetAlertChannelsParams) error
 	SetAlertEmails(ctx context.Context, arg SetAlertEmailsParams) error
 	SetCustomerConfirmation(ctx context.Context, arg SetCustomerConfirmationParams) (Shipment, error)
 	// A problem report: the customer has answered but not confirmed receipt.
@@ -548,6 +563,7 @@ type Querier interface {
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 	UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error)
 	UpdateWebhookEndpoint(ctx context.Context, arg UpdateWebhookEndpointParams) (WebhookEndpoint, error)
+	UpsertAlertRules(ctx context.Context, arg UpsertAlertRulesParams) error
 	UpsertSyncMetadata(ctx context.Context, arg UpsertSyncMetadataParams) error
 	VoidInvoice(ctx context.Context, arg VoidInvoiceParams) (int64, error)
 	// For the billing job, across companies: a plan invoice left unpaid past

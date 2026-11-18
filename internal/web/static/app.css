@@ -643,6 +643,39 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .alert-meta .alert-ref { color: var(--muted); font-size: 0.75rem; }
 .alert-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .alert-actions form { margin: 0; }
+.alert-item.is-done { opacity: 1; }
+.alert-item.is-done .alert-title, .alert-item.is-done .alert-msg { color: var(--muted); }
+.alert-resolution { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px !important; color: var(--good); font-size: 0.8125rem; }
+.alert-resolution .i { width: 14px; height: 14px; margin-top: 2px; flex: none; }
+.alert-resolve .pop-panel { width: min(320px, 80vw); }
+.alert-type-filter { display: flex; gap: 8px; align-items: center; margin: 0; }
+.alert-type-filter select { height: 32px; }
+
+/* Resolved today: a time, what it was, what was done. */
+.resolved-list { list-style: none; margin: 0; padding: 0; }
+.resolved-list li { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 0.875rem; }
+.resolved-list li:first-child { border-top: 0; padding-top: 0; }
+.resolved-list p { margin: 0; }
+
+/* The alert rules: a switch, then what it is with its threshold. */
+.rules fieldset { display: flex; flex-direction: column; gap: 14px; }
+.rules fieldset > .btn { align-self: flex-start; }
+.rule { display: flex; gap: 12px; align-items: flex-start; }
+.rule p { margin: 2px 0 0; }
+.rule label { display: inline; font-weight: inherit; }
+.rule input.num-in { width: 4.5em; height: 26px; min-height: 0; padding: 0 6px; margin: 0 2px; font-size: 0.8125rem; text-align: right; font-variant-numeric: tabular-nums; }
+.switch { position: relative; display: inline-flex; flex: none; margin-top: 2px; }
+.switch input { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; margin: 0; border-radius: 999px; background: var(--border-strong); cursor: pointer; transition: background 0.15s; }
+.switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.2); transition: transform 0.15s; }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(14px); }
+.switch input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch input:disabled { cursor: default; opacity: 0.6; }
+
+/* People, one to a line, with an avatar. */
+.people-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.people-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.875rem; }
+.people-list p { margin: 2px 0 0; }
 .empty-line { padding: 12px 0; }
 .sent-list { list-style: none; margin: 0; padding: 0; }
 .sent-list li { padding: 12px 18px; border-top: 1px solid var(--border); }

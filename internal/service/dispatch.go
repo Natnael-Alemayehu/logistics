@@ -209,16 +209,11 @@ func (s *ShipmentService) Broadcast(ctx context.Context, a Actor, text string) (
 // Route deviation
 // ---------------------------------------------------------------------------
 
-// deviationGain is how much further from the destination a truck must get
-// over about an hour to count as heading the wrong way: more than GPS
-// error, a detour around a closed road, or a stop off the road.
-const deviationGain = 20000.0
-
 // CheckRoutes alerts on loads whose truck is heading away from the
 // destination (FR-033 "route deviation"), at most once per load every six
 // hours.
 func (j *Jobs) CheckRoutes(ctx context.Context) error {
-	off, err := j.q.ListRouteDeviations(ctx, deviationGain)
+	off, err := j.q.ListRouteDeviations(ctx)
 	if err != nil {
 		return err
 	}
