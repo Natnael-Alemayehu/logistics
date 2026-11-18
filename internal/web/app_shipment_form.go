@@ -54,6 +54,7 @@ func shipmentFormValues(sh db.Shipment, loc *time.Location) url.Values {
 		"cargo_description":    {deref(sh.CargoDescription)},
 		"cargo_weight":         {numStr(toFloat(sh.CargoWeight))},
 		"cargo_value":          {numStr(toFloat(sh.CargoValue))},
+		"cargo_pieces":         {service.FormatPieces(sh.CargoPieces, sh.CargoUnit)},
 		"special_instructions": {deref(sh.SpecialInstructions)},
 	}
 	if sh.DestinationPrecise {
@@ -129,6 +130,7 @@ func (s *Server) shipmentInput(r *http.Request) service.ShipmentInput {
 		CargoDescription:    r.PostFormValue("cargo_description"),
 		CargoWeightKg:       num("cargo_weight"),
 		CargoValueETB:       num("cargo_value"),
+		CargoPiecesText:     r.PostFormValue("cargo_pieces"),
 		SpecialInstructions: r.PostFormValue("special_instructions"),
 		DriverID:            r.PostFormValue("driver_id"),
 		VehicleID:           r.PostFormValue("vehicle_id"),
@@ -217,4 +219,27 @@ func (s *Server) shipmentUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setFlash(w, "success", "Changes saved.")
 	http.Redirect(w, r, "/app/shipments/"+sh.ID.String(), http.StatusSeeOther)
+}
+
+// shipmentEstimate answers the booking form's summary as it is filled in:
+// the distance by road between two towns and when a load would arrive.
+func (s *Server) shipmentEstimate(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var start time.Time
+	if t, err := time.ParseInLocation("2006-01-02T15:04", q.Get("pickup"), s.cfg.Timezone); err == nil {
+		start = t
+	}
+	est, ok, err := s.svc.Shipments.Estimate(r.Context(), principal(r).TenantID, q.Get("from"), q.Get("to"), start)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"known": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"known": true, "road_km": est.RoadKM, "hours": est.Hours, "from_history": est.FromHistory,
+		"start": formatWhen(est.Start, s.cfg.Timezone), "arrive": formatWhen(est.Arrive, s.cfg.Timezone),
+	})
 }

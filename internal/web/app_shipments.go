@@ -315,7 +315,7 @@ func (s *Server) shipmentCSV(w http.ResponseWriter, r *http.Request, f service.S
 	cw := csv.NewWriter(w)
 	_ = cw.Write([]string{"Tracking number", "Status", "Priority", "Created", "Customer", "Customer phone", "Receiver", "Receiver phone",
 		"Origin", "Origin address", "Destination", "Destination address", "Driver", "Vehicle",
-		"Cargo", "Weight (kg)", "Value (ETB)", "ETA", "Picked up", "Delivered", "On time"})
+		"Cargo", "Pieces", "Weight (kg)", "Value (ETB)", "ETA", "Picked up", "Delivered", "On time"})
 	loc := s.cfg.Timezone
 	ts := func(v any) string {
 		t, ok := toTime(v)
@@ -345,7 +345,7 @@ func (s *Server) shipmentCSV(w http.ResponseWriter, r *http.Request, f service.S
 				csvSafe(sh.CustomerName), sh.CustomerPhone, csvSafe(deref(sh.ConsigneeName)), deref(sh.ConsigneePhone),
 				deref(sh.OriginCity), csvSafe(sh.OriginAddress), deref(sh.DestinationCity), csvSafe(sh.DestinationAddress),
 				csvSafe(deref(row.DriverName)), deref(row.VehiclePlate),
-				csvSafe(deref(sh.CargoDescription)), numStr(toFloat(sh.CargoWeight)), numStr(toFloat(sh.CargoValue)),
+				csvSafe(deref(sh.CargoDescription)), csvSafe(service.FormatPieces(sh.CargoPieces, sh.CargoUnit)), numStr(toFloat(sh.CargoWeight)), numStr(toFloat(sh.CargoValue)),
 				ts(sh.EstimatedDelivery), ts(sh.PickedUpAt), ts(sh.ActualDelivery), onTime,
 			})
 		}

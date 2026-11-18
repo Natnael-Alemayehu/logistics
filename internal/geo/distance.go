@@ -49,7 +49,7 @@ const (
 	drivingHoursDay   = 10.0
 	restHoursPerDay   = 14.0
 	handlingHours     = 3.0
-	minHistorySamples = 5
+	MinHistorySamples = 5
 )
 
 // EstimateTransit returns the expected time from departure to delivery between
@@ -59,7 +59,7 @@ const (
 // median of those real transit times is used instead, since it already
 // accounts for the particular road, border and customer.
 func EstimateTransit(fromLat, fromLng, toLat, toLng float64, historyHours []float64) time.Duration {
-	if len(historyHours) >= minHistorySamples {
+	if len(historyHours) >= MinHistorySamples {
 		sorted := append([]float64(nil), historyHours...)
 		sort.Float64s(sorted)
 		mid := len(sorted) / 2
@@ -70,9 +70,15 @@ func EstimateTransit(fromLat, fromLng, toLat, toLng float64, historyHours []floa
 		return time.Duration(median * float64(time.Hour))
 	}
 
-	roadKM := DistanceMeters(fromLat, fromLng, toLat, toLng) / 1000 * roadFactor
+	roadKM := RoadKM(fromLat, fromLng, toLat, toLng)
 	driving := roadKM / averageSpeedKPH
 	restDays := math.Floor(driving / drivingHoursDay)
 	total := driving + restDays*restHoursPerDay + handlingHours
 	return time.Duration(total * float64(time.Hour))
+}
+
+// RoadKM is the expected distance by road between two points: the straight
+// line, lengthened by roadFactor.
+func RoadKM(fromLat, fromLng, toLat, toLng float64) float64 {
+	return DistanceMeters(fromLat, fromLng, toLat, toLng) / 1000 * roadFactor
 }

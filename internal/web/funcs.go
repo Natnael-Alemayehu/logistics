@@ -107,6 +107,7 @@ func (s *Server) funcs() template.FuncMap {
 		"asset":     func(p string) string { return "/static/" + p + "?v=" + s.version },
 		"icon":      icon,
 		"tripStage": tripStage,
+		"pieces":    service.FormatPieces,
 		// section is the part of the dashboard a page belongs to, for the
 		// breadcrumb: its name and address.
 		"section": func(nav string) navSection { return navSections[nav] },
@@ -130,12 +131,7 @@ func (s *Server) funcs() template.FuncMap {
 			if !ok {
 				return "—"
 			}
-			t = t.In(loc)
-			now := time.Now().In(loc)
-			if t.Year() == now.Year() {
-				return t.Format("Mon 2 Jan, 15:04")
-			}
-			return t.Format("2 Jan 2006, 15:04")
+			return formatWhen(t, loc)
 		},
 		"date": func(v any) string {
 			t, ok := toTime(v)
@@ -664,4 +660,14 @@ var statusIcons = map[string]string{
 	model.StatusDelivered: "circle-check-big",
 	model.StatusIssue:     "triangle-alert",
 	model.StatusCancelled: "x",
+}
+
+// formatWhen writes a moment as the dashboard does, in the operating time
+// zone: "Mon 2 Jan, 15:04", with the year when it isn't this one.
+func formatWhen(t time.Time, loc *time.Location) string {
+	t = t.In(loc)
+	if t.Year() == time.Now().In(loc).Year() {
+		return t.Format("Mon 2 Jan, 15:04")
+	}
+	return t.Format("2 Jan 2006, 15:04")
 }

@@ -178,6 +178,7 @@ func (in apiShipmentInput) apply(to *service.ShipmentInput) {
 	}
 	if c := in.Cargo; c != nil {
 		to.CargoDescription, to.CargoWeightKg, to.CargoValueETB = c.Description, c.WeightKg, c.ValueETB
+		to.CargoPieces, to.CargoUnit = c.Pieces, c.Unit
 	}
 	if in.Instructions != nil {
 		to.SpecialInstructions = *in.Instructions

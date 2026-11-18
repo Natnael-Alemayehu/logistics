@@ -146,7 +146,7 @@
   <tr {{if eq (uuid $s.ID) $d.Highlight}}class="is-highlight"{{end}} data-href="/app/shipments/{{uuid $s.ID}}">
     {{if $d.Pending}}<td class="pick">{{if eq $s.Status "pending"}}<input type="checkbox" name="id" value="{{uuid $s.ID}}" form="bulk-assign" data-pick aria-label="Tick {{$s.TrackingNumber}}">{{end}}</td>{{end}}
     <td data-col="shipment"><a class="mono" href="/app/shipments/{{uuid $s.ID}}">{{mark $d.Search $s.TrackingNumber}}</a>{{template "priority" $s.Priority}}
-      <div class="muted small">{{with $s.CargoDescription}}{{truncate 40 .}}{{else}}—{{end}}{{if hasNum $s.CargoWeight}} · {{kg $s.CargoWeight}}{{end}}</div></td>
+      <div class="muted small">{{with $s.CargoDescription}}{{truncate 40 .}}{{else}}—{{end}}{{with pieces $s.CargoPieces $s.CargoUnit}} · {{.}}{{end}}{{if hasNum $s.CargoWeight}} · {{kg $s.CargoWeight}}{{end}}</div></td>
     <td data-col="route"><span class="route">{{with $s.OriginCity}}{{.}}{{else}}{{truncate 24 $s.OriginAddress}}{{end}} <span aria-label="to">→</span> {{with $s.DestinationCity}}{{.}}{{else}}{{truncate 24 $s.DestinationAddress}}{{end}}</span></td>
     <td data-col="customer">{{mark $d.Search $s.CustomerName}}<div class="muted small">{{mark $d.Search $s.CustomerPhone}}</div>{{if $s.ConsigneePhone}}<div class="muted small">to {{mark $d.Search (str $s.ConsigneeName)}} {{mark $d.Search (str $s.ConsigneePhone)}}</div>{{end}}</td>
     <td data-col="driver">{{with .DriverName}}<span class="person-cell"><span class="avatar avatar-sm" aria-hidden="true">{{initials .}}</span><span>{{mark $d.Search .}}</span></span>{{else}}<span class="muted">Unassigned</span>{{end}}

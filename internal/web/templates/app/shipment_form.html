@@ -3,96 +3,114 @@
 {{define "content"}}{{$d := .Data}}{{$f := .Form}}{{$e := .Errors}}{{$edit := $d.Shipment}}
 <div class="page-head">
   <div>
-    {{if $edit}}<p class="crumbs"><a href="/app/shipments">Shipments</a> / <a href="/app/shipments/{{uuid $edit.ID}}">{{$edit.TrackingNumber}}</a></p>{{end}}
-    <h1>{{if $edit}}Edit shipment{{else}}New shipment{{end}}</h1>
-    {{if $edit}}{{if $edit.DriverID.Valid}}<p class="muted">The driver is told about changes to the route, customer or instructions on their next sync.</p>{{end}}{{end}}
+    <h1>{{if $edit}}Edit {{$edit.TrackingNumber}}{{else}}Book a shipment{{end}}</h1>
+    <p>{{if $edit}}{{if $edit.DriverID.Valid}}The driver is told about changes to the route, customer or instructions on their next sync.{{else}}Change the load, the route or the customer.{{end}}{{else}}Fill in the load and where it goes. The customer gets a tracking link by SMS.{{end}}</p>
   </div>
+  <div class="actions"><a class="btn btn-ghost" href="{{if $edit}}/app/shipments/{{uuid $edit.ID}}{{else}}/app/shipments{{end}}">Cancel</a></div>
 </div>
 {{template "form-error" .}}
 
 <form method="post" action="{{if $edit}}/app/shipments/{{uuid $edit.ID}}/edit{{else}}/app/shipments{{end}}" class="form-cols" data-shipment-form novalidate>
 <div class="form-main">
-  <fieldset class="card">
-    <legend>Pickup</legend>
+  <section class="card form-section">
+    <div class="card-head"><div><h2>Customer</h2><p>Who the load is for, and who gets the SMS updates</p></div></div>
     <div class="row-2">
-      <label>Town
-        <input name="origin_city" value="{{field $f "origin_city" ""}}" list="towns" autocomplete="off" required data-town="origin" {{if index $e "origin_city"}}aria-invalid="true"{{end}}>
-        {{template "field-error" (index $e "origin_city")}}
-      </label>
-      <label>Address or site
-        <input name="origin_address" value="{{field $f "origin_address" ""}}" placeholder="e.g. Kality warehouse, gate 2" required {{if index $e "origin_address"}}aria-invalid="true"{{end}}>
-        {{template "field-error" (index $e "origin_address")}}
-      </label>
-    </div>
-    <input type="hidden" name="origin_lat" value="{{field $f "origin_lat" ""}}">
-    <input type="hidden" name="origin_lng" value="{{field $f "origin_lng" ""}}">
-  </fieldset>
-
-  <fieldset class="card">
-    <legend>Delivery</legend>
-    <div class="row-2">
-      <label>Town
-        <input name="destination_city" value="{{field $f "destination_city" ""}}" list="towns" autocomplete="off" required data-town="destination" {{if index $e "destination_city"}}aria-invalid="true"{{end}}>
-        {{template "field-error" (index $e "destination_city")}}
-      </label>
-      <label>Address or site
-        <input name="destination_address" value="{{field $f "destination_address" ""}}" placeholder="e.g. Merkato, Anwar mosque area, shop 14" required {{if index $e "destination_address"}}aria-invalid="true"{{end}}>
-        {{template "field-error" (index $e "destination_address")}}
-      </label>
-    </div>
-    <details class="pin-picker" {{if field $f "destination_lat" ""}}open{{end}}>
-      <summary>Pin the exact drop-off on a map <span class="muted">(optional — tightens the delivery location check from the town to 500 m)</span></summary>
-      <div class="map map-picker" data-map="picker" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}} data-lat="destination_lat" data-lng="destination_lng" data-town-input="destination"></div>
-      <p class="small muted">Click the map to place the pin; drag it to adjust. <button type="button" class="link" data-clear-pin>Remove pin</button></p>
-      {{template "field-error" (index $e "destination_lat")}}
-    </details>
-    <input type="hidden" name="destination_lat" value="{{field $f "destination_lat" ""}}">
-    <input type="hidden" name="destination_lng" value="{{field $f "destination_lng" ""}}">
-  </fieldset>
-
-  <fieldset class="card">
-    <legend>Customer</legend>
-    <div class="row-2">
-      <label>Name
-        <input name="customer_name" value="{{field $f "customer_name" ""}}" required autocomplete="off" {{if index $e "customer_name"}}aria-invalid="true"{{end}}>
+      <label>Customer
+        <input name="customer_name" value="{{field $f "customer_name" ""}}" required autocomplete="off" placeholder="Company or person" {{if index $e "customer_name"}}aria-invalid="true"{{end}}>
         {{template "field-error" (index $e "customer_name")}}
       </label>
-      <label>Phone
+      <label>Phone for SMS updates
         <input name="customer_phone" type="tel" inputmode="tel" value="{{field $f "customer_phone" ""}}" placeholder="09… or +251…" required {{if index $e "customer_phone"}}aria-invalid="true"{{end}}>
-        <span class="hint">They get tracking updates by SMS.</span>
+        <span class="hint">We text the tracking link and the delivery confirmation.</span>
         {{template "field-error" (index $e "customer_phone")}}
       </label>
     </div>
-  </fieldset>
+    <details class="sub-fields" {{if or (field $f "consignee_name" "") (field $f "consignee_phone" "") (index $e "consignee_name") (index $e "consignee_phone")}}open{{end}}>
+      <summary>{{icon "plus"}}Someone else takes delivery</summary>
+      <p class="small muted">They get the texts too, the driver calls them, and the link to confirm receipt goes to them. Leave both empty when the customer takes delivery.</p>
+      <div class="row-2">
+        <label>Receiver
+          <input name="consignee_name" value="{{field $f "consignee_name" ""}}" autocomplete="off" {{if index $e "consignee_name"}}aria-invalid="true"{{end}}>
+          {{template "field-error" (index $e "consignee_name")}}
+        </label>
+        <label>Receiver's phone
+          <input name="consignee_phone" type="tel" inputmode="tel" value="{{field $f "consignee_phone" ""}}" placeholder="09… or +251…" {{if index $e "consignee_phone"}}aria-invalid="true"{{end}}>
+          {{template "field-error" (index $e "consignee_phone")}}
+        </label>
+      </div>
+    </details>
+  </section>
 
-  <fieldset class="card">
-    <legend>Receiver, if not the customer</legend>
-    <p class="small muted">Who takes delivery at the destination. They get the texts too, the driver calls them, and the link to confirm receipt goes to them. Leave both empty when the customer takes delivery.</p>
-    <div class="row-2">
-      <label>Name
-        <input name="consignee_name" value="{{field $f "consignee_name" ""}}" autocomplete="off" {{if index $e "consignee_name"}}aria-invalid="true"{{end}}>
-        {{template "field-error" (index $e "consignee_name")}}
+  <section class="card form-section">
+    <div class="card-head"><div><h2>Route and pickup</h2></div></div>
+    <fieldset class="plain">
+      <legend>Pick up from</legend>
+      <div class="row-2">
+        <label>Town
+          <input name="origin_city" value="{{field $f "origin_city" ""}}" list="towns" autocomplete="off" required data-town="origin" {{if index $e "origin_city"}}aria-invalid="true"{{end}}>
+          {{template "field-error" (index $e "origin_city")}}
+        </label>
+        <label>Address or landmark
+          <input name="origin_address" value="{{field $f "origin_address" ""}}" placeholder="e.g. Kality warehouse, gate 2" required {{if index $e "origin_address"}}aria-invalid="true"{{end}}>
+          {{template "field-error" (index $e "origin_address")}}
+        </label>
+      </div>
+      <input type="hidden" name="origin_lat" value="{{field $f "origin_lat" ""}}">
+      <input type="hidden" name="origin_lng" value="{{field $f "origin_lng" ""}}">
+    </fieldset>
+    <fieldset class="plain">
+      <legend>Deliver to</legend>
+      <div class="row-2">
+        <label>Town
+          <input name="destination_city" value="{{field $f "destination_city" ""}}" list="towns" autocomplete="off" required data-town="destination" {{if index $e "destination_city"}}aria-invalid="true"{{end}}>
+          {{template "field-error" (index $e "destination_city")}}
+        </label>
+        <label>Address or landmark
+          <input name="destination_address" value="{{field $f "destination_address" ""}}" placeholder="e.g. Merkato, Anwar mosque area, shop 14" required {{if index $e "destination_address"}}aria-invalid="true"{{end}}>
+          {{template "field-error" (index $e "destination_address")}}
+        </label>
+      </div>
+      <details class="pin-picker sub-fields" {{if field $f "destination_lat" ""}}open{{end}}>
+        <summary>{{icon "map-pin"}}Pin the exact drop-off on a map</summary>
+        <p class="small muted">Optional. With a pin, a delivery recorded more than 500 m from it is flagged; without one, anywhere within 15 km of the town counts.</p>
+        <div class="map map-picker" data-map="picker" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" {{with .App.SatelliteURL}}data-satellite="{{.}}" data-satellite-credit="{{$.App.SatelliteCredit}}"{{end}} data-lat="destination_lat" data-lng="destination_lng" data-town-input="destination"></div>
+        <p class="small muted">Click the map to place the pin; drag it to adjust. <button type="button" class="link" data-clear-pin>Remove pin</button></p>
+        {{template "field-error" (index $e "destination_lat")}}
+      </details>
+      <input type="hidden" name="destination_lat" value="{{field $f "destination_lat" ""}}">
+      <input type="hidden" name="destination_lng" value="{{field $f "destination_lng" ""}}">
+    </fieldset>
+    <div class="row-2 section-split">
+      <label>Pickup <span class="muted small">optional</span>
+        <input type="datetime-local" name="planned_pickup" value="{{field $f "planned_pickup" ""}}" {{if index $e "planned_pickup"}}aria-invalid="true"{{end}}>
+        <span class="hint">When the load is ready. Still waiting two hours later, you get an alert.</span>
+        {{template "field-error" (index $e "planned_pickup")}}
       </label>
-      <label>Phone
-        <input name="consignee_phone" type="tel" inputmode="tel" value="{{field $f "consignee_phone" ""}}" placeholder="09… or +251…" {{if index $e "consignee_phone"}}aria-invalid="true"{{end}}>
-        {{template "field-error" (index $e "consignee_phone")}}
+      <label>Due by <span class="muted small">optional</span>
+        <input type="datetime-local" name="estimated_delivery" value="{{field $f "estimated_delivery" ""}}" {{if index $e "estimated_delivery"}}aria-invalid="true"{{end}}>
+        <span class="hint">{{if $edit}}{{if $edit.EstimatedDelivery.Valid}}{{if not $edit.EtaManual}}Now estimated for {{when $edit.EstimatedDelivery}}. {{end}}{{end}}{{end}}Leave empty to estimate it from the route and your past trips.</span>
+        {{template "field-error" (index $e "estimated_delivery")}}
       </label>
     </div>
-  </fieldset>
+  </section>
 
-  <fieldset class="card">
-    <legend>Cargo</legend>
-    <label>What is being carried
-      <input name="cargo_description" value="{{field $f "cargo_description" ""}}" placeholder="e.g. 200 bags of cement" {{if index $e "cargo_description"}}aria-invalid="true"{{end}}>
+  <section class="card form-section">
+    <div class="card-head"><div><h2>Load</h2></div></div>
+    <label>What are you carrying?
+      <textarea name="cargo_description" rows="2" placeholder="e.g. Cement, in 50 kg bags" {{if index $e "cargo_description"}}aria-invalid="true"{{end}}>{{field $f "cargo_description" ""}}</textarea>
       {{template "field-error" (index $e "cargo_description")}}
     </label>
-    <div class="row-2">
-      <label>Weight (kg)
-        <input name="cargo_weight" inputmode="decimal" value="{{field $f "cargo_weight" ""}}" {{if index $e "cargo_weight"}}aria-invalid="true"{{end}}>
+    <div class="row-3">
+      <label>Weight
+        <span class="input-group"><input name="cargo_weight" inputmode="decimal" value="{{field $f "cargo_weight" ""}}" {{if index $e "cargo_weight"}}aria-invalid="true"{{end}}><span class="addon">kg</span></span>
         {{template "field-error" (index $e "cargo_weight")}}
       </label>
-      <label>Declared value (ETB)
-        <input name="cargo_value" inputmode="decimal" value="{{field $f "cargo_value" ""}}" {{if index $e "cargo_value"}}aria-invalid="true"{{end}}>
+      <label>Pieces
+        <input name="cargo_pieces" value="{{field $f "cargo_pieces" ""}}" placeholder="e.g. 152 bales" autocomplete="off" {{if index $e "cargo_pieces"}}aria-invalid="true"{{end}}>
+        {{template "field-error" (index $e "cargo_pieces")}}
+      </label>
+      <label>Declared value
+        <span class="input-group"><span class="addon">ETB</span><input name="cargo_value" inputmode="decimal" value="{{field $f "cargo_value" ""}}" {{if index $e "cargo_value"}}aria-invalid="true"{{end}}></span>
         {{template "field-error" (index $e "cargo_value")}}
       </label>
     </div>
@@ -100,62 +118,75 @@
       <textarea name="special_instructions" rows="3" placeholder="Gate times, who to ask for, handling…" {{if index $e "special_instructions"}}aria-invalid="true"{{end}}>{{field $f "special_instructions" ""}}</textarea>
       {{template "field-error" (index $e "special_instructions")}}
     </label>
-  </fieldset>
-</div>
+  </section>
 
-<aside class="form-side">
-  <fieldset class="card">
-    <legend>Priority</legend>
-    <div class="seg">
-      {{$p := field $f "priority" "normal"}}
-      {{range $d.Priorities}}<label class="seg-opt"><input type="radio" name="priority" value="{{.}}" {{if eq $p .}}checked{{end}}><span>{{title .}}</span></label>{{end}}
-    </div>
-  </fieldset>
-
-  {{if not $edit}}
-  <fieldset class="card">
-    <legend>Driver</legend>
+  <section class="card form-section">
+    <div class="card-head"><div><h2>{{if $edit}}Priority{{else}}Driver and priority{{end}}</h2></div></div>
+    {{if not $edit}}
     {{if $d.Drivers}}
-    <label>Assign to
-      <select name="driver_id" data-driver-select {{if index $e "driver_id"}}aria-invalid="true"{{end}}>
-        <option value="">Decide later</option>
-        {{$sel := field $f "driver_id" ""}}
-        {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if eq $sel (uuid .ID)}}selected{{end}} {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}
-      </select>
-      {{template "field-error" (index $e "driver_id")}}
-    </label>
-    <label>Vehicle
-      <select name="vehicle_id" data-vehicle-select {{if index $e "vehicle_id"}}aria-invalid="true"{{end}}>
-        <option value="">The driver's usual vehicle</option>
-        {{$vsel := field $f "vehicle_id" ""}}
-        {{range $d.Vehicles}}<option value="{{uuid .ID}}" {{if eq $vsel (uuid .ID)}}selected{{end}}>{{.PlateNumber}}{{with .VehicleType}} · {{vehicleType .}}{{end}}</option>{{end}}
-      </select>
-      {{template "field-error" (index $e "vehicle_id")}}
-    </label>
+    <div class="row-2">
+      <label>Driver
+        <select name="driver_id" data-driver-select {{if index $e "driver_id"}}aria-invalid="true"{{end}}>
+          <option value="">Decide later</option>
+          {{$sel := field $f "driver_id" ""}}
+          {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" data-name="{{.FullName}}" {{if eq $sel (uuid .ID)}}selected{{end}} {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}
+        </select>
+        <span class="hint">They get it on their phone at once. Or book now and assign later.</span>
+        {{template "field-error" (index $e "driver_id")}}
+      </label>
+      <label>Vehicle
+        <select name="vehicle_id" data-vehicle-select {{if index $e "vehicle_id"}}aria-invalid="true"{{end}}>
+          <option value="">The driver's usual vehicle</option>
+          {{$vsel := field $f "vehicle_id" ""}}
+          {{range $d.Vehicles}}<option value="{{uuid .ID}}" data-plate="{{.PlateNumber}}" {{if hasNum .CapacityKg}}data-capacity="{{num .CapacityKg}}"{{end}} {{if eq $vsel (uuid .ID)}}selected{{end}}>{{.PlateNumber}}{{with .VehicleType}} · {{vehicleType .}}{{end}}</option>{{end}}
+        </select>
+        {{template "field-error" (index $e "vehicle_id")}}
+      </label>
+    </div>
     {{else}}
     <p class="muted">No drivers yet. <a href="/app/drivers/new">Add a driver</a>, or book now and assign later.</p>
     {{end}}
-  </fieldset>
-  {{end}}
+    {{end}}
+    <fieldset class="plain">
+      <legend {{if $edit}}class="sr-only"{{end}}>Priority</legend>
+      <div class="seg">
+        {{$p := field $f "priority" "normal"}}
+        {{range $d.Priorities}}<label class="seg-opt"><input type="radio" name="priority" value="{{.}}" {{if eq $p .}}checked{{end}}><span>{{title .}}</span></label>{{end}}
+      </div>
+    </fieldset>
+  </section>
 
-  <fieldset class="card">
-    <legend>Timing</legend>
-    <label>Pickup <span class="muted small">optional</span>
-      <input type="datetime-local" name="planned_pickup" value="{{field $f "planned_pickup" ""}}" {{if index $e "planned_pickup"}}aria-invalid="true"{{end}}>
-      {{template "field-error" (index $e "planned_pickup")}}
-    </label>
-    <p class="small muted">When the load is ready to collect. If it is still waiting two hours later, you get an alert.</p>
-    <label>Due by <span class="muted small">optional</span>
-      <input type="datetime-local" name="estimated_delivery" value="{{field $f "estimated_delivery" ""}}" {{if index $e "estimated_delivery"}}aria-invalid="true"{{end}}>
-      {{template "field-error" (index $e "estimated_delivery")}}
-    </label>
-    <p class="small muted">Leave empty to estimate from the pickup time, the distance and how long this route has taken before.</p>
-    {{if $edit}}{{if $edit.EstimatedDelivery.Valid}}{{if not $edit.EtaManual}}<p class="small muted">Current estimate: {{when $edit.EstimatedDelivery}}</p>{{end}}{{end}}{{end}}
-  </fieldset>
+  <div class="form-actions form-actions-end">
+    <a class="btn btn-ghost" href="{{if $edit}}/app/shipments/{{uuid $edit.ID}}{{else}}/app/shipments{{end}}">Cancel</a>
+    <button class="btn btn-primary" type="submit">{{if $edit}}Save changes{{else}}Book shipment{{end}}</button>
+  </div>
+</div>
 
-  <div class="form-actions sticky">
-    <button class="btn btn-primary btn-block" type="submit">{{if $edit}}Save changes{{else}}Book shipment{{end}}</button>
-    <a class="btn btn-ghost btn-block" href="{{if $edit}}/app/shipments/{{uuid $edit.ID}}{{else}}/app/shipments{{end}}">Cancel</a>
+<aside class="form-side">
+  <section class="card summary" data-booking-summary>
+    <div class="card-head"><div><h2>Summary</h2><p>Updates as you fill in the form</p></div></div>
+    <p class="summary-route"><span data-sum="from">—</span>{{icon "arrow-right"}}<span data-sum="to">—</span></p>
+    <dl class="facts facts-row">
+      <div><dt>Distance</dt><dd data-sum="distance">—</dd></div>
+      <div><dt>On the road</dt><dd data-sum="time">—</dd></div>
+      {{if $edit}}
+      <div><dt>{{if $edit.PickedUpAt.Valid}}Picked up{{else}}Pickup{{end}}</dt><dd data-fixed>{{if $edit.PickedUpAt.Valid}}{{when $edit.PickedUpAt}}{{else if $edit.PlannedPickupAt.Valid}}{{when $edit.PlannedPickupAt}}{{else}}Not set{{end}}</dd></div>
+      <div><dt>Due</dt><dd data-fixed>{{when $edit.EstimatedDelivery}}</dd></div>
+      {{else}}
+      <div><dt>Pickup</dt><dd data-sum="pickup">As soon as it's booked</dd></div>
+      <div><dt data-sum="arrive-label">Arrives about</dt><dd data-sum="arrive">—</dd></div>
+      {{end}}
+      <div><dt>Load</dt><dd data-sum="load">—</dd></div>
+      {{if not $edit}}<div><dt>Driver</dt><dd data-sum="driver">Decide later</dd></div>{{end}}
+    </dl>
+    <div class="summary-fill" data-sum-fill hidden>
+      <span class="bar"><span data-sum-bar></span></span>
+      <p class="small muted" data-sum="fill"></p>
+    </div>
+  </section>
+  <div class="callout callout-info">
+    <p><strong>What the customer sees</strong></p>
+    <p class="small">A text with the tracking link, in English or Amharic, and a page showing where the load is until it's delivered.</p>
   </div>
 </aside>
 <datalist id="towns">{{range $d.Towns}}<option value="{{.Name}}" data-lat="{{.Lat}}" data-lng="{{.Lng}}">{{.Region}}</option>{{end}}</datalist>

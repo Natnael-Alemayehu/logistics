@@ -152,18 +152,20 @@ type DriverShipment struct {
 	CustomerPhone string  `json:"customer_phone"`
 	// ConsigneeName and ConsigneePhone are who takes delivery, and empty
 	// when that is the customer.
-	ConsigneeName  string     `json:"consignee_name"`
-	ConsigneePhone string     `json:"consignee_phone"`
-	Cargo          string     `json:"cargo"`
-	WeightKg       float64    `json:"weight_kg"`
-	Instructions   string     `json:"instructions"`
-	Vehicle        string     `json:"vehicle"`
-	ETA            *time.Time `json:"eta"`
-	PlannedPickup  *time.Time `json:"planned_pickup"`
-	PickedUpAt     *time.Time `json:"picked_up_at"`
-	DeliveredAt    *time.Time `json:"delivered_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ConsigneeName  string  `json:"consignee_name"`
+	ConsigneePhone string  `json:"consignee_phone"`
+	Cargo          string  `json:"cargo"`
+	WeightKg       float64 `json:"weight_kg"`
+	// Pieces is the piece count as written, e.g. "152 bales", or empty.
+	Pieces        string     `json:"pieces"`
+	Instructions  string     `json:"instructions"`
+	Vehicle       string     `json:"vehicle"`
+	ETA           *time.Time `json:"eta"`
+	PlannedPickup *time.Time `json:"planned_pickup"`
+	PickedUpAt    *time.Time `json:"picked_up_at"`
+	DeliveredAt   *time.Time `json:"delivered_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 	// RecentRecipients are people who signed for this receiver before,
 	// newest first, to suggest on the delivery screen.
 	RecentRecipients []string `json:"recent_recipients"`
@@ -661,6 +663,7 @@ func toDriverShipment(sh db.Shipment, plate string) DriverShipment {
 		ConsigneePhone:     deref(sh.ConsigneePhone),
 		Cargo:              deref(sh.CargoDescription),
 		WeightKg:           numericOr(sh.CargoWeight),
+		Pieces:             FormatPieces(sh.CargoPieces, sh.CargoUnit),
 		Instructions:       deref(sh.SpecialInstructions),
 		Vehicle:            plate,
 		ETA:                timePtr(sh.EstimatedDelivery),
