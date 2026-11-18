@@ -127,8 +127,10 @@ SELECT DISTINCT ON (s.driver_id)
 FROM shipments s
 JOIN users u ON u.id = s.driver_id
 LEFT JOIN sync_metadata sm ON sm.driver_id = s.driver_id
+LEFT JOIN alert_rules r ON r.tenant_id = s.tenant_id
 WHERE s.status IN ('in_transit', 'delayed', 'arrived', 'issue')
-  AND GREATEST(sm.last_sync_at, s.status_changed_at, s.created_at) < $1
+  AND COALESCE(r.offline_on, true)
+  AND GREATEST(sm.last_sync_at, s.status_changed_at, s.created_at) < NOW() - make_interval(mins => COALESCE(r.offline_minutes, 240))
 ORDER BY s.driver_id, s.status_changed_at DESC
 `
 
@@ -145,9 +147,10 @@ type ListStaleActiveDriversRow struct {
 // Drivers carrying a shipment who have not been heard from since the cutoff.
 // Last contact is the later of the last app sync and the shipment's last
 // status change, so a driver reporting by SMS counts as in touch and one who
-// never installed the app is still caught.
-func (q *Queries) ListStaleActiveDrivers(ctx context.Context, lastSyncAt pgtype.Timestamptz) ([]ListStaleActiveDriversRow, error) {
-	rows, err := q.db.Query(ctx, listStaleActiveDrivers, lastSyncAt)
+// never installed the app is still caught. How long counts as quiet is the
+// company's rule (alert_rules.offline_minutes, four hours by default).
+func (q *Queries) ListStaleActiveDrivers(ctx context.Context) ([]ListStaleActiveDriversRow, error) {
+	rows, err := q.db.Query(ctx, listStaleActiveDrivers)
 	if err != nil {
 		return nil, err
 	}

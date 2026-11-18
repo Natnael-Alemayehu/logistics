@@ -1,0 +1,37 @@
+{{define "content"}}{{$d := .Data}}
+<div class="page-head">
+  <div>
+    <p class="crumbs"><a href="/app/alerts">Alerts</a></p>
+    <h1>Who gets alerts</h1>
+    <p class="muted">Everyone sees every alert on the Alerts page. Choose who also gets a copy, by email or by text.</p>
+  </div>
+</div>
+{{template "form-error" .}}
+<form method="post" action="/app/alerts/recipients" class="card card-flush">
+  <div class="table-wrap">
+  <table class="table table-cards">
+    <thead><tr><th>Person</th><th>By email</th><th>By SMS</th></tr></thead>
+    <tbody>
+    {{range $d.People}}{{$id := uuid .User.ID}}
+    <tr>
+      <td><div class="person-cell"><span class="avatar avatar-sm" aria-hidden="true">{{initials .User.FullName}}</span><div><strong>{{.User.FullName}}</strong><div class="muted small">{{roleLabel .User.Role}}</div></div></div></td>
+      <td data-label="By email">{{template "channel-select" (dict "Name" (print "email_" $id) "Label" (print "Alerts by email for " .User.FullName) "Value" .Email "Off" (not .User.EmailVerifiedAt.Valid) "Why" "No confirmed email address")}}</td>
+      <td data-label="By SMS">{{template "channel-select" (dict "Name" (print "sms_" $id) "Label" (print "Alerts by SMS for " .User.FullName) "Value" .SMS "Off" (not .User.Phone) "Why" "No phone number")}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <div class="card-foot list-foot">
+    <span class="muted small">Problems are reports from drivers and customers and deliveries that need checking. Alerts by SMS count against your texts.</span>
+    <span class="actions"><a class="btn btn-ghost" href="/app/alerts">Cancel</a><button class="btn btn-primary" type="submit">Save</button></span>
+  </div>
+</form>
+{{end}}
+
+{{define "channel-select"}}<select name="{{.Name}}" aria-label="{{.Label}}" {{if and .Off (eq .Value "none")}}disabled title="{{.Why}}"{{end}}>
+  <option value="all" {{if eq .Value "all"}}selected{{end}}>Every alert</option>
+  <option value="problems" {{if eq .Value "problems"}}selected{{end}}>Problems only</option>
+  {{if eq .Value "own"}}<option value="own" selected>Their own choice</option>{{end}}
+  <option value="none" {{if eq .Value "none"}}selected{{end}}>None</option>
+</select>{{if and .Off (eq .Value "none")}}<div class="muted small">{{.Why}}</div>{{end}}{{end}}

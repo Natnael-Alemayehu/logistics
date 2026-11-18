@@ -22,6 +22,22 @@ type Alert struct {
 	AcknowledgedBy pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
 	Episode        *string            `db:"episode" json:"episode"`
 	VehicleID      pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
+	ResolutionNote *string            `db:"resolution_note" json:"resolution_note"`
+}
+
+type AlertRule struct {
+	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ProblemsOn     bool               `db:"problems_on" json:"problems_on"`
+	LateOn         bool               `db:"late_on" json:"late_on"`
+	LateMinutes    int32              `db:"late_minutes" json:"late_minutes"`
+	OfflineOn      bool               `db:"offline_on" json:"offline_on"`
+	OfflineMinutes int32              `db:"offline_minutes" json:"offline_minutes"`
+	StopOn         bool               `db:"stop_on" json:"stop_on"`
+	StopMinutes    int32              `db:"stop_minutes" json:"stop_minutes"`
+	RouteOn        bool               `db:"route_on" json:"route_on"`
+	RouteKm        int32              `db:"route_km" json:"route_km"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	UpdatedBy      pgtype.UUID        `db:"updated_by" json:"updated_by"`
 }
 
 type ApiKey struct {
@@ -478,6 +494,7 @@ type User struct {
 	AnonymisedAt          pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
 	AlertsSeenAt          pgtype.Timestamptz `db:"alerts_seen_at" json:"alerts_seen_at"`
 	LicenceExpiresOn      pgtype.Date        `db:"licence_expires_on" json:"licence_expires_on"`
+	AlertSms              []string           `db:"alert_sms" json:"alert_sms"`
 }
 
 type Vehicle struct {

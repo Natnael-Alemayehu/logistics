@@ -37,13 +37,11 @@ once it is done: this file should only ever hold what is still ahead.
 The dashboard is being rebuilt to the design called Direction D, made on
 the Claude Design canvas: a light theme ("Desk"), a dark one ("Night"),
 Geist type and lucide icons. The shell, the overview, the shipment list, a
-shipment's page with its documents and charges, the booking form, and
-the drivers and vehicles with their papers are done. Each part below is a pull
+shipment's page with its documents and charges, the booking form, the
+drivers and vehicles with their papers, and the alerts with their rules
+are done. Each part below is a pull
 request; the design's pages are named after it.
 
-- [ ] **Alerts and their rules.** The alerts page with rules a company
-      sets: running late by more than a set time, a phone not heard from,
-      a long stop, leaving the route; and who gets each alert (D-Alerts).
 - [ ] **The company's pages.** Reports, team (with what each role can do),
       billing, settings (in sections) and help, with Telegram as a support
       channel (D-Reports, D-Team, D-Billing, D-Settings, D-Help).

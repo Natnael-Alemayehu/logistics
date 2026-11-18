@@ -77,6 +77,60 @@ WHERE tenant_id = sqlc.arg(tenant_id)
   AND email_verified_at IS NOT NULL
   AND sqlc.arg(alert_type)::text = ANY(alert_emails);
 
+-- name: ListAlertSMSRecipients :many
+-- Office staff who asked to have alerts of this type texted to them.
+SELECT full_name, phone
+FROM users
+WHERE tenant_id = sqlc.arg(tenant_id)
+  AND role IN ('dispatcher', 'fleet_manager', 'admin')
+  AND is_active
+  AND phone IS NOT NULL
+  AND sqlc.arg(alert_type)::text = ANY(alert_sms);
+
+-- name: ListLongStops :many
+-- Across tenants. Loads on the road whose truck has stood within 300 m of
+-- where it is now for the company's stop_minutes (alert_rules) or longer,
+-- going by fixes from the last 20 minutes. The stop began at the first fix
+-- after the last one more than 300 m away; it is the episode, so each stop
+-- is raised once. Whether it is in a town is decided by the caller.
+WITH latest AS (
+    SELECT DISTINCT ON (s.id)
+           s.id, s.tenant_id, s.tracking_number, s.driver_id, s.picked_up_at,
+           t.coordinates::geography AS here,
+           ST_Y(t.coordinates)::float8 AS latitude, ST_X(t.coordinates)::float8 AS longitude,
+           t.recorded_at,
+           COALESCE(r.stop_minutes, 45) AS stop_minutes
+    FROM shipments s
+    JOIN tracking_events t ON t.tenant_id = s.tenant_id AND t.driver_id = s.driver_id
+    LEFT JOIN alert_rules r ON r.tenant_id = s.tenant_id
+    WHERE s.status IN ('in_transit', 'delayed')
+      AND COALESCE(r.stop_on, true)
+      AND s.picked_up_at IS NOT NULL
+      AND t.recorded_at > NOW() - INTERVAL '20 minutes'
+      AND t.recorded_at > s.picked_up_at
+    ORDER BY s.id, t.recorded_at DESC
+), stops AS (
+    SELECT l.*,
+           (SELECT min(t.recorded_at) FROM tracking_events t
+            WHERE t.tenant_id = l.tenant_id AND t.driver_id = l.driver_id
+              AND t.recorded_at > l.picked_up_at
+              AND t.recorded_at > COALESCE(
+                  (SELECT max(m.recorded_at) FROM tracking_events m
+                   WHERE m.tenant_id = l.tenant_id AND m.driver_id = l.driver_id
+                     AND m.recorded_at > GREATEST(l.picked_up_at, NOW() - INTERVAL '24 hours')
+                     AND NOT ST_DWithin(m.coordinates::geography, l.here, 300)),
+                  l.picked_up_at)) AS since
+    FROM latest l
+)
+SELECT id, tenant_id, tracking_number, driver_id, latitude, longitude,
+       since::timestamptz AS stopped_since,
+       floor(extract(epoch FROM since))::bigint::text AS episode
+FROM stops
+WHERE since IS NOT NULL
+  AND recorded_at - since >= make_interval(mins => stop_minutes)
+ORDER BY since, id
+LIMIT 500;
+
 -- name: SetAlertEmails :exec
 UPDATE users SET alert_emails = sqlc.arg(alert_types)::text[], updated_at = NOW()
 WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id);
@@ -84,18 +138,21 @@ WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id);
 -- name: ListRouteDeviations :many
 -- Across tenants. Loads on the road whose truck is heading away from the
 -- destination: its latest fix, from the last half hour, is more than
--- min_gain metres further from the destination than a fix from about an
--- hour earlier. There is no road routing offline, so this is the deviation
+-- the company's route_km (alert_rules) further from the destination than a
+-- fix from about an hour earlier. There is no road routing offline, so this is the deviation
 -- that can be told from GPS alone (FR-033). The episode, the six-hour
 -- window of the latest fix, raises at most one alert per load that often.
 WITH latest AS (
     SELECT DISTINCT ON (s.id)
            s.id, s.tenant_id, s.tracking_number, s.driver_id, s.destination_city, s.picked_up_at,
            ST_SetSRID(ST_MakePoint(s.destination_lng, s.destination_lat), 4326)::geography AS dest,
-           t.coordinates::geography AS here, t.recorded_at
+           t.coordinates::geography AS here, t.recorded_at,
+           COALESCE(r.route_km, 20) * 1000.0 AS min_gain
     FROM shipments s
     JOIN tracking_events t ON t.tenant_id = s.tenant_id AND t.driver_id = s.driver_id
+    LEFT JOIN alert_rules r ON r.tenant_id = s.tenant_id
     WHERE s.status IN ('in_transit', 'delayed')
+      AND COALESCE(r.route_on, true)
       AND s.destination_lat IS NOT NULL AND s.destination_lng IS NOT NULL
       AND s.picked_up_at IS NOT NULL
       AND t.recorded_at > NOW() - INTERVAL '30 minutes'
@@ -116,6 +173,6 @@ JOIN LATERAL (
     ORDER BY abs(extract(epoch FROM (t.recorded_at - (l.recorded_at - INTERVAL '60 minutes'))))
     LIMIT 1
 ) e ON true
-WHERE ST_Distance(l.here, l.dest) - ST_Distance(e.there, l.dest) > sqlc.arg(min_gain)::float8
+WHERE ST_Distance(l.here, l.dest) - ST_Distance(e.there, l.dest) > l.min_gain
 ORDER BY l.recorded_at DESC, l.id
 LIMIT 500;

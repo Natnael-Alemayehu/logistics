@@ -37,26 +37,33 @@
 
 {{define "field-error"}}{{with .}}<p class="field-error">{{.}}</p>{{end}}{{end}}
 
-{{/* alert-items expects dict "Alerts" ([]db.ListAlertsRow) and "Back" (where dismissing returns to) */}}
+{{/* alert-items expects dict "Alerts" ([]db.ListAlertsRow) and "Back" (where resolving returns to) */}}
 {{define "alert-items"}}{{$back := .Back}}<ul class="alert-list" data-alert-list>
-{{range .Alerts}}{{$a := .}}<li class="alert-item sev-{{.Severity}}{{if .AcknowledgedAt.Valid}} is-done{{end}}">
+{{range .Alerts}}{{$a := .}}{{$customer := or (eq .AlertType "customer_reported_problem") (eq .AlertType "eta_exceeded") (eq .AlertType "delay_reported") (eq .AlertType "issue_reported") (eq .AlertType "long_stop")}}<li class="alert-item sev-{{.Severity}}{{if .AcknowledgedAt.Valid}} is-done{{end}}">
   <span class="alert-icon">{{icon (alertIcon .AlertType)}}</span>
   <div class="alert-body">
     <p class="alert-title"><span class="sr-only">{{template "severity" .Severity}}</span>{{alertLabel .AlertType}}</p>
     <p class="alert-msg">{{.Message}}</p>
-    <p class="alert-meta">{{with .TrackingNumber}}<a class="alert-ref" href="/app/shipments/{{uuid $a.ShipmentID}}">{{.}}</a> · {{end}}{{with .VehiclePlate}}<a class="alert-ref mono" href="/app/vehicles/{{uuid $a.VehicleID}}">{{.}}</a> · {{end}}{{with .DriverName}}{{if $a.ShipmentID.Valid}}{{.}}{{else}}<a href="/app/drivers/{{uuid $a.DriverID}}">{{.}}</a>{{end}} · {{end}}<time datetime="{{rfc3339 .CreatedAt}}" title="{{when .CreatedAt}}">{{ago .CreatedAt}}</time>{{if .AcknowledgedAt.Valid}} · dismissed {{ago .AcknowledgedAt}}{{end}}</p>
-    {{if not .AcknowledgedAt.Valid}}<div class="alert-actions">
+    <p class="alert-meta">{{with .TrackingNumber}}<a class="alert-ref" href="/app/shipments/{{uuid $a.ShipmentID}}">{{.}}</a> · {{end}}{{with .DestinationCity}}to {{.}} · {{end}}{{with .VehiclePlate}}<a class="alert-ref mono" href="/app/vehicles/{{uuid $a.VehicleID}}">{{.}}</a> · {{end}}{{with .DriverName}}{{if $a.ShipmentID.Valid}}{{.}}{{else}}<a href="/app/drivers/{{uuid $a.DriverID}}">{{.}}</a>{{end}} · {{end}}<time datetime="{{rfc3339 .CreatedAt}}" title="{{when .CreatedAt}}">{{ago .CreatedAt}}</time></p>
+    {{if .AcknowledgedAt.Valid}}<p class="alert-resolution">{{icon "check"}}<span>{{with .ResolutionNote}}{{.}} · {{end}}{{with .ResolvedByName}}{{.}}{{else}}Resolved by itself{{end}} · {{ago .AcknowledgedAt}}</span></p>
+    {{else}}<div class="alert-actions">
       {{with .DriverPhone}}<a class="btn btn-sm" href="tel:{{.}}">{{icon "phone"}}Call driver</a>{{end}}
-      {{if and .CustomerPhone (or (eq .AlertType "customer_issue") (eq .AlertType "eta_exceeded") (eq .AlertType "delay_reported"))}}<a class="btn btn-sm" href="tel:{{str .CustomerPhone}}">{{icon "message-square-text"}}Call the customer</a>{{end}}
+      {{if and .CustomerPhone $customer}}<a class="btn btn-sm" href="sms:{{str .CustomerPhone}}">{{icon "message-square-text"}}Text the customer</a>{{end}}
       {{if .ShipmentID.Valid}}<a class="btn btn-sm btn-ghost" href="/app/shipments/{{uuid .ShipmentID}}">Open shipment</a>{{end}}
-      <form method="post" action="/app/alerts/{{uuid .ID}}/ack">
-        <input type="hidden" name="back" value="{{$back}}">
-        <button class="btn btn-sm btn-ghost" type="submit" title="Mark as dealt with">{{icon "check"}}Dismiss</button>
-      </form>
+      <details class="pop pop-right alert-resolve">
+        <summary class="btn btn-sm btn-ghost">{{icon "check"}}Resolve</summary>
+        <form method="post" action="/app/alerts/{{uuid .ID}}/ack" class="pop-panel stack">
+          <input type="hidden" name="back" value="{{$back}}">
+          <label>What was done <span class="muted">(optional)</span>
+            <input name="note" maxlength="300" placeholder="e.g. Tyre changed, back on the road">
+          </label>
+          <button class="btn btn-primary btn-sm" type="submit">Resolve</button>
+        </form>
+      </details>
     </div>{{end}}
   </div>
 </li>
-{{else}}<li class="empty-line muted">Nothing needs attention. Alerts appear here when a shipment is late, a driver reports a problem or goes offline.</li>{{end}}
+{{else}}<li class="empty-line muted">Nothing needs attention. Alerts appear here when a load is late, stops for long or leaves its route, a driver reports a problem or goes quiet, or papers are about to run out.</li>{{end}}
 </ul>{{end}}
 
 {{/* An invoice's state: paid, cancelled, overdue or open. */}}

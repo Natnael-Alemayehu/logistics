@@ -23,7 +23,6 @@ type Jobs struct {
 const (
 	jobsLockKey = 7_311_042 // arbitrary, unique to this application
 
-	driverOfflineAfter = 4 * time.Hour
 	// pickupGrace is how long after its planned pickup a load may still be
 	// waiting before the office is told.
 	pickupGrace = 2 * time.Hour
@@ -94,6 +93,7 @@ func (j *Jobs) once(ctx context.Context, retention, usage bool) (ran bool, err e
 	run("eta_check", j.CheckETAs)
 	run("pickup_check", j.CheckPickups)
 	run("route_check", j.CheckRoutes)
+	run("stop_check", j.CheckStops)
 	run("outbox_requeue", func(ctx context.Context) error {
 		if err := errors.Join(j.q.RequeueStuckSMS(ctx), j.q.RequeueStuckEmails(ctx), j.q.RequeueStuckWebhooks(ctx)); err != nil {
 			return err
@@ -133,7 +133,7 @@ func (j *Jobs) observeOutbox(ctx context.Context) error {
 // in four hours (FR-033).
 func (j *Jobs) CheckDrivers(ctx context.Context) error {
 	now := j.now()
-	stale, err := j.q.ListStaleActiveDrivers(ctx, toTimestamp(now.Add(-driverOfflineAfter)))
+	stale, err := j.q.ListStaleActiveDrivers(ctx)
 	if err != nil {
 		return err
 	}

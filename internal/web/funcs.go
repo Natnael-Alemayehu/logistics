@@ -113,6 +113,13 @@ func (s *Server) funcs() template.FuncMap {
 		"santim":    santim,
 		"paper":     s.paper,
 		"day":       service.FormatDay,
+		"clock": func(v any) string {
+			t, ok := toTime(v)
+			if !ok {
+				return ""
+			}
+			return t.In(loc).Format("15:04")
+		},
 		// section is the part of the dashboard a page belongs to, for the
 		// breadcrumb: its name and address.
 		"section": func(nav string) navSection { return navSections[nav] },
