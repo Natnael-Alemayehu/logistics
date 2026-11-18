@@ -117,7 +117,7 @@
   <table class="table table-compact">
     <thead><tr><th>Route</th><th class="num">Delivered</th><th class="num">On time</th><th class="num">Avg transit</th></tr></thead>
     <tbody>{{range $r.Routes}}
-    <tr><td>{{.OriginCity}} → {{.DestinationCity}}</td><td class="num">{{.Delivered}}</td><td class="num">{{pct (rate .OnTime .WithEta)}}</td><td class="num">{{hours .AvgTransitHours}}</td></tr>
+    <tr><td>{{.OriginCity}} → {{.DestinationCity}}</td><td class="num">{{.Delivered}}</td><td class="num"><span class="pct-cell">{{if .WithEta}}<span class="pct-bar" aria-hidden="true"><span style="width: {{pct (rate .OnTime .WithEta)}}"></span></span>{{end}}{{pct (rate .OnTime .WithEta)}}</span></td><td class="num">{{hours .AvgTransitHours}}</td></tr>
     {{end}}</tbody>
   </table>
   </div>

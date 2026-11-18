@@ -38,13 +38,10 @@ The dashboard is being rebuilt to the design called Direction D, made on
 the Claude Design canvas: a light theme ("Desk"), a dark one ("Night"),
 Geist type and lucide icons. The shell, the overview, the shipment list, a
 shipment's page with its documents and charges, the booking form, the
-drivers and vehicles with their papers, and the alerts with their rules
-are done. Each part below is a pull
+drivers and vehicles with their papers, the alerts with their rules,
+and the company's pages (reports, team, billing, settings, help) are done. Each part below is a pull
 request; the design's pages are named after it.
 
-- [ ] **The company's pages.** Reports, team (with what each role can do),
-      billing, settings (in sections) and help, with Telegram as a support
-      channel (D-Reports, D-Team, D-Billing, D-Settings, D-Help).
 - [ ] **The public pages.** Signing in by phone or email, the tracking page
       with the carrier's details, and finding a shipment by phone with a
       code, in English and Amharic (D-SignIn, D-Tracking, D-FindByPhone).

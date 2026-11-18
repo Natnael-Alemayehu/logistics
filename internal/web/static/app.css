@@ -712,6 +712,12 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .plan-headline .muted { font-size: 1rem; font-weight: 400; letter-spacing: 0; }
 .col-main > .kpis { margin-bottom: 0; }
 .kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.kpis-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1280px) { .kpis-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .kpis-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pct-cell { display: inline-flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.pct-bar { width: 56px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.pct-bar > span { display: block; height: 100%; background: var(--accent); }
 @media (max-width: 1100px) { .kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .plan-card .btn { white-space: normal; height: auto; min-height: 36px; padding-block: 6px; line-height: 1.3; }
 

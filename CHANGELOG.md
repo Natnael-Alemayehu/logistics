@@ -12,9 +12,20 @@ What changed in each release, newest first.
 
 ### Changed
 
-- **Help redesigned** (the redesign, part 7). Answers to common questions
-  by topic, with a search that narrows them as you type, then your
-  questions to the Kiflet team and how to reach support.
+- **The company's pages redesigned** (the redesign, part 7).
+  - **Help**: answers to common questions by topic, with a search that
+    narrows them as you type, then your questions to the Kiflet team and
+    how to reach support.
+  - **Team**: members, those invited who haven't signed in yet (resend or
+    cancel), and former staff, with a search; the invite form and what
+    each role can do beside them.
+  - **Settings**: in sections with a menu beside them, the customer texts
+    as switches, and a preview of the text a customer gets, in the
+    language chosen, with how many SMS it costs.
+  - **Billing**: the plan's price first, this month's numbers, the
+    invoices as a full table, and how to pay and what the invoice says
+    beside them.
+  - **Reports**: the six numbers in one row, and on-time bars by route.
 
 - **Alerts redesigned, with rules** (the redesign, part 6). A company sets
   when it is alerted: problems reported by drivers, running late (by how
