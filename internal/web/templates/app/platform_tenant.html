@@ -5,7 +5,7 @@
     <h1>{{$t.Name}}{{if not $t.IsActive}} <span class="badge s-issue">Suspended</span>{{end}}</h1>
     <p class="muted">{{$t.RegionCity}} · since {{date $t.CreatedAt}}{{with $t.ContactPhone}} · {{.}}{{end}}{{with $t.ContactEmail}} · <a href="mailto:{{.}}">{{.}}</a>{{end}}{{with $t.Tin}} · TIN {{.}}{{end}}</p>
   </div>
-  <div class="actions"><a class="btn" href="/app/platform/audit?company={{$id}}">{{template "icon" "shield"}} Audit log</a></div>
+  <div class="actions"><a class="btn" href="/app/platform/audit?company={{$id}}">{{icon "shield"}} Audit log</a></div>
 </div>
 
 <section class="kpis">

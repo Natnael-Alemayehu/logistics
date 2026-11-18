@@ -99,6 +99,16 @@
       $$("details.pop[open], details.menu[open]").forEach((d) => (d.open = false));
       document.body.classList.remove("nav-shown");
     }
+    // "/" jumps to the search box, unless the key is being typed somewhere.
+    const typing = e.target.closest?.("input, textarea, select, [contenteditable]");
+    if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const box = document.querySelector("[data-search-key]");
+      if (box && box.offsetParent) {
+        e.preventDefault();
+        box.focus();
+        box.select();
+      }
+    }
   });
 
   document.addEventListener("change", (e) => {

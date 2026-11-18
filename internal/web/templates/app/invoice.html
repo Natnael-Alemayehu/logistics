@@ -1,7 +1,7 @@
 {{define "content"}}{{$d := .Data.D}}{{$i := $d.Invoice}}{{$platform := .Data.Platform}}
 <div class="page-head no-print">
   <div><p class="small"><a href="{{if $platform}}/app/platform/billing{{else}}/app/billing{{end}}">← Billing</a></p><h1>Invoice {{$i.Number}}</h1></div>
-  <div class="actions"><button class="btn" type="button" data-print>{{template "icon" "print"}} Print</button></div>
+  <div class="actions"><button class="btn" type="button" data-print>{{icon "printer"}} Print</button></div>
 </div>
 
 <div class="grid-detail" data-invoice="{{uuid $i.ID}}">

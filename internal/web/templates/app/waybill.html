@@ -12,7 +12,7 @@
 {{$d := .Data}}{{$s := $d.S}}{{$t := $d.Tenant}}
 <div class="print-bar no-print">
   <a class="btn btn-ghost" href="/app/shipments/{{uuid $s.ID}}">← Back</a>
-  <button class="btn btn-primary" type="button" data-print>{{template "icon" "print"}} Print</button>
+  <button class="btn btn-primary" type="button" data-print>{{icon "printer"}} Print</button>
 </div>
 <article class="waybill">
   <header class="wb-head">

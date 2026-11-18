@@ -7,12 +7,12 @@ driver card and the note form are left alone, being forms in use. */}}
 <div class="page-head" data-shipment="{{$id}}" id="shipment-head" data-live-region>
   <div>
     <p class="crumbs"><a href="/app/shipments">Shipments</a></p>
-    <h1 class="mono">{{$s.TrackingNumber}} <button type="button" class="icon-btn" data-copy="{{$s.TrackingNumber}}" aria-label="Copy tracking number" title="Copy">{{template "icon" "copy"}}</button></h1>
+    <h1 class="mono">{{$s.TrackingNumber}} <button type="button" class="icon-btn" data-copy="{{$s.TrackingNumber}}" aria-label="Copy tracking number" title="Copy">{{icon "copy"}}</button></h1>
     <p>{{template "status" $s.Status}} {{template "priority" $s.Priority}}{{with $s.StatusReason}} <span class="muted">{{reasonLabel .}}</span>{{end}} <span class="muted small">· booked {{when $s.CreatedAt}}</span></p>
   </div>
   <div class="actions">
     {{if $d.CanEdit}}<a class="btn" href="/app/shipments/{{$id}}/edit">Edit</a>{{end}}
-    <a class="btn" href="/app/shipments/{{$id}}/waybill" target="_blank" rel="noopener">{{template "icon" "print"}} Waybill</a>
+    <a class="btn" href="/app/shipments/{{$id}}/waybill" target="_blank" rel="noopener">{{icon "printer"}} Waybill</a>
     {{if not $s.AnonymisedAt.Valid}}<a class="btn" href="/app/shipments/new?copy={{$id}}" title="Book a new shipment with the same details">Book again</a>{{end}}
     {{if and $d.CanReopen (not $s.AnonymisedAt.Valid)}}
     <form method="post" action="/app/shipments/{{$id}}/reopen"><button class="btn" type="submit">Reopen</button></form>
@@ -91,7 +91,7 @@ driver card and the note form are left alone, being forms in use. */}}
         <span class="route-label">To</span>
         <strong>{{with $s.DestinationCity}}{{.}}{{else}}—{{end}}</strong>
         <span class="muted">{{$s.DestinationAddress}}</span>
-        {{if $s.DestinationPrecise}}<span class="small muted">{{template "icon" "pin"}} Exact drop-off pinned</span>{{end}}
+        {{if $s.DestinationPrecise}}<span class="small muted">{{icon "map-pin"}} Exact drop-off pinned</span>{{end}}
       </div>
       <div class="route-end">
         <span class="route-label">{{if $s.ActualDelivery.Valid}}Delivered{{else if eq $s.Status "cancelled"}}Cancelled{{else}}Due{{end}}</span>
@@ -183,7 +183,7 @@ driver card and the note form are left alone, being forms in use. */}}
   <section class="card card-flush">
     <details class="locations">
       <summary class="card-head"><h2>Location history</h2><span class="small muted">{{if $d.D.RouteCapped}}the newest {{end}}{{grouped (len .)}} {{if eq (len .) 1}}position{{else}}positions{{end}}</span></summary>
-      <p class="card-pad small">{{if gt (len .) $listed}}The newest {{$listed}} are listed here. {{end}}<a href="/app/shipments/{{$id}}/locations.csv" download>{{template "icon" "download"}} Download every position as CSV</a></p>
+      <p class="card-pad small">{{if gt (len .) $listed}}The newest {{$listed}} are listed here. {{end}}<a href="/app/shipments/{{$id}}/locations.csv" download>{{icon "download"}} Download every position as CSV</a></p>
       <div class="table-wrap">
       <table class="table table-compact">
         <thead><tr><th>Recorded</th><th>Latitude, longitude</th><th class="num">Accuracy</th><th class="num">Speed</th><th class="num">Battery</th></tr></thead>
@@ -208,7 +208,7 @@ driver card and the note form are left alone, being forms in use. */}}
       <span class="avatar avatar-lg">{{initials .FullName}}</span>
       <div>
         <a href="/app/drivers/{{uuid .ID}}"><strong>{{.FullName}}</strong></a>
-        {{with .Phone}}<br><a href="{{telURL .}}">{{template "icon" "phone"}} {{.}}</a>{{end}}
+        {{with .Phone}}<br><a href="{{telURL .}}">{{icon "phone"}} {{.}}</a>{{end}}
         {{with $d.D.Vehicle}}<br><span class="muted">{{.PlateNumber}}{{with .VehicleType}} · {{vehicleType .}}{{end}}</span>{{end}}
       </div>
     </div>

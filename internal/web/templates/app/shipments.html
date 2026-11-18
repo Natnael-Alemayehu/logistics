@@ -5,7 +5,7 @@
     <p class="muted">{{grouped $d.Total}} {{if eq $d.Total 1}}shipment{{else}}shipments{{end}}{{if $d.Filtered}} match{{end}}</p>
   </div>
   <div class="actions">
-    <a class="btn" href="{{withQuery $q "format" "csv"}}" download>{{template "icon" "download"}} Export CSV</a>
+    <a class="btn" href="{{withQuery $q "format" "csv"}}" download>{{icon "download"}} Export CSV</a>
     <a class="btn" href="/app/shipments/import">Import CSV</a>
     <a class="btn btn-primary" href="/app/shipments/new">+ New shipment</a>
   </div>

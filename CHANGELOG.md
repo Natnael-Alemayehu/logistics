@@ -6,6 +6,13 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **A new look for the dashboard** (the redesign, part 1). A dark side
+  menu with the company at the top and your account at the bottom, a top
+  bar with where you are, search (press `/`) and alerts, and a footer on
+  every page. Buttons, fields, tables, tabs and status badges follow the
+  new design throughout, in the Geist typeface (served from Kiflet itself),
+  and dark mode has its own palette. The pages themselves are redesigned
+  in the parts that follow.
 - **Restoring to the minute** (the rest of audit O1). With
   `WAL_ARCHIVE=on`, Postgres archives every change; `scripts/ship-wal.sh`,
   from cron, encrypts it and copies it to the backup bucket, `backup.sh`

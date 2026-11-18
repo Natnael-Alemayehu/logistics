@@ -374,7 +374,8 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 }
 
 // staticFiles serves embedded assets. Versioned URLs (?v=) are cached
-// forever; anything else is revalidated.
+// forever; anything else is revalidated. Fonts are named with their version
+// (app.css asks for them without ?v=), so they are cached forever too.
 func (s *Server) staticFiles() http.Handler {
 	files := http.FileServerFS(s.assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -382,7 +383,8 @@ func (s *Server) staticFiles() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Query().Get("v") == s.version && !s.cfg.DevReload {
+		font := strings.HasPrefix(r.URL.Path, "fonts/") && strings.HasSuffix(r.URL.Path, ".woff2")
+		if (font || r.URL.Query().Get("v") == s.version) && !s.cfg.DevReload {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
