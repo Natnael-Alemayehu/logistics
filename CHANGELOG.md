@@ -6,6 +6,16 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **Dispatch pages redesigned** (the redesign, part 2). The overview
+  opens on the date, the figures with icons, the map, what needs
+  attention (with buttons to call the driver or customer) and a shipments
+  board in tabs: on the road, needing attention, waiting for a driver,
+  delivered. Each load shows how far along its route it is. The shipment
+  list has counts on its tabs, search and filters in a toolbar, a
+  progress column and a menu on each row. A shipment's page has a strip
+  of the stages it has passed, the distance left, its speed and where it
+  was last seen, with its history and messages in an Activity tab, and
+  the driver, customer and load beside it.
 - **A new look for the dashboard** (the redesign, part 1). A dark side
   menu with the company at the top and your account at the bottom, a top
   bar with where you are, search (press `/`) and alerts, and a footer on

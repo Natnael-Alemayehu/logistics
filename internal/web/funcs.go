@@ -104,8 +104,9 @@ func toTime(v any) (time.Time, bool) {
 func (s *Server) funcs() template.FuncMap {
 	loc := s.cfg.Timezone
 	return template.FuncMap{
-		"asset": func(p string) string { return "/static/" + p + "?v=" + s.version },
-		"icon":  icon,
+		"asset":     func(p string) string { return "/static/" + p + "?v=" + s.version },
+		"icon":      icon,
+		"tripStage": tripStage,
 		// section is the part of the dashboard a page belongs to, for the
 		// breadcrumb: its name and address.
 		"section": func(nav string) navSection { return navSections[nav] },
@@ -214,6 +215,30 @@ func (s *Server) funcs() template.FuncMap {
 			t, ok := toTime(eta)
 			return ok && !model.IsFinalStatus(status) && time.Now().After(t)
 		},
+		// lateBy says how far past its ETA a load is: "+50 min", "+3 h".
+		"lateBy": func(eta any) string {
+			t, ok := toTime(eta)
+			if !ok {
+				return ""
+			}
+			switch d := time.Since(t); {
+			case d < time.Minute:
+				return ""
+			case d < time.Hour:
+				return fmt.Sprintf("+%d min", int(d.Minutes()))
+			case d < 48*time.Hour:
+				return fmt.Sprintf("+%d h", int(d.Hours()))
+			default:
+				return fmt.Sprintf("+%d days", int(d.Hours()/24))
+			}
+		},
+		"alertIcon": func(t string) string {
+			if i, ok := alertIcons[t]; ok {
+				return i
+			}
+			return "bell"
+		},
+		"statusIcon": func(st string) string { return statusIcons[st] },
 		"connState": func(v any) string {
 			t, _ := toTime(v)
 			return service.ConnectionState(t, time.Now())
@@ -606,4 +631,37 @@ var navSections = map[string]navSection{
 	"platform-support": {"Support", "/app/platform/support"},
 	"platform-audit":   {"Audit log", "/app/platform/audit"},
 	"platform-health":  {"System health", "/app/platform/health"},
+}
+
+// alertIcons are the icons of the alert types.
+var alertIcons = map[string]string{
+	service.AlertIssueReported:      "triangle-alert",
+	service.AlertDelayReported:      "clock",
+	service.AlertDriverOffline:      "wifi-off",
+	service.AlertETAExceeded:        "clock",
+	service.AlertPODLocation:        "map-pin",
+	service.AlertDeliveredNoPOD:     "signature",
+	service.AlertCustomerIssue:      "message-square-text",
+	service.AlertDriverMessage:      "message-circle",
+	service.AlertSyncConflict:       "history",
+	service.AlertDeliveryOnCanceled: "x",
+	service.AlertDeliveryHeld:       "shield",
+	service.AlertPickupOverdue:      "timer",
+	service.AlertDriverLimitNear:    "users",
+	service.AlertSMSQuotaNear:       "mail",
+	service.AlertSMSPaused:          "mail",
+	service.AlertDelivered:          "package-check",
+	service.AlertRouteDeviation:     "route",
+}
+
+// statusIcons are the icons on the status badges.
+var statusIcons = map[string]string{
+	model.StatusPending:   "circle-dashed",
+	model.StatusAssigned:  "user-round-check",
+	model.StatusInTransit: "truck",
+	model.StatusDelayed:   "clock",
+	model.StatusArrived:   "map-pin",
+	model.StatusDelivered: "circle-check-big",
+	model.StatusIssue:     "triangle-alert",
+	model.StatusCancelled: "x",
 }

@@ -8,7 +8,7 @@ ON CONFLICT DO NOTHING
 RETURNING *;
 
 -- name: ListAlerts :many
-SELECT a.*, s.tracking_number, d.full_name AS driver_name
+SELECT a.*, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone
 FROM alerts a
 LEFT JOIN shipments s ON s.id = a.shipment_id
 LEFT JOIN users d ON d.id = a.driver_id

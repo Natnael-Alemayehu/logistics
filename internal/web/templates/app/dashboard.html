@@ -3,11 +3,12 @@
 {{define "content"}}{{$d := .Data}}{{$now := local .Now}}
 <div class="page-head">
   <div>
-    <h1>Good {{if lt $now.Hour 12}}morning{{else if lt $now.Hour 17}}afternoon{{else}}evening{{end}}, {{firstName .Me.Name}}</h1>
-    <p class="muted">{{$now.Format "Monday 2 January"}} · <span class="live-state" data-live-state>Connecting…</span></p>
+    <h1>{{$now.Format "Monday 2 January"}}</h1>
+    <p>Good {{if lt $now.Hour 12}}morning{{else if lt $now.Hour 17}}afternoon{{else}}evening{{end}}, {{firstName .Me.Name}} · <span class="live-state" data-live-state>Connecting…</span></p>
   </div>
   <div class="actions">
-    <a class="btn btn-primary" href="/app/shipments/new">+ New shipment</a>
+    <a class="btn" href="/app/shipments/import">{{icon "upload"}}Import CSV</a>
+    <a class="btn btn-primary" href="/app/shipments/new">{{icon "plus"}}New shipment</a>
   </div>
 </div>
 
@@ -23,21 +24,21 @@
 </section>
 {{end}}
 
-<section class="kpis kpis-5" data-live-region id="dash-kpis" aria-label="Today at a glance">
-  <a class="kpi" href="/app/shipments?tab=active"><span class="kpi-n">{{$d.Active}}</span><span class="kpi-l">Active shipments</span></a>
-  <a class="kpi" href="/app/drivers"><span class="kpi-n">{{$d.OnDuty}}<span class="kpi-of"> of {{$d.ActiveDrivers}}</span></span><span class="kpi-l">Drivers on duty</span></a>
-  <a class="kpi {{if $d.Attention}}kpi-warn{{end}}" href="/app/shipments?tab=attention"><span class="kpi-n">{{$d.Attention}}</span><span class="kpi-l">Delayed or with a problem</span></a>
-  <a class="kpi {{if index $d.Counts "pending"}}kpi-info{{end}}" href="/app/shipments?tab=pending"><span class="kpi-n">{{index $d.Counts "pending"}}</span><span class="kpi-l">Waiting for a driver</span></a>
-  <a class="kpi kpi-good" href="/app/shipments?tab=delivered&amp;sort=updated_desc"><span class="kpi-n">{{$d.DeliveredToday}}</span><span class="kpi-l">Delivered today</span></a>
+<section class="kpis" data-live-region id="dash-kpis" aria-label="Today at a glance">
+  <a class="kpi" href="/app/shipments?tab=active"><span class="kpi-n">{{$d.Active}}</span><span class="kpi-l">Active</span>{{icon "package"}}</a>
+  <a class="kpi" href="/app/drivers"><span class="kpi-n">{{$d.OnDuty}}<span class="kpi-of"> / {{$d.ActiveDrivers}}</span></span><span class="kpi-l">Drivers on duty</span>{{icon "user-round"}}</a>
+  <a class="kpi {{if $d.Attention}}kpi-warn{{end}}" href="/app/shipments?tab=attention"><span class="kpi-n">{{$d.Attention}}</span><span class="kpi-l">Late or with a problem</span>{{icon "triangle-alert"}}</a>
+  <a class="kpi" href="/app/shipments?tab=pending"><span class="kpi-n">{{index $d.Counts "pending"}}</span><span class="kpi-l">Waiting for a driver</span>{{icon "clock"}}</a>
+  <a class="kpi kpi-good" href="/app/shipments?tab=delivered&amp;sort=updated_desc"><span class="kpi-n">{{$d.DeliveredToday}}</span><span class="kpi-l">Delivered today</span>{{icon "circle-check-big"}}</a>
 </section>
 
 <div class="grid-dash">
   <section class="card card-flush map-card">
     <div class="card-head">
-      <h2>Live map</h2>
-      <div class="legend small">
+      <div><h2>Live map</h2><p>Where every load is right now</p></div>
+      <div class="legend">
         <span>{{template "conn" "live"}} Online</span><span>{{template "conn" "stale"}} Quiet</span><span>{{template "conn" "offline"}} Offline</span>
-        <span><span class="pin-ring"></span> Load delayed or with a problem</span>
+        <span><span class="pin-ring"></span> Late or with a problem</span>
         <span><span class="dest-dot"></span> Destination</span>
       </div>
     </div>
@@ -69,20 +70,65 @@
       data-source="map-data" data-meta="map-meta"></div>
     <script type="application/json" id="map-data">{{$d.Map}}</script>
     <script type="application/json" id="map-meta">{{$d.MapMeta}}</script>
-    <p class="card-foot muted small">{{if not $d.Map.Drivers}}Drivers appear on the map once their app has sent a GPS position. {{end}}A phone sends its position while the driver app is open on screen; a driver whose app is closed shows where it last was.</p>
+    <p class="card-foot small">{{if not $d.Map.Drivers}}Drivers appear on the map once their app has sent a GPS position. {{end}}A phone sends its position while the driver app is open on screen; a driver whose app is closed shows where it last was.</p>
   </section>
 
-  <section class="card" data-live-region id="dash-alerts">
+  <section class="card card-flush" data-live-region id="dash-alerts">
     <div class="card-head">
-      <h2>Needs attention</h2>
-      <a class="small" href="/app/alerts">All alerts{{if $d.OpenAlerts}} ({{$d.OpenAlerts}}){{end}}</a>
+      <div><h2>Needs attention</h2><p>{{if $d.OpenAlerts}}{{$d.OpenAlerts}} open{{else}}All clear{{end}}</p></div>
+      <a class="small" href="/app/alerts">All alerts</a>
     </div>
     {{template "alert-items" (dict "Alerts" $d.Alerts "Back" "/app")}}
   </section>
 </div>
 
+<section class="card card-flush board" data-live-region id="dash-board">
+  <div class="board-head">
+    <h2>Shipments</h2>
+    <nav class="tabs" aria-label="Which shipments">
+      {{range $d.Boards}}<a href="/app?board={{.Key}}#dash-board" {{if eq .Key $d.Board.Key}}aria-current="page"{{end}}>{{.Label}}{{with index $d.BoardCounts .Key}} <span class="badge">{{.}}</span>{{end}}</a>{{end}}
+    </nav>
+  </div>
+  {{if $d.OnRoad}}
+  <div class="table-wrap">
+  <table class="table rows-link">
+    <thead><tr><th>Tracking</th><th>Route</th><th>Customer</th><th>Driver · vehicle</th><th>Status</th><th>Progress</th><th class="num">{{if eq $d.Board.Key "delivered"}}Delivered{{else}}ETA{{end}}</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {{range $d.OnRoad}}{{$s := .Shipment}}{{$id := uuid $s.ID}}
+      <tr data-href="/app/shipments/{{$id}}">
+        <td><a class="mono" href="/app/shipments/{{$id}}">{{$s.TrackingNumber}}</a></td>
+        <td class="route">{{if or $s.OriginCity $s.DestinationCity}}{{or (str $s.OriginCity) "—"}} {{icon "arrow-right"}} {{or (str $s.DestinationCity) "—"}}{{else}}—{{end}}</td>
+        <td class="nowrap">{{$s.CustomerName}}</td>
+        <td class="nowrap">{{with .DriverName}}<span class="cell-main">{{.}}</span>{{else}}<a href="/app/shipments/{{$id}}#assign">Assign a driver</a>{{end}}{{with .VehiclePlate}}<span class="cell-sub mono">{{.}}</span>{{end}}</td>
+        <td>{{template "status" $s.Status}}</td>
+        <td>{{with .Progress}}<span class="progress-cell"><span class="bar bar-{{$s.Status}}" role="progressbar" aria-label="Route progress" aria-valuenow="{{.}}" aria-valuemin="0" aria-valuemax="100"><span style="width: {{.}}%"></span></span><span class="small muted">{{.}}%</span></span>{{else}}<span class="small muted">{{if eq $s.Status "pending" "assigned"}}{{if $s.PlannedPickupAt.Valid}}Pickup {{when $s.PlannedPickupAt}}{{else}}Not started{{end}}{{else}}—{{end}}</span>{{end}}</td>
+        <td class="num nowrap">{{if eq $s.Status "delivered"}}{{when $s.ActualDelivery}}{{else if $s.EstimatedDelivery.Valid}}{{if late $s.EstimatedDelivery $s.Status}}<span class="text-warn"><strong>{{when $s.EstimatedDelivery}}</strong> <span class="small">{{lateBy $s.EstimatedDelivery}}</span></span>{{else}}{{when $s.EstimatedDelivery}}{{end}}{{else}}—{{end}}</td>
+        <td class="row-menu">
+          <details class="pop pop-right">
+            <summary class="icon-btn" aria-label="Actions for {{$s.TrackingNumber}}">{{icon "ellipsis-vertical"}}</summary>
+            <div class="pop-panel menu-panel">
+              <a href="/app/shipments/{{$id}}">{{icon "package"}}Open shipment</a>
+              <a href="/track/{{$s.TrackingNumber}}" target="_blank" rel="noopener">{{icon "external-link"}}Customer view</a>
+              <a href="tel:{{$s.CustomerPhone}}">{{icon "phone"}}Call the customer</a>
+            </div>
+          </details>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <div class="card-foot board-foot">
+    <span>Showing {{len $d.OnRoad}} of {{$d.BoardTotal}}</span>
+    <a class="btn btn-sm" href="/app/shipments?tab={{$d.Board.Tab}}">See them all in Shipments {{icon "arrow-right"}}</a>
+  </div>
+  {{else}}
+  <p class="card-pad muted">{{if eq $d.Board.Key "active"}}No load is on the road right now.{{else if eq $d.Board.Key "attention"}}Nothing is late or has a problem.{{else if eq $d.Board.Key "waiting"}}Every shipment has a driver and has left.{{else}}Nothing delivered yet.{{end}}</p>
+  {{end}}
+</section>
+
 <section class="card" data-live-region id="dash-activity">
-  <div class="card-head"><h2>Recent activity</h2><a class="small" href="/app/shipments">All shipments</a></div>
+  <div class="card-head"><div><h2>Recent activity</h2><p>The last 20 things that happened to your loads</p></div><a class="small" href="/app/shipments">All shipments</a></div>
   {{template "timeline" (dict "Items" $d.Activity "Links" true)}}
 </section>
 {{end}}

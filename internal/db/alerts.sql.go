@@ -203,7 +203,7 @@ func (q *Queries) DeleteOldAlerts(ctx context.Context, createdAt pgtype.Timestam
 }
 
 const listAlerts = `-- name: ListAlerts :many
-SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, a.episode, s.tracking_number, d.full_name AS driver_name
+SELECT a.id, a.tenant_id, a.shipment_id, a.driver_id, a.alert_type, a.severity, a.message, a.created_at, a.read_at, a.acknowledged_at, a.acknowledged_by, a.episode, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone
 FROM alerts a
 LEFT JOIN shipments s ON s.id = a.shipment_id
 LEFT JOIN users d ON d.id = a.driver_id
@@ -223,20 +223,24 @@ type ListAlertsParams struct {
 }
 
 type ListAlertsRow struct {
-	ID             pgtype.UUID        `db:"id" json:"id"`
-	TenantID       pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	ShipmentID     pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
-	DriverID       pgtype.UUID        `db:"driver_id" json:"driver_id"`
-	AlertType      string             `db:"alert_type" json:"alert_type"`
-	Severity       string             `db:"severity" json:"severity"`
-	Message        string             `db:"message" json:"message"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	ReadAt         pgtype.Timestamptz `db:"read_at" json:"read_at"`
-	AcknowledgedAt pgtype.Timestamptz `db:"acknowledged_at" json:"acknowledged_at"`
-	AcknowledgedBy pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
-	Episode        *string            `db:"episode" json:"episode"`
-	TrackingNumber *string            `db:"tracking_number" json:"tracking_number"`
-	DriverName     *string            `db:"driver_name" json:"driver_name"`
+	ID              pgtype.UUID        `db:"id" json:"id"`
+	TenantID        pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	ShipmentID      pgtype.UUID        `db:"shipment_id" json:"shipment_id"`
+	DriverID        pgtype.UUID        `db:"driver_id" json:"driver_id"`
+	AlertType       string             `db:"alert_type" json:"alert_type"`
+	Severity        string             `db:"severity" json:"severity"`
+	Message         string             `db:"message" json:"message"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ReadAt          pgtype.Timestamptz `db:"read_at" json:"read_at"`
+	AcknowledgedAt  pgtype.Timestamptz `db:"acknowledged_at" json:"acknowledged_at"`
+	AcknowledgedBy  pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
+	Episode         *string            `db:"episode" json:"episode"`
+	TrackingNumber  *string            `db:"tracking_number" json:"tracking_number"`
+	DestinationCity *string            `db:"destination_city" json:"destination_city"`
+	CustomerName    *string            `db:"customer_name" json:"customer_name"`
+	CustomerPhone   *string            `db:"customer_phone" json:"customer_phone"`
+	DriverName      *string            `db:"driver_name" json:"driver_name"`
+	DriverPhone     *string            `db:"driver_phone" json:"driver_phone"`
 }
 
 func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListAlertsRow, error) {
@@ -268,7 +272,11 @@ func (q *Queries) ListAlerts(ctx context.Context, arg ListAlertsParams) ([]ListA
 			&i.AcknowledgedBy,
 			&i.Episode,
 			&i.TrackingNumber,
+			&i.DestinationCity,
+			&i.CustomerName,
+			&i.CustomerPhone,
 			&i.DriverName,
+			&i.DriverPhone,
 		); err != nil {
 			return nil, err
 		}

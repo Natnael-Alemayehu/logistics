@@ -89,8 +89,12 @@ func (s *Server) shipmentDetail(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	tab := "overview"
+	if r.URL.Query().Get("tab") == "activity" {
+		tab = "activity"
+	}
 	v := s.view(w, r, sh.TrackingNumber, "shipments", map[string]any{
-		"D": d, "S": sh, "Timeline": timeline, "Map": m, "Drivers": drivers, "Vehicles": vehicles, "Review": review,
+		"D": d, "S": sh, "Timeline": timeline, "Trip": tripFrom(d), "Tab": tab, "Map": m, "Drivers": drivers, "Vehicles": vehicles, "Review": review,
 		"CanAssign": model.CanAssign(sh.Status), "CanUnassign": sh.DriverID.Valid && model.CanUnassign(sh.Status),
 		"CanCancel": model.CanCancel(sh.Status), "CanReopen": model.CanReopen(sh.Status),
 		"CanEdit": !model.IsFinalStatus(sh.Status), "Next": d.Next,
@@ -285,4 +289,119 @@ func (s *Server) shipmentReviewMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.serveMedia(w, r, podMediaKey(sig, photos, chi.URLParam(r, "n")))
+}
+
+// tripStep is one stage of a shipment in the progress strip at the top of
+// its page.
+type tripStep struct {
+	Label   string
+	At      time.Time
+	Done    bool
+	Current bool
+}
+
+// tripView sums up where a load is: the stages it has passed, how far it has
+// left and what the driver's phone last said.
+type tripView struct {
+	Steps    []tripStep
+	BookedBy string
+	Progress *int
+	// KmTotal is the straight-line distance from origin to destination,
+	// KmLeft from the last position (or the origin, before the trip) to it.
+	KmTotal, KmLeft float64
+	HasKm           bool
+	SpeedKPH        float64
+	HasSpeed        bool
+	Battery         *int32
+	LastAt          time.Time
+	// Active: a driver has the load and it isn't delivered, so where their
+	// phone was last heard from means something. Fresh: that was in the
+	// last half hour, recent enough to show the speed.
+	Active, Fresh bool
+	Near          string
+	NearKm        float64
+}
+
+var tripStages = []struct{ status, label string }{
+	{model.StatusPending, "Booked"},
+	{model.StatusAssigned, "Driver assigned"},
+	{model.StatusInTransit, "On the way"},
+	{model.StatusArrived, "Arrived"},
+	{model.StatusDelivered, "Delivered"},
+}
+
+// tripStage is how far along the stages a status is; -1 for cancelled.
+func tripStage(status string) int {
+	switch status {
+	case model.StatusPending:
+		return 0
+	case model.StatusAssigned:
+		return 1
+	case model.StatusInTransit, model.StatusDelayed, model.StatusIssue:
+		return 2
+	case model.StatusArrived:
+		return 3
+	case model.StatusDelivered:
+		return 4
+	}
+	return -1
+}
+
+func tripFrom(d *service.ShipmentDetail) tripView {
+	sh := d.Shipment
+	var t tripView
+	reached := map[string]time.Time{model.StatusPending: sh.CreatedAt.Time}
+	for i, e := range d.Events { // oldest first
+		if i == 0 {
+			t.BookedBy = e.ActorName
+		}
+		if e.ToStatus == nil {
+			continue
+		}
+		to := *e.ToStatus
+		if to == model.StatusDelayed || to == model.StatusIssue {
+			to = model.StatusInTransit
+		}
+		if _, ok := reached[to]; !ok {
+			reached[to] = e.CreatedAt.Time
+		}
+	}
+	if sh.PickedUpAt.Valid {
+		reached[model.StatusInTransit] = sh.PickedUpAt.Time
+	}
+	if sh.ActualDelivery.Valid {
+		reached[model.StatusDelivered] = sh.ActualDelivery.Time
+	}
+	stage := tripStage(sh.Status)
+	for i, st := range tripStages {
+		at, ok := reached[st.status]
+		t.Steps = append(t.Steps, tripStep{Label: st.label, At: at, Done: ok && (stage < 0 || i <= stage), Current: i == stage && i < len(tripStages)-1})
+	}
+
+	var pos *service.DriverPin
+	if n := len(d.Route); n > 0 {
+		last := d.Route[n-1]
+		pos = &service.DriverPin{Lat: last.Latitude, Lng: last.Longitude, At: last.RecordedAt.Time}
+		t.LastAt = last.RecordedAt.Time
+		t.Battery = last.BatteryLevel
+		if f, err := last.SpeedKph.Float64Value(); err == nil && f.Valid {
+			t.SpeedKPH, t.HasSpeed = f.Float64, true
+		}
+		place, m := geo.Nearest(last.Latitude, last.Longitude)
+		t.Near, t.NearKm = place.Name, m/1000
+	}
+	t.Active = stage >= 1 && stage <= 3
+	t.Fresh = t.Active && !t.LastAt.IsZero() && time.Since(t.LastAt) < 30*time.Minute
+	t.Progress = service.Progress(sh, pos)
+	if sh.OriginLat != nil && sh.OriginLng != nil && sh.DestinationLat != nil && sh.DestinationLng != nil {
+		t.KmTotal = geo.DistanceMeters(*sh.OriginLat, *sh.OriginLng, *sh.DestinationLat, *sh.DestinationLng) / 1000
+		t.KmLeft, t.HasKm = t.KmTotal, t.KmTotal >= 1
+		switch {
+		case stage >= 3:
+			t.KmLeft = 0
+		case stage == 2 && pos != nil:
+			t.KmLeft = min(t.KmTotal, geo.DistanceMeters(pos.Lat, pos.Lng, *sh.DestinationLat, *sh.DestinationLng)/1000)
+		}
+	}
+	return t
 }

@@ -6,7 +6,7 @@
 
 {{define "form-error"}}{{if and .Error (not .Errors)}}<div class="flash flash-error" role="alert">{{.Error}}</div>{{else if .Errors}}<div class="flash flash-error" role="alert">Please fix the highlighted field{{if gt (len .Errors) 1}}s{{end}} below.</div>{{end}}{{end}}
 
-{{define "status"}}<span class="badge s-{{.}}">{{statusLabel .}}</span>{{end}}
+{{define "status"}}<span class="badge s-{{.}}">{{with statusIcon .}}{{icon .}}{{end}}{{statusLabel .}}</span>{{end}}
 
 {{define "priority"}}{{if ne . "normal"}}<span class="badge p-{{.}}">{{title .}}</span>{{end}}{{end}}
 
@@ -40,15 +40,21 @@
 {{/* alert-items expects dict "Alerts" ([]db.ListAlertsRow) and "Back" (where dismissing returns to) */}}
 {{define "alert-items"}}{{$back := .Back}}<ul class="alert-list" data-alert-list>
 {{range .Alerts}}{{$a := .}}<li class="alert-item sev-{{.Severity}}{{if .AcknowledgedAt.Valid}} is-done{{end}}">
+  <span class="alert-icon">{{icon (alertIcon .AlertType)}}</span>
   <div class="alert-body">
-    <p class="alert-title">{{template "severity" .Severity}} <strong>{{alertLabel .AlertType}}</strong>{{with .TrackingNumber}} <a class="alert-ref" href="/app/shipments/{{uuid $a.ShipmentID}}">{{.}}</a>{{end}}</p>
-    <p>{{.Message}}</p>
-    <p class="muted small"><time datetime="{{rfc3339 .CreatedAt}}" title="{{when .CreatedAt}}">{{ago .CreatedAt}}</time>{{with .DriverName}} · {{.}}{{end}}{{if .AcknowledgedAt.Valid}} · dismissed {{ago .AcknowledgedAt}}{{end}}</p>
+    <p class="alert-title"><span class="sr-only">{{template "severity" .Severity}}</span>{{alertLabel .AlertType}}</p>
+    <p class="alert-msg">{{.Message}}</p>
+    <p class="alert-meta">{{with .TrackingNumber}}<a class="alert-ref" href="/app/shipments/{{uuid $a.ShipmentID}}">{{.}}</a> · {{end}}{{with .DriverName}}{{.}} · {{end}}<time datetime="{{rfc3339 .CreatedAt}}" title="{{when .CreatedAt}}">{{ago .CreatedAt}}</time>{{if .AcknowledgedAt.Valid}} · dismissed {{ago .AcknowledgedAt}}{{end}}</p>
+    {{if not .AcknowledgedAt.Valid}}<div class="alert-actions">
+      {{with .DriverPhone}}<a class="btn btn-sm" href="tel:{{.}}">{{icon "phone"}}Call driver</a>{{end}}
+      {{if and .CustomerPhone (or (eq .AlertType "customer_issue") (eq .AlertType "eta_exceeded") (eq .AlertType "delay_reported"))}}<a class="btn btn-sm" href="tel:{{str .CustomerPhone}}">{{icon "message-square-text"}}Call the customer</a>{{end}}
+      {{if .ShipmentID.Valid}}<a class="btn btn-sm btn-ghost" href="/app/shipments/{{uuid .ShipmentID}}">Open shipment</a>{{end}}
+      <form method="post" action="/app/alerts/{{uuid .ID}}/ack">
+        <input type="hidden" name="back" value="{{$back}}">
+        <button class="btn btn-sm btn-ghost" type="submit" title="Mark as dealt with">{{icon "check"}}Dismiss</button>
+      </form>
+    </div>{{end}}
   </div>
-  {{if not .AcknowledgedAt.Valid}}<form method="post" action="/app/alerts/{{uuid .ID}}/ack">
-    <input type="hidden" name="back" value="{{$back}}">
-    <button class="btn btn-sm btn-ghost" type="submit" title="Mark as dealt with">Dismiss</button>
-  </form>{{end}}
 </li>
 {{else}}<li class="empty-line muted">Nothing needs attention. Alerts appear here when a shipment is late, a driver reports a problem or goes offline.</li>{{end}}
 </ul>{{end}}

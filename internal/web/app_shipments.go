@@ -106,12 +106,17 @@ func sortColumns(q url.Values) []sortColumn {
 		{"customer", "Customer", "customer", "customer_desc", false},
 		{"driver", "Driver", "driver", "driver_desc", false},
 		{"status", "Status", "status", "status_desc", false},
+		{"progress", "Progress", "", "", false},
 		{"due", "Due", "eta_asc", "eta_desc", true},
 	}
 	cur := q.Get("sort")
 	out := make([]sortColumn, 0, len(cols))
 	for _, c := range cols {
 		sc := sortColumn{Key: c.key, Label: c.label, Num: c.num}
+		if c.asc == "" {
+			out = append(out, sc) // not sortable: no link
+			continue
+		}
 		next := c.asc
 		switch cur {
 		case c.asc:
@@ -195,6 +200,22 @@ func (s *Server) shipmentList(w http.ResponseWriter, r *http.Request) {
 		}
 		maxActive = tenant.MaxActivePerDriver
 	}
+	counts, err := s.svc.Shipments.StatusCounts(r.Context(), p.TenantID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	tabCounts := map[string]int64{}
+	for _, t := range shipmentTabs {
+		for _, st := range t.Statuses {
+			tabCounts[t.Key] += counts[st]
+		}
+	}
+	progress, err := s.progress(r.Context(), p.TenantID, rows)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	page := max(f.Page, 1)
 	pages := int((total + int64(f.PerPage) - 1) / int64(f.PerPage))
 	filtered := q.Get("q") != "" || q.Get("driver") != "" || q.Get("priority") != "" || q.Get("from") != "" ||
@@ -205,6 +226,7 @@ func (s *Server) shipmentList(w http.ResponseWriter, r *http.Request) {
 		"Towns": geo.Places(), "Highlight": q.Get("highlight"), "Search": searchTerm(q.Get("q")),
 		"Columns": sortColumns(q), "Views": views, "ViewQuery": current, "Pending": pending,
 		"Vehicles": vehicles, "MaxActive": maxActive, "Back": r.URL.RequestURI(),
+		"TabCounts": tabCounts, "Progress": progress, "PerPage": f.PerPage,
 	})
 	s.render(w, r, http.StatusOK, "app/shipments", v)
 }
