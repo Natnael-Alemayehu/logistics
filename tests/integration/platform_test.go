@@ -357,6 +357,15 @@ func TestSupportTickets(t *testing.T) {
 	e := newEnv(t)
 	op := e.operator()
 	office := e.company("Question Cargo")
+	help := office.get("/app/help")
+	for _, want := range []string{`href="https://t.me/kiflet_support"`, `href="tel:&#43;251110000000"`, "mailto:support@kiflet.test", "How plans are priced"} {
+		if !strings.Contains(help.Body, want) {
+			t.Errorf("the help page lacks %s", want)
+		}
+	}
+	if strings.Contains(help.Body, "Open</span>") {
+		t.Error("the help page shows opening hours that weren't set")
+	}
 	if p := office.get("/app/help/new?subject=Enterprise+plan"); !strings.Contains(p.Body, `value="Enterprise plan"`) {
 		t.Error("the Enterprise link doesn't fill in the subject")
 	}

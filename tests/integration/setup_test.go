@@ -166,6 +166,7 @@ func newEnv(t *testing.T, options ...func(*setup)) *env {
 		StorageType: "local", StoragePath: t.TempDir(), MetricsToken: metricsToken, PaymentProvider: "mock",
 		CBEBirr:      config.CBEBirrSettings{MerchantID: cbeMerchant, CallbackUsername: cbeUser, CallbackPassword: cbePassword},
 		SupportEmail: "support@kiflet.test", BankDetails: "Test Bank, account 123",
+		SupportPhone: "+251 11 000 0000", SupportTelegram: "kiflet_support",
 	}
 	s := &setup{base: base, cfg: cfg}
 	for _, o := range options {

@@ -672,6 +672,27 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .switch input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .switch input:disabled { cursor: default; opacity: 0.6; }
 
+/* Help: a search, the answers by topic, then questions and contacts. */
+.help-hero { text-align: center; padding: 16px 0 28px; }
+.help-hero h1 { margin: 0 0 6px; }
+.help-search { max-width: 520px; margin: 18px auto 0; }
+.help-search input { height: 44px; font-size: 1rem; }
+.help-topics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; margin-bottom: 24px; }
+.help-topic[hidden] { display: none; }
+.help-topic-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.help-topic-head h2 { margin: 0; font-size: 1rem; }
+.help-topic-head .i { width: 18px; height: 18px; color: var(--muted); }
+.help-topic details { border-top: 1px solid var(--border); }
+.help-topic summary { padding: 10px 0; cursor: pointer; font-size: 0.9375rem; }
+.help-topic summary:hover { text-decoration: underline; }
+.help-topic details p { margin: 0 0 12px; color: var(--muted); font-size: 0.875rem; line-height: 1.55; }
+.help-none { text-align: center; margin: -8px 0 24px; }
+.contact-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.contact-list li { display: flex; gap: 12px; align-items: flex-start; font-size: 0.875rem; }
+.contact-list li > .i { width: 18px; height: 18px; margin-top: 2px; color: var(--muted); flex: none; }
+.contact-list li > span { display: flex; flex-direction: column; }
+.contact-list a { overflow-wrap: anywhere; }
+
 /* People, one to a line, with an avatar. */
 .people-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .people-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.875rem; }

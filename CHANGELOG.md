@@ -4,7 +4,17 @@ What changed in each release, newest first.
 
 ## Unreleased
 
+### Added
+
+- **Support by phone and Telegram.** `SUPPORT_PHONE`, `SUPPORT_TELEGRAM`
+  (a username) and `SUPPORT_HOURS` add those ways to reach support to the
+  Help page, beside the email address. Each is left off when not set.
+
 ### Changed
+
+- **Help redesigned** (the redesign, part 7). Answers to common questions
+  by topic, with a search that narrows them as you type, then your
+  questions to the Kiflet team and how to reach support.
 
 - **Alerts redesigned, with rules** (the redesign, part 6). A company sets
   when it is alerted: problems reported by drivers, running late (by how

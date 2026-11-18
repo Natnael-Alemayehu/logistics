@@ -129,6 +129,9 @@ type AppInfo struct {
 	SMSNumber       string
 	PublicURL       string
 	SupportEmail    string
+	SupportPhone    string
+	SupportTelegram string
+	SupportHours    string
 	BankDetails     string
 }
 
@@ -185,6 +188,7 @@ func (s *Server) view(w http.ResponseWriter, r *http.Request, title, nav string,
 			SatelliteURL: s.satelliteURL(), SatelliteCredit: s.cfg.MapSatelliteAttribution,
 			MockSMS: s.mockSMS, MockMail: s.mockMail, MockPay: s.mockPay, SMSNumber: s.cfg.SMSNumber, PublicURL: s.cfg.PublicURL,
 			SupportEmail: s.cfg.SupportEmail, BankDetails: s.cfg.BankDetails,
+			SupportPhone: s.cfg.SupportPhone, SupportTelegram: s.cfg.SupportTelegram, SupportHours: s.cfg.SupportHours,
 		},
 		Flash: s.takeFlash(w, r),
 	}

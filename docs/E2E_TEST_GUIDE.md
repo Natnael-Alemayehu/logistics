@@ -457,7 +457,12 @@ SMS: the email appears in the server terminal.
 
 ### Help and your data
 
-- **Help** holds questions to the Kiflet team. **Ask a question** with a
+- **Help** opens with answers by topic (getting started, shipments,
+  drivers, billing). Type `battery` in **Search help**: only the answer
+  about battery and data stays, opened. Below are your questions and
+  how to reach support: email always, and the phone, Telegram and hours
+  when `SUPPORT_PHONE`, `SUPPORT_TELEGRAM` and `SUPPORT_HOURS` are set.
+- **Your questions** go to the Kiflet team. **Ask a question** with a
   subject and a message. The team is emailed (an `EMAIL to admin@kiflet.et`
   block in the terminal). Its answer shows on the question's page and is
   emailed to whoever asked. Reply to carry on, or **Close** the question when

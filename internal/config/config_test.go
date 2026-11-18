@@ -124,3 +124,18 @@ func TestProductionHasNoPaymentStandIn(t *testing.T) {
 		t.Error("an unknown PAYMENT_PROVIDER should be rejected")
 	}
 }
+
+func TestSupportTelegram(t *testing.T) {
+	t.Setenv("APP_SECRET_FILE", filepath.Join(t.TempDir(), "secret"))
+	for in, want := range map[string]string{"@kiflet_support": "kiflet_support", "https://t.me/KifletHelp": "KifletHelp", "": ""} {
+		t.Setenv("SUPPORT_TELEGRAM", in)
+		c, err := Load()
+		if err != nil || c.SupportTelegram != want {
+			t.Errorf("%q: %q, %v; want %q", in, c.SupportTelegram, err, want)
+		}
+	}
+	t.Setenv("SUPPORT_TELEGRAM", "no spaces allowed")
+	if _, err := Load(); err == nil {
+		t.Error("a username with spaces was taken")
+	}
+}
