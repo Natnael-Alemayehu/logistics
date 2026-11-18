@@ -693,6 +693,20 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .contact-list li > span { display: flex; flex-direction: column; }
 .contact-list a { overflow-wrap: anywhere; }
 
+/* Team: members, those waiting to join, those who left. */
+.card-title { margin: 0; font-size: 1rem; }
+.list-toolbar > div:first-child { flex: 1 1 auto; }
+.list-toolbar > div:first-child p { margin: 2px 0 0; }
+.invite-list { list-style: none; margin: 0; padding: 0; }
+.invite-list li { display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.invite-who { flex: 1 1 200px; min-width: 0; }
+.invite-who p { margin: 2px 0 0; }
+.former summary { cursor: pointer; }
+.former[open] summary { margin-bottom: 12px; }
+.role-list { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.role-list dt { font-weight: 600; font-size: 0.875rem; }
+.role-list dd { margin: 2px 0 0; color: var(--muted); font-size: 0.8125rem; line-height: 1.5; }
+
 /* People, one to a line, with an avatar. */
 .people-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .people-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.875rem; }
