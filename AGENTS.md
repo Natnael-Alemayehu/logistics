@@ -98,6 +98,12 @@ make lint                          # golangci-lint, node --check, gitleaks over 
   again and swapped in when a WebSocket message says something changed
   (`static/app.js`). Mark new live parts of a page that way instead of
   rendering them in JS.
+- The look is the "Desk" design (light) and "Night" (dark mode): colours
+  are tokens at the top of `static/app.css`, and soft tints and status
+  colours are derived from them. Icons are lucide's: `{{icon "truck"}}`,
+  from the names in `internal/web/icons.go` (copy a new one in from
+  lucide-static). Fonts live in `static/fonts`, named with their version
+  because they are cached for good.
 - Page stylesheets (the `head` block, e.g. Leaflet's) load before `app.css`,
   so `app.css` can restyle vendor widgets.
 - The sandbox imports only the standard library and `pkg/console` (a test

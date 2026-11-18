@@ -5,7 +5,7 @@
     <p class="muted">{{date $r.From}} – {{date $d.Last}}{{with $d.DriverName}} · {{.}}{{end}}{{if or $r.Filter.Origin $r.Filter.Destination}} · {{with $r.Filter.Origin}}{{.}}{{else}}anywhere{{end}} → {{with $r.Filter.Destination}}{{.}}{{else}}anywhere{{end}}{{end}}</p>
   </div>
   <div class="actions no-print">
-    <button class="btn" type="button" data-print title="Print, or choose “Save as PDF” as the printer">{{template "icon" "print"}} Print or save as PDF</button>
+    <button class="btn" type="button" data-print title="Print, or choose “Save as PDF” as the printer">{{icon "printer"}} Print or save as PDF</button>
   </div>
 </div>
 
@@ -55,7 +55,7 @@
     <div class="legend small">
       <span aria-hidden="true"><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-on"/></svg> On time</span>
       <span aria-hidden="true"><svg width="10" height="10"><rect width="10" height="10" rx="2" class="viz-other"/></svg> Late or no due time</span>
-      {{if not $c.Empty}}<a class="no-print" href="{{index $d.CSV "daily"}}">{{template "icon" "download"}} CSV</a>{{end}}
+      {{if not $c.Empty}}<a class="no-print" href="{{index $d.CSV "daily"}}">{{icon "download"}} CSV</a>{{end}}
     </div>
   </div>
   {{if $c.Empty}}
@@ -97,7 +97,7 @@
 
 <div class="grid-2">
 <section class="card">
-  <div class="card-head"><h2>Drivers</h2><a class="small no-print" href="{{index $d.CSV "drivers"}}">{{template "icon" "download"}} CSV</a></div>
+  <div class="card-head"><h2>Drivers</h2><a class="small no-print" href="{{index $d.CSV "drivers"}}">{{icon "download"}} CSV</a></div>
   {{if $r.Drivers}}
   <div class="table-wrap">
   <table class="table table-compact">
@@ -111,7 +111,7 @@
 </section>
 
 <section class="card">
-  <div class="card-head"><h2>Routes</h2><a class="small no-print" href="{{index $d.CSV "routes"}}">{{template "icon" "download"}} CSV</a></div>
+  <div class="card-head"><h2>Routes</h2><a class="small no-print" href="{{index $d.CSV "routes"}}">{{icon "download"}} CSV</a></div>
   {{if $r.Routes}}
   <div class="table-wrap">
   <table class="table table-compact">
@@ -126,7 +126,7 @@
 </div>
 
 <section class="card">
-  <div class="card-head"><h2>Cancellations</h2>{{if $r.Cancellations}}<a class="small no-print" href="{{index $d.CSV "cancellations"}}">{{template "icon" "download"}} CSV</a>{{end}}</div>
+  <div class="card-head"><h2>Cancellations</h2>{{if $r.Cancellations}}<a class="small no-print" href="{{index $d.CSV "cancellations"}}">{{icon "download"}} CSV</a>{{end}}</div>
   {{if $r.Cancellations}}
   <div class="table-wrap">
   <table class="table table-compact">
@@ -140,7 +140,7 @@
 </section>
 
 <section class="card">
-  <div class="card-head"><h2>Top customers</h2><a class="small no-print" href="{{index $d.CSV "customers"}}">{{template "icon" "download"}} CSV</a></div>
+  <div class="card-head"><h2>Top customers</h2><a class="small no-print" href="{{index $d.CSV "customers"}}">{{icon "download"}} CSV</a></div>
   {{if $r.Customers}}
   <div class="table-wrap">
   <table class="table table-compact">

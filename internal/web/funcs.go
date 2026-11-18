@@ -105,6 +105,11 @@ func (s *Server) funcs() template.FuncMap {
 	loc := s.cfg.Timezone
 	return template.FuncMap{
 		"asset": func(p string) string { return "/static/" + p + "?v=" + s.version },
+		"icon":  icon,
+		// section is the part of the dashboard a page belongs to, for the
+		// breadcrumb: its name and address.
+		"section": func(nav string) navSection { return navSections[nav] },
+		"year":    func() int { return time.Now().In(loc).Year() },
 
 		"statusLabel": model.StatusLabel,
 		"reasonLabel": model.ReasonLabel,
@@ -579,4 +584,26 @@ func grouped(n int64) string {
 		return "-" + b.String()
 	}
 	return b.String()
+}
+
+type navSection struct{ Label, URL string }
+
+// navSections names each View.Nav for the breadcrumb.
+var navSections = map[string]navSection{
+	"dashboard":        {"Overview", "/app"},
+	"shipments":        {"Shipments", "/app/shipments"},
+	"drivers":          {"Drivers", "/app/drivers"},
+	"vehicles":         {"Vehicles", "/app/vehicles"},
+	"alerts":           {"Alerts", "/app/alerts"},
+	"reports":          {"Reports", "/app/reports"},
+	"team":             {"Team", "/app/team"},
+	"billing":          {"Billing", "/app/billing"},
+	"settings":         {"Settings", "/app/settings"},
+	"help":             {"Help", "/app/help"},
+	"account":          {"Your account", "/app/account"},
+	"platform":         {"Companies", "/app/platform"},
+	"platform-billing": {"Billing", "/app/platform/billing"},
+	"platform-support": {"Support", "/app/platform/support"},
+	"platform-audit":   {"Audit log", "/app/platform/audit"},
+	"platform-health":  {"System health", "/app/platform/health"},
 }

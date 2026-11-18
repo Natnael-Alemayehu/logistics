@@ -12,65 +12,68 @@
 </head>
 <body class="shell" data-live="{{if and .Me (not .Me.IsPlatformAdmin)}}/app/live{{end}}">
 <a class="skip" href="#main">Skip to content</a>
+<div class="frame">
+<aside class="sidenav" id="sidenav" aria-label="Sidebar">
+  <a class="side-head" href="/app">{{template "logo"}}<span class="side-org"><strong>{{if and .Me .Me.TenantName}}{{.Me.TenantName}}{{else}}{{.App.Name}}{{end}}</strong><span>{{if and .Me .Me.IsPlatformAdmin}}Platform{{else}}{{.App.Name}}{{end}}</span></span></a>
+  <nav class="side-nav" aria-label="Main">
+  {{if .Me}}{{if .Me.IsPlatformAdmin}}
+  <p class="nav-section">Platform</p>
+  <a href="/app/platform" {{if eq .Nav "platform"}}aria-current="page"{{end}}>{{icon "building-2"}}<span>Companies</span></a>
+  <a href="/app/platform/billing" {{if eq .Nav "platform-billing"}}aria-current="page"{{end}}>{{icon "receipt"}}<span>Billing</span></a>
+  <a href="/app/platform/support" {{if eq .Nav "platform-support"}}aria-current="page"{{end}}>{{icon "message-circle"}}<span>Support</span>{{if .Waiting}}<span class="pill" title="{{.Waiting}} waiting for an answer">{{.Waiting}}</span>{{end}}</a>
+  <a href="/app/platform/audit" {{if eq .Nav "platform-audit"}}aria-current="page"{{end}}>{{icon "shield"}}<span>Audit log</span></a>
+  <a href="/app/platform/health" {{if eq .Nav "platform-health"}}aria-current="page"{{end}}>{{icon "activity"}}<span>System health</span></a>
+  {{else if not .Me.MustChangeCredential}}
+  <p class="nav-section">Dispatch</p>
+  <a href="/app" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>{{icon "house"}}<span>Overview</span></a>
+  <a href="/app/shipments" {{if eq .Nav "shipments"}}aria-current="page"{{end}}>{{icon "package"}}<span>Shipments</span></a>
+  <a href="/app/drivers" {{if eq .Nav "drivers"}}aria-current="page"{{end}}>{{icon "user-round"}}<span>Drivers</span></a>
+  <a href="/app/vehicles" {{if eq .Nav "vehicles"}}aria-current="page"{{end}}>{{icon "truck"}}<span>Vehicles</span></a>
+  <a href="/app/alerts" {{if eq .Nav "alerts"}}aria-current="page"{{end}}>{{icon "bell"}}<span>Alerts</span><span class="pill" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span></a>
+  <a href="/app/reports" {{if eq .Nav "reports"}}aria-current="page"{{end}}>{{icon "chart-column"}}<span>Reports</span></a>
+  <p class="nav-section">Company</p>
+  {{if .Me.CanManageCompany}}
+  <a href="/app/team" {{if eq .Nav "team"}}aria-current="page"{{end}}>{{icon "users"}}<span>Team</span></a>
+  <a href="/app/billing" {{if eq .Nav "billing"}}aria-current="page"{{end}}>{{icon "receipt"}}<span>Billing</span></a>
+  <a href="/app/settings" {{if eq .Nav "settings"}}aria-current="page"{{end}}>{{icon "settings"}}<span>Settings</span></a>
+  {{end}}
+  <a href="/app/help" {{if eq .Nav "help"}}aria-current="page"{{end}}>{{icon "life-buoy"}}<span>Help</span></a>
+  {{end}}{{end}}
+  </nav>
+  {{if .Me}}<div class="side-foot">
+    {{if not .Me.IsPlatformAdmin}}<p class="side-driver"><span>Drivers open the app at</span><a class="mono" href="/driver/" target="_blank" rel="noopener">{{bareURL .App.PublicURL}}/driver</a></p>{{end}}
+    <details class="menu user-menu">
+      <summary aria-label="Account menu"><span class="avatar">{{initials .Me.Name}}</span><span class="side-org"><strong>{{.Me.Name}}</strong><span>{{roleLabel .Me.Role}}</span></span>{{icon "chevrons-up-down"}}</summary>
+      <div class="menu-panel">
+        <a href="/app/account">{{icon "user-round"}}Your account</a>
+        <a href="/app/account/password">{{icon "key-round"}}Change password</a>
+        <a href="/track" target="_blank" rel="noopener">{{icon "external-link"}}Public tracking page</a>
+        <form action="/logout" method="post"><button type="submit" class="link">{{icon "log-out"}}Sign out</button></form>
+      </div>
+    </details>
+  </div>{{end}}
+</aside>
+<div class="scrim" data-toggle="nav" hidden></div>
+
+<div class="main-col">
 <header class="topbar">
-  <button type="button" class="icon-btn nav-open" data-toggle="nav" aria-label="Menu" aria-controls="sidenav" aria-expanded="false">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-  </button>
-  <a class="brand" href="/app">{{template "logo"}}<span>{{.App.Name}}</span></a>
-  {{if .Me}}<span class="company">{{.Me.TenantName}}</span>{{end}}
+  <button type="button" class="icon-btn nav-open" data-toggle="nav" aria-label="Menu" aria-controls="sidenav" aria-expanded="false">{{icon "panel-left"}}</button>
+  {{$sec := section .Nav}}
+  <nav class="crumbs" aria-label="Breadcrumb"><ol>
+    {{if and .Me .Me.TenantName}}<li class="crumb-root"><a href="/app">{{.Me.TenantName}}</a></li>{{end}}
+    {{if and $sec.Label (ne $sec.Label .Title)}}<li><a href="{{$sec.URL}}">{{$sec.Label}}</a></li>{{end}}
+    <li><span aria-current="page">{{or .Title $sec.Label .App.Name}}</span></li>
+  </ol></nav>
   <span class="spacer"></span>
   {{if and .Me (not .Me.IsPlatformAdmin)}}
   <form class="quick-search" action="/app/shipments" method="get" role="search">
-    <input type="search" name="q" placeholder="Search shipments" aria-label="Search shipments" value="{{if eq .Nav "shipments"}}{{.Query.Get "q"}}{{end}}">
+    {{icon "search"}}
+    <input type="search" name="q" placeholder="Tracking no., customer, plate…" aria-label="Search shipments" aria-keyshortcuts="/" data-search-key value="{{if eq .Nav "shipments"}}{{.Query.Get "q"}}{{end}}">
+    <kbd>/</kbd>
   </form>
-  <a class="icon-btn bell" href="/app/alerts" aria-label="Alerts{{if .Unread}}, {{.Unread}} unread{{end}}">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-    <span class="count" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span>
-  </a>
-  {{end}}
-  {{if .Me}}
-  <details class="menu user-menu">
-    <summary aria-label="Account menu"><span class="avatar">{{initials .Me.Name}}</span></summary>
-    <div class="menu-panel">
-      <p class="menu-head"><strong>{{.Me.Name}}</strong><br><span class="muted">{{roleLabel .Me.Role}}</span></p>
-      <a href="/app/account">Your account</a>
-      <a href="/app/account/password">Change password</a>
-      <a href="/track" target="_blank" rel="noopener">Public tracking page</a>
-      <form action="/logout" method="post"><button type="submit" class="link">Sign out</button></form>
-    </div>
-  </details>
+  <a class="icon-btn icon-btn-outline bell" href="/app/alerts" aria-label="Alerts{{if .Unread}}, {{.Unread}} unread{{end}}">{{icon "bell"}}<span class="count" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span></a>
   {{end}}
 </header>
-
-<div class="frame">
-<nav class="sidenav" id="sidenav" aria-label="Main">
-  {{if .Me}}{{if .Me.IsPlatformAdmin}}
-  <a href="/app/platform" {{if eq .Nav "platform"}}aria-current="page"{{end}}>{{template "icon" "building"}}Companies</a>
-  <a href="/app/platform/billing" {{if eq .Nav "platform-billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
-  <a href="/app/platform/support" {{if eq .Nav "platform-support"}}aria-current="page"{{end}}>{{template "icon" "chat"}}Support{{if .Waiting}}<span class="pill" title="{{.Waiting}} waiting for an answer">{{.Waiting}}</span>{{end}}</a>
-  <a href="/app/platform/audit" {{if eq .Nav "platform-audit"}}aria-current="page"{{end}}>{{template "icon" "shield"}}Audit log</a>
-  <a href="/app/platform/health" {{if eq .Nav "platform-health"}}aria-current="page"{{end}}>{{template "icon" "pulse"}}System health</a>
-  {{else if not .Me.MustChangeCredential}}
-  <a href="/app" {{if eq .Nav "dashboard"}}aria-current="page"{{end}}>{{template "icon" "home"}}Overview</a>
-  <a href="/app/shipments" {{if eq .Nav "shipments"}}aria-current="page"{{end}}>{{template "icon" "box"}}Shipments</a>
-  <a href="/app/drivers" {{if eq .Nav "drivers"}}aria-current="page"{{end}}>{{template "icon" "user"}}Drivers</a>
-  <a href="/app/vehicles" {{if eq .Nav "vehicles"}}aria-current="page"{{end}}>{{template "icon" "truck"}}Vehicles</a>
-  <a href="/app/alerts" {{if eq .Nav "alerts"}}aria-current="page"{{end}}>{{template "icon" "bell"}}Alerts<span class="pill" data-badge {{if not .Unread}}hidden{{end}}>{{.Unread}}</span></a>
-  <a href="/app/reports" {{if eq .Nav "reports"}}aria-current="page"{{end}}>{{template "icon" "chart"}}Reports</a>
-  {{if .Me.CanManageCompany}}
-  <p class="nav-section">Company</p>
-  <a href="/app/team" {{if eq .Nav "team"}}aria-current="page"{{end}}>{{template "icon" "users"}}Team</a>
-  <a href="/app/billing" {{if eq .Nav "billing"}}aria-current="page"{{end}}>{{template "icon" "receipt"}}Billing</a>
-  <a href="/app/settings" {{if eq .Nav "settings"}}aria-current="page"{{end}}>{{template "icon" "gear"}}Settings</a>
-  {{end}}
-  <a href="/app/help" {{if eq .Nav "help"}}aria-current="page"{{end}}>{{template "icon" "help"}}Help</a>
-  <div class="nav-foot">
-    <a class="btn btn-primary btn-block" href="/app/shipments/new">+ New shipment</a>
-    <p class="muted small">Drivers use <a href="/driver/" target="_blank" rel="noopener">{{bareURL .App.PublicURL}}/driver</a></p>
-  </div>
-  {{end}}{{end}}
-</nav>
-<div class="scrim" data-toggle="nav" hidden></div>
 
 <main id="main" class="main">
   {{if and .Me (ne .Nav "billing") (not .Me.MustChangeCredential)}}{{template "standing-banner" .}}{{end}}
@@ -85,6 +88,16 @@
   {{template "flash" .}}
   {{template "content" .}}
 </main>
+<footer class="app-foot">
+  <span>© {{year}} {{.App.Name}} · Built for Ethiopian freight</span>
+  <nav aria-label="Footer">
+    {{if and .Me (not .Me.IsPlatformAdmin)}}<a href="/app/help">Help centre</a>{{end}}
+    <a href="/driver/" target="_blank" rel="noopener">Driver app</a>
+    <a href="/api/v1/openapi.json">API reference</a>
+    <a href="/track" target="_blank" rel="noopener">Public tracking</a>
+  </nav>
+</footer>
+</div>
 </div>
 <div class="toasts" aria-live="polite" data-toasts></div>
 {{block "scripts" .}}{{end}}
