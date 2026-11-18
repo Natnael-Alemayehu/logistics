@@ -101,11 +101,22 @@ func TestBackupAndRestore(t *testing.T) {
 	})
 
 	// The session from before the backup still holds: the same database, and
-	// the same secret.
-	if p := before.get("/app"); p.Status != http.StatusOK || !strings.Contains(p.Body, before.company) {
+	// the same secret. With two instances, one can answer /readyz while the
+	// other is still starting, and Caddy answers 502 for that one: such an
+	// answer is asked again, any other is the result.
+	var p page
+	within(t, time.Minute, "the company from before the backup", func() bool {
+		p = before.get("/app")
+		return p.Status != http.StatusBadGateway
+	})
+	if p.Status != http.StatusOK || !strings.Contains(p.Body, before.company) {
 		t.Errorf("the company from before the backup: status %d", p.Status)
 	}
-	if p := newBrowser(t).post("/login", url.Values{"identifier": {after.email}, "password": {password}}); p.Status != http.StatusUnauthorized {
+	within(t, time.Minute, "the company from after the backup signing in", func() bool {
+		p = newBrowser(t).post("/login", url.Values{"identifier": {after.email}, "password": {password}})
+		return p.Status != http.StatusBadGateway
+	})
+	if p.Status != http.StatusUnauthorized {
 		t.Errorf("the company from after the backup signing in: status %d, want it unknown", p.Status)
 	}
 }
