@@ -41,6 +41,23 @@ type VehicleInput struct {
 	VehicleType string
 	CapacityKg  float64
 	Active      bool
+	// InsuranceExpires and InspectionDue are the last days the insurance
+	// and the annual inspection (ቦሎ) are valid, as 2026-12-02; empty when
+	// not recorded.
+	InsuranceExpires string
+	InspectionDue    string
+}
+
+type vehiclePapers struct{ insurance, inspection pgtype.Date }
+
+func validatePapers(in VehicleInput) (vehiclePapers, error) {
+	var p vehiclePapers
+	var err error
+	if p.insurance, err = parseDay("insurance_expires_on", "the insurance runs out", in.InsuranceExpires); err != nil {
+		return p, err
+	}
+	p.inspection, err = parseDay("inspection_due_on", "the inspection is due", in.InspectionDue)
+	return p, err
 }
 
 func normalisePlate(s string) string {
@@ -112,6 +129,10 @@ func (s *VehicleService) Create(ctx context.Context, p *Principal, in VehicleInp
 	if err != nil {
 		return db.Vehicle{}, err
 	}
+	papers, err := validatePapers(in)
+	if err != nil {
+		return db.Vehicle{}, err
+	}
 	tenant, err := s.q.GetTenantByID(ctx, p.TenantID)
 	if err != nil {
 		return db.Vehicle{}, err
@@ -119,7 +140,8 @@ func (s *VehicleService) Create(ctx context.Context, p *Principal, in VehicleInp
 	if err := s.requireWritable(ctx, s.q, tenant); err != nil {
 		return db.Vehicle{}, err
 	}
-	v, err := s.q.CreateVehicle(ctx, db.CreateVehicleParams{TenantID: p.TenantID, PlateNumber: plate, VehicleType: vt, CapacityKg: capacity})
+	v, err := s.q.CreateVehicle(ctx, db.CreateVehicleParams{TenantID: p.TenantID, PlateNumber: plate, VehicleType: vt, CapacityKg: capacity,
+		InsuranceExpiresOn: papers.insurance, InspectionDueOn: papers.inspection})
 	if err != nil {
 		return v, duplicatePlate(err)
 	}
@@ -137,6 +159,10 @@ func (s *VehicleService) Update(ctx context.Context, p *Principal, id pgtype.UUI
 	if err != nil {
 		return db.Vehicle{}, err
 	}
+	papers, err := validatePapers(in)
+	if err != nil {
+		return db.Vehicle{}, err
+	}
 	var out db.Vehicle
 	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 		cur, err := s.Get(ctx, p.TenantID, id)
@@ -145,9 +171,20 @@ func (s *VehicleService) Update(ctx context.Context, p *Principal, id pgtype.UUI
 		}
 		out, err = q.UpdateVehicle(ctx, db.UpdateVehicleParams{
 			ID: id, TenantID: p.TenantID, PlateNumber: plate, VehicleType: vt, CapacityKg: capacity, IsActive: in.Active,
+			InsuranceExpiresOn: papers.insurance, InspectionDueOn: papers.inspection,
 		})
 		if err != nil {
 			return duplicatePlate(err)
+		}
+		for _, c := range []struct {
+			alert    string
+			was, now pgtype.Date
+		}{{AlertInsuranceDue, cur.InsuranceExpiresOn, out.InsuranceExpiresOn}, {AlertInspectionDue, cur.InspectionDueOn, out.InspectionDueOn}} {
+			if !sameDay(c.was, c.now) || (cur.IsActive && !in.Active) {
+				if err := s.papersRenewed(ctx, q, p.TenantID, c.alert, pgtype.UUID{}, id); err != nil {
+					return err
+				}
+			}
 		}
 		if cur.IsActive && !in.Active {
 			if err := q.ClearVehicleFromDrivers(ctx, db.ClearVehicleFromDriversParams{VehicleID: id, TenantID: p.TenantID}); err != nil {
@@ -155,7 +192,8 @@ func (s *VehicleService) Update(ctx context.Context, p *Principal, id pgtype.UUI
 			}
 		}
 		s.audit(ctx, q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), "vehicle_updated", "vehicle", id,
-			map[string]any{"plate": cur.PlateNumber, "active": cur.IsActive}, map[string]any{"plate": out.PlateNumber, "active": out.IsActive})
+			map[string]any{"plate": cur.PlateNumber, "active": cur.IsActive, "insurance": FormatDay(cur.InsuranceExpiresOn), "inspection": FormatDay(cur.InspectionDueOn)},
+			map[string]any{"plate": out.PlateNumber, "active": out.IsActive, "insurance": FormatDay(out.InsuranceExpiresOn), "inspection": FormatDay(out.InspectionDueOn)})
 		return nil
 	})
 	return out, err

@@ -119,7 +119,7 @@
   <label>Driver
     <select name="driver_id" required data-driver-select>
       <option value="">Choose…</option>
-      {{range $d.Drivers}}{{if .IsActive}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}{{end}}
+      {{range $d.Drivers}}{{if .IsActive}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive)}}{{$lapsed := and (eq (paper .LicenceExpiresOn).State "lapsed") true}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" {{if or $full $lapsed}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $lapsed}} (licence ran out){{else if $full}} (full){{end}}</option>{{end}}{{end}}
     </select>
   </label>
   <label>Vehicle

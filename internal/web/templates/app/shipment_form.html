@@ -129,7 +129,7 @@
         <select name="driver_id" data-driver-select {{if index $e "driver_id"}}aria-invalid="true"{{end}}>
           <option value="">Decide later</option>
           {{$sel := field $f "driver_id" ""}}
-          {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive)}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" data-name="{{.FullName}}" {{if eq $sel (uuid .ID)}}selected{{end}} {{if $full}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $full}} (full){{end}}</option>{{end}}
+          {{range $d.Drivers}}{{$full := and $d.MaxActive (ge .ActiveShipments $d.MaxActive)}}{{$lapsed := and (eq (paper .LicenceExpiresOn).State "lapsed") true}}<option value="{{uuid .ID}}" data-vehicle="{{uuid .VehicleID}}" data-name="{{.FullName}}" {{if eq $sel (uuid .ID)}}selected{{end}} {{if or $full $lapsed}}disabled{{end}}>{{.FullName}} — {{if .ActiveShipments}}{{.ActiveShipments}} active{{else}}free{{end}}{{if $lapsed}} (licence ran out){{else if $full}} (full){{end}}</option>{{end}}
         </select>
         <span class="hint">They get it on their phone at once. Or book now and assign later.</span>
         {{template "field-error" (index $e "driver_id")}}

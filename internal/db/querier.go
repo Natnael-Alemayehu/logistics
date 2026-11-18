@@ -14,6 +14,8 @@ type Querier interface {
 	AcknowledgeAlert(ctx context.Context, arg AcknowledgeAlertParams) error
 	// A driver who syncs again is no longer offline.
 	AcknowledgeDriverAlerts(ctx context.Context, arg AcknowledgeDriverAlertsParams) error
+	// Papers renewed: what was open about the old date is resolved.
+	AcknowledgePapersAlerts(ctx context.Context, arg AcknowledgePapersAlertsParams) error
 	// A shipment that reaches a final state resolves whatever was open on it.
 	AcknowledgeShipmentAlerts(ctx context.Context, arg AcknowledgeShipmentAlertsParams) error
 	// A "past ETA" alert is moot once its shipment has a new ETA, is no longer on
@@ -278,7 +280,8 @@ type Querier interface {
 	// "every driver on the road" reaches.
 	ListDriversOnTheRoad(ctx context.Context, tenantID pgtype.UUID) ([]ListDriversOnTheRoadRow, error)
 	// The drivers page and the assignment picker: who is on duty, how loaded they
-	// are, and when their device last talked to the server.
+	// are, what they carry now, where and when their phone was last heard from,
+	// and when their licence runs out.
 	ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error)
 	ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]Invoice, error)
 	ListJobRuns(ctx context.Context) ([]JobRun, error)
@@ -292,6 +295,10 @@ type Querier interface {
 	// than a run's worth is worked through, oldest first, over the next runs.
 	ListOverdueShipments(ctx context.Context) ([]ListOverdueShipmentsRow, error)
 	ListPODMediaForShipments(ctx context.Context, ids []pgtype.UUID) ([]ListPODMediaForShipmentsRow, error)
+	// The papers check: every active driver's licence and every vehicle's
+	// insurance and inspection that runs out on or before a day, across
+	// companies. The alert's episode names the date, so each is raised once.
+	ListPapersDue(ctx context.Context, until pgtype.Date) ([]ListPapersDueRow, error)
 	ListPaymentsByInvoice(ctx context.Context, arg ListPaymentsByInvoiceParams) ([]Payment, error)
 	// Payments a provider may have finished without its notification reaching
 	// us: open a minute or more, a few hours old at most, and not asked about
@@ -488,6 +495,7 @@ type Querier interface {
 	// The driver app's settings, chosen on the phone (FR-026 AC-026.6). The
 	// phone sends only those the driver changed; the rest stay as they are.
 	SetDriverAppSettings(ctx context.Context, arg SetDriverAppSettingsParams) error
+	SetDriverLicence(ctx context.Context, arg SetDriverLicenceParams) error
 	// Keeps the driver's newest position for the fleet map. An older fix,
 	// from a phone sending what it saved while offline, changes nothing.
 	SetDriverPosition(ctx context.Context, arg SetDriverPositionParams) error

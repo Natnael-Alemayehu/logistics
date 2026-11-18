@@ -27,6 +27,9 @@ type PersonInput struct {
 	Email     string
 	Role      string // staff only
 	VehicleID string // drivers only
+	// LicenceExpires is the last day a driver's licence is valid, as
+	// 2026-12-02; empty when not recorded. Drivers only.
+	LicenceExpires string
 }
 
 type validPerson struct {
@@ -131,6 +134,10 @@ func (s *UserService) CreateDriver(ctx context.Context, p *Principal, in PersonI
 	if err != nil {
 		return nil, err
 	}
+	licence, err := parseDay("licence_expires_on", "the licence runs out", in.LicenceExpires)
+	if err != nil {
+		return nil, err
+	}
 	out := &NewAccount{}
 	err = s.tx(ctx, func(q *db.Queries, after *afterCommit) error {
 		// Locked, so two drivers added at once can't both take the last place.
@@ -163,6 +170,12 @@ func (s *UserService) CreateDriver(ctx context.Context, p *Principal, in PersonI
 		if err != nil {
 			return s.duplicateUser(ctx, p.TenantID, v, err)
 		}
+		if licence.Valid {
+			if err := q.SetDriverLicence(ctx, db.SetDriverLicenceParams{ID: u.ID, TenantID: p.TenantID, LicenceExpiresOn: licence}); err != nil {
+				return err
+			}
+			u.LicenceExpiresOn = licence
+		}
 		out.User, out.Credential = u, pin
 		s.enqueueSMS(ctx, q, after, outboundSMS{
 			TenantID: p.TenantID, Phone: *v.phone, Purpose: PurposeCredential, Sensitive: true,
@@ -183,6 +196,10 @@ func (s *UserService) UpdateDriver(ctx context.Context, p *Principal, id pgtype.
 		return db.User{}, ErrUnauthorized
 	}
 	v, err := validatePerson(in, true)
+	if err != nil {
+		return db.User{}, err
+	}
+	licence, err := parseDay("licence_expires_on", "the licence runs out", in.LicenceExpires)
 	if err != nil {
 		return db.User{}, err
 	}
@@ -215,8 +232,18 @@ func (s *UserService) UpdateDriver(ctx context.Context, p *Principal, id pgtype.
 			return err
 		}
 		out.VehicleID = vehicle
+		if !sameDay(cur.LicenceExpiresOn, licence) {
+			if err := q.SetDriverLicence(ctx, db.SetDriverLicenceParams{ID: id, TenantID: p.TenantID, LicenceExpiresOn: licence}); err != nil {
+				return err
+			}
+			if err := s.papersRenewed(ctx, q, p.TenantID, AlertLicenceDue, id, pgtype.UUID{}); err != nil {
+				return err
+			}
+		}
+		out.LicenceExpiresOn = licence
 		s.audit(ctx, q, p.Actor(SourceDashboard, ci.IP, ci.UserAgent), "driver_updated", "user", id,
-			map[string]any{"name": cur.FullName, "phone": deref(cur.Phone)}, map[string]any{"name": out.FullName, "phone": deref(out.Phone)})
+			map[string]any{"name": cur.FullName, "phone": deref(cur.Phone), "licence": FormatDay(cur.LicenceExpiresOn)},
+			map[string]any{"name": out.FullName, "phone": deref(out.Phone), "licence": FormatDay(licence)})
 		return nil
 	})
 	return out, err
@@ -438,6 +465,10 @@ func (s *UserService) SetActive(ctx context.Context, p *Principal, id pgtype.UUI
 		}
 		if !active {
 			if err := q.RevokeAllUserSessions(ctx, id); err != nil {
+				return err
+			}
+			// Someone who has left needs no reminder about their licence.
+			if err := s.papersRenewed(ctx, q, p.TenantID, AlertLicenceDue, id, pgtype.UUID{}); err != nil {
 				return err
 			}
 		}

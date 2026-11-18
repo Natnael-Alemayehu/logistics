@@ -25,6 +25,11 @@
     {{template "field-error" (index $e "vehicle_id")}}
     {{if not $d.Vehicles}}<span class="hint"><a href="/app/vehicles/new">Add a vehicle</a> first to pick one here.</span>{{end}}
   </label>
+  <label>Driving licence valid to <span class="muted">(optional)</span>
+    <input name="licence_expires_on" type="date" value="{{field $f "licence_expires_on" ""}}" {{if index $e "licence_expires_on"}}aria-invalid="true"{{end}}>
+    <span class="hint">You're reminded 30 days before. Once it has run out, the driver can't be given trips.</span>
+    {{template "field-error" (index $e "licence_expires_on")}}
+  </label>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">{{if $p}}Save changes{{else}}Add driver{{end}}</button>
     <a class="btn btn-ghost" href="{{if $p}}/app/drivers/{{uuid $p.ID}}{{else}}/app/drivers{{end}}">Cancel</a>

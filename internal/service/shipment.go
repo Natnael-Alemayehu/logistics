@@ -672,6 +672,9 @@ func (s *ShipmentService) assignableDriver(ctx context.Context, q *db.Queries, t
 	if !d.IsActive {
 		return db.User{}, invalid("driver_id", d.FullName+" is deactivated.")
 	}
+	if err := s.licenceLapsed(d); err != nil {
+		return db.User{}, err
+	}
 	active, err := q.CountActiveShipmentsByDriver(ctx, db.CountActiveShipmentsByDriverParams{DriverID: d.ID, TenantID: tenant.ID})
 	if err != nil {
 		return db.User{}, err

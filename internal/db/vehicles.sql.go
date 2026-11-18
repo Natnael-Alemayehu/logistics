@@ -23,16 +23,18 @@ func (q *Queries) CountVehiclesByTenant(ctx context.Context, tenantID pgtype.UUI
 }
 
 const createVehicle = `-- name: CreateVehicle :one
-INSERT INTO vehicles (tenant_id, plate_number, vehicle_type, capacity_kg, is_active)
-VALUES ($1, $2, $3, $4, true)
-RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg
+INSERT INTO vehicles (tenant_id, plate_number, vehicle_type, capacity_kg, is_active, insurance_expires_on, inspection_due_on)
+VALUES ($1, $2, $3, $4, true, $5, $6)
+RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg, insurance_expires_on, inspection_due_on
 `
 
 type CreateVehicleParams struct {
-	TenantID    pgtype.UUID    `db:"tenant_id" json:"tenant_id"`
-	PlateNumber string         `db:"plate_number" json:"plate_number"`
-	VehicleType *string        `db:"vehicle_type" json:"vehicle_type"`
-	CapacityKg  pgtype.Numeric `db:"capacity_kg" json:"capacity_kg"`
+	TenantID           pgtype.UUID    `db:"tenant_id" json:"tenant_id"`
+	PlateNumber        string         `db:"plate_number" json:"plate_number"`
+	VehicleType        *string        `db:"vehicle_type" json:"vehicle_type"`
+	CapacityKg         pgtype.Numeric `db:"capacity_kg" json:"capacity_kg"`
+	InsuranceExpiresOn pgtype.Date    `db:"insurance_expires_on" json:"insurance_expires_on"`
+	InspectionDueOn    pgtype.Date    `db:"inspection_due_on" json:"inspection_due_on"`
 }
 
 func (q *Queries) CreateVehicle(ctx context.Context, arg CreateVehicleParams) (Vehicle, error) {
@@ -41,6 +43,8 @@ func (q *Queries) CreateVehicle(ctx context.Context, arg CreateVehicleParams) (V
 		arg.PlateNumber,
 		arg.VehicleType,
 		arg.CapacityKg,
+		arg.InsuranceExpiresOn,
+		arg.InspectionDueOn,
 	)
 	var i Vehicle
 	err := row.Scan(
@@ -52,12 +56,14 @@ func (q *Queries) CreateVehicle(ctx context.Context, arg CreateVehicleParams) (V
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CapacityKg,
+		&i.InsuranceExpiresOn,
+		&i.InspectionDueOn,
 	)
 	return i, err
 }
 
 const getVehicleByID = `-- name: GetVehicleByID :one
-SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg FROM vehicles
+SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg, insurance_expires_on, inspection_due_on FROM vehicles
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -78,12 +84,14 @@ func (q *Queries) GetVehicleByID(ctx context.Context, arg GetVehicleByIDParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CapacityKg,
+		&i.InsuranceExpiresOn,
+		&i.InspectionDueOn,
 	)
 	return i, err
 }
 
 const listActiveVehiclesByTenant = `-- name: ListActiveVehiclesByTenant :many
-SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg FROM vehicles
+SELECT id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg, insurance_expires_on, inspection_due_on FROM vehicles
 WHERE tenant_id = $1 AND is_active
 ORDER BY plate_number
 `
@@ -106,6 +114,60 @@ func (q *Queries) ListActiveVehiclesByTenant(ctx context.Context, tenantID pgtyp
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CapacityKg,
+			&i.InsuranceExpiresOn,
+			&i.InspectionDueOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPapersDue = `-- name: ListPapersDue :many
+SELECT 'licence'::text AS kind, u.tenant_id, u.id AS subject_id, u.full_name AS name, u.licence_expires_on AS due_on
+FROM users u
+WHERE u.role = 'driver' AND u.is_active AND u.anonymised_at IS NULL
+  AND u.licence_expires_on <= $1::date
+UNION ALL
+SELECT 'insurance', v.tenant_id, v.id, v.plate_number, v.insurance_expires_on
+FROM vehicles v
+WHERE v.is_active AND v.insurance_expires_on <= $1::date
+UNION ALL
+SELECT 'inspection', v.tenant_id, v.id, v.plate_number, v.inspection_due_on
+FROM vehicles v
+WHERE v.is_active AND v.inspection_due_on <= $1::date
+`
+
+type ListPapersDueRow struct {
+	Kind      string      `db:"kind" json:"kind"`
+	TenantID  pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+	SubjectID pgtype.UUID `db:"subject_id" json:"subject_id"`
+	Name      string      `db:"name" json:"name"`
+	DueOn     pgtype.Date `db:"due_on" json:"due_on"`
+}
+
+// The papers check: every active driver's licence and every vehicle's
+// insurance and inspection that runs out on or before a day, across
+// companies. The alert's episode names the date, so each is raised once.
+func (q *Queries) ListPapersDue(ctx context.Context, until pgtype.Date) ([]ListPapersDueRow, error) {
+	rows, err := q.db.Query(ctx, listPapersDue, until)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPapersDueRow{}
+	for rows.Next() {
+		var i ListPapersDueRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.TenantID,
+			&i.SubjectID,
+			&i.Name,
+			&i.DueOn,
 		); err != nil {
 			return nil, err
 		}
@@ -118,28 +180,34 @@ func (q *Queries) ListActiveVehiclesByTenant(ctx context.Context, tenantID pgtyp
 }
 
 const listVehiclesWithDrivers = `-- name: ListVehiclesWithDrivers :many
-SELECT v.id, v.tenant_id, v.plate_number, v.vehicle_type, v.is_active, v.created_at, v.updated_at, v.capacity_kg,
+SELECT v.id, v.tenant_id, v.plate_number, v.vehicle_type, v.is_active, v.created_at, v.updated_at, v.capacity_kg, v.insurance_expires_on, v.inspection_due_on,
        COALESCE((SELECT string_agg(u.full_name, ', ' ORDER BY u.full_name)
         FROM users u WHERE u.vehicle_id = v.id AND u.is_active), '')::text AS driver_names,
        (SELECT COUNT(*) FROM shipments s
         WHERE s.vehicle_id = v.id
-          AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active_shipments
+          AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active_shipments,
+       EXISTS (SELECT 1 FROM shipments s
+               WHERE s.vehicle_id = v.id AND s.tenant_id = v.tenant_id
+                 AND s.status IN ('in_transit', 'delayed', 'arrived', 'issue'))::bool AS on_road
 FROM vehicles v
 WHERE v.tenant_id = $1
 ORDER BY v.is_active DESC, v.plate_number
 `
 
 type ListVehiclesWithDriversRow struct {
-	ID              pgtype.UUID        `db:"id" json:"id"`
-	TenantID        pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	PlateNumber     string             `db:"plate_number" json:"plate_number"`
-	VehicleType     *string            `db:"vehicle_type" json:"vehicle_type"`
-	IsActive        bool               `db:"is_active" json:"is_active"`
-	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CapacityKg      pgtype.Numeric     `db:"capacity_kg" json:"capacity_kg"`
-	DriverNames     string             `db:"driver_names" json:"driver_names"`
-	ActiveShipments int64              `db:"active_shipments" json:"active_shipments"`
+	ID                 pgtype.UUID        `db:"id" json:"id"`
+	TenantID           pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	PlateNumber        string             `db:"plate_number" json:"plate_number"`
+	VehicleType        *string            `db:"vehicle_type" json:"vehicle_type"`
+	IsActive           bool               `db:"is_active" json:"is_active"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CapacityKg         pgtype.Numeric     `db:"capacity_kg" json:"capacity_kg"`
+	InsuranceExpiresOn pgtype.Date        `db:"insurance_expires_on" json:"insurance_expires_on"`
+	InspectionDueOn    pgtype.Date        `db:"inspection_due_on" json:"inspection_due_on"`
+	DriverNames        string             `db:"driver_names" json:"driver_names"`
+	ActiveShipments    int64              `db:"active_shipments" json:"active_shipments"`
+	OnRoad             bool               `db:"on_road" json:"on_road"`
 }
 
 func (q *Queries) ListVehiclesWithDrivers(ctx context.Context, tenantID pgtype.UUID) ([]ListVehiclesWithDriversRow, error) {
@@ -160,8 +228,11 @@ func (q *Queries) ListVehiclesWithDrivers(ctx context.Context, tenantID pgtype.U
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CapacityKg,
+			&i.InsuranceExpiresOn,
+			&i.InspectionDueOn,
 			&i.DriverNames,
 			&i.ActiveShipments,
+			&i.OnRoad,
 		); err != nil {
 			return nil, err
 		}
@@ -178,18 +249,22 @@ UPDATE vehicles
 SET plate_number = $3,
     vehicle_type = $4,
     capacity_kg = $5,
-    is_active = $6
+    is_active = $6,
+    insurance_expires_on = $7,
+    inspection_due_on = $8
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg
+RETURNING id, tenant_id, plate_number, vehicle_type, is_active, created_at, updated_at, capacity_kg, insurance_expires_on, inspection_due_on
 `
 
 type UpdateVehicleParams struct {
-	ID          pgtype.UUID    `db:"id" json:"id"`
-	TenantID    pgtype.UUID    `db:"tenant_id" json:"tenant_id"`
-	PlateNumber string         `db:"plate_number" json:"plate_number"`
-	VehicleType *string        `db:"vehicle_type" json:"vehicle_type"`
-	CapacityKg  pgtype.Numeric `db:"capacity_kg" json:"capacity_kg"`
-	IsActive    bool           `db:"is_active" json:"is_active"`
+	ID                 pgtype.UUID    `db:"id" json:"id"`
+	TenantID           pgtype.UUID    `db:"tenant_id" json:"tenant_id"`
+	PlateNumber        string         `db:"plate_number" json:"plate_number"`
+	VehicleType        *string        `db:"vehicle_type" json:"vehicle_type"`
+	CapacityKg         pgtype.Numeric `db:"capacity_kg" json:"capacity_kg"`
+	IsActive           bool           `db:"is_active" json:"is_active"`
+	InsuranceExpiresOn pgtype.Date    `db:"insurance_expires_on" json:"insurance_expires_on"`
+	InspectionDueOn    pgtype.Date    `db:"inspection_due_on" json:"inspection_due_on"`
 }
 
 func (q *Queries) UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (Vehicle, error) {
@@ -200,6 +275,8 @@ func (q *Queries) UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (V
 		arg.VehicleType,
 		arg.CapacityKg,
 		arg.IsActive,
+		arg.InsuranceExpiresOn,
+		arg.InspectionDueOn,
 	)
 	var i Vehicle
 	err := row.Scan(
@@ -211,6 +288,8 @@ func (q *Queries) UpdateVehicle(ctx context.Context, arg UpdateVehicleParams) (V
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CapacityKg,
+		&i.InsuranceExpiresOn,
+		&i.InspectionDueOn,
 	)
 	return i, err
 }

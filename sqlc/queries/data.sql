@@ -47,14 +47,16 @@ ORDER BY p.recorded_at;
 
 -- name: ExportPeople :many
 SELECT u.full_name, u.role, COALESCE(u.phone, '')::text AS phone, COALESCE(u.email, '')::text AS email,
-       u.is_active, COALESCE(v.plate_number, '')::text AS vehicle_plate, u.created_at, u.last_login_at, u.anonymised_at
+       u.is_active, COALESCE(v.plate_number, '')::text AS vehicle_plate, u.created_at, u.last_login_at, u.anonymised_at,
+       u.licence_expires_on
 FROM users u
 LEFT JOIN vehicles v ON v.id = u.vehicle_id
 WHERE u.tenant_id = $1
 ORDER BY u.role = 'driver', u.full_name;
 
 -- name: ExportVehicles :many
-SELECT plate_number, vehicle_type, COALESCE(capacity_kg, 0)::float8 AS capacity_kg, is_active, created_at
+SELECT plate_number, vehicle_type, COALESCE(capacity_kg, 0)::float8 AS capacity_kg, is_active, created_at,
+       insurance_expires_on, inspection_due_on
 FROM vehicles
 WHERE tenant_id = $1
 ORDER BY plate_number;
@@ -107,7 +109,7 @@ WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 -- (AC-041.6).
 UPDATE users
 SET full_name = sqlc.arg(full_name), phone = NULL, email = NULL, password_hash = NULL, pin_hash = NULL,
-    email_verified_at = NULL, alert_emails = '{}', language = NULL, vehicle_id = NULL,
+    email_verified_at = NULL, alert_emails = '{}', language = NULL, vehicle_id = NULL, licence_expires_on = NULL,
     anonymised_at = NOW(), updated_at = NOW()
 WHERE id = sqlc.arg(id) AND tenant_id = sqlc.arg(tenant_id) AND NOT is_active AND anonymised_at IS NULL
 RETURNING id;

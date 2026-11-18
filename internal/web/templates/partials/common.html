@@ -44,7 +44,7 @@
   <div class="alert-body">
     <p class="alert-title"><span class="sr-only">{{template "severity" .Severity}}</span>{{alertLabel .AlertType}}</p>
     <p class="alert-msg">{{.Message}}</p>
-    <p class="alert-meta">{{with .TrackingNumber}}<a class="alert-ref" href="/app/shipments/{{uuid $a.ShipmentID}}">{{.}}</a> · {{end}}{{with .DriverName}}{{.}} · {{end}}<time datetime="{{rfc3339 .CreatedAt}}" title="{{when .CreatedAt}}">{{ago .CreatedAt}}</time>{{if .AcknowledgedAt.Valid}} · dismissed {{ago .AcknowledgedAt}}{{end}}</p>
+    <p class="alert-meta">{{with .TrackingNumber}}<a class="alert-ref" href="/app/shipments/{{uuid $a.ShipmentID}}">{{.}}</a> · {{end}}{{with .VehiclePlate}}<a class="alert-ref mono" href="/app/vehicles/{{uuid $a.VehicleID}}">{{.}}</a> · {{end}}{{with .DriverName}}{{if $a.ShipmentID.Valid}}{{.}}{{else}}<a href="/app/drivers/{{uuid $a.DriverID}}">{{.}}</a>{{end}} · {{end}}<time datetime="{{rfc3339 .CreatedAt}}" title="{{when .CreatedAt}}">{{ago .CreatedAt}}</time>{{if .AcknowledgedAt.Valid}} · dismissed {{ago .AcknowledgedAt}}{{end}}</p>
     {{if not .AcknowledgedAt.Valid}}<div class="alert-actions">
       {{with .DriverPhone}}<a class="btn btn-sm" href="tel:{{.}}">{{icon "phone"}}Call driver</a>{{end}}
       {{if and .CustomerPhone (or (eq .AlertType "customer_issue") (eq .AlertType "eta_exceeded") (eq .AlertType "delay_reported"))}}<a class="btn btn-sm" href="tel:{{str .CustomerPhone}}">{{icon "message-square-text"}}Call the customer</a>{{end}}
@@ -61,3 +61,7 @@
 
 {{/* An invoice's state: paid, cancelled, overdue or open. */}}
 {{define "inv-status"}}{{if eq .Status "paid"}}<span class="badge s-delivered">Paid</span>{{else if eq .Status "void"}}<span class="badge s-cancelled">Cancelled</span>{{else if past .DueAt}}<span class="badge s-issue">Overdue</span>{{else}}<span class="badge s-delayed">Open</span>{{end}}{{end}}
+
+{{/* A licence, insurance or inspection date: the month while far off, the
+     day in orange within 30 days, in red once it has passed. */}}
+{{define "paper"}}{{if .State}}<span class="paper paper-{{.State}}">{{if eq .State "lapsed"}}{{icon "circle-alert"}}{{else if eq .State "due"}}{{icon "clock"}}{{end}}{{.Text}}</span>{{if eq .State "lapsed"}}<span class="sr-only"> (has run out)</span>{{else if eq .State "due"}}<span class="sr-only"> (soon)</span>{{end}}{{else}}<span class="muted">Not recorded</span>{{end}}{{end}}

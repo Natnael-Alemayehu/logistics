@@ -410,6 +410,25 @@ fieldset.plain > legend { font-size: 0.875rem; margin-bottom: 0; }
 .callout > p { margin: 0; }
 .callout > p + p { margin-top: 4px; }
 
+/* ---------- Notices: something to act on, above a list ---------- */
+.notice { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; margin-bottom: 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); }
+.notice > .i { flex: none; margin-top: 2px; }
+.notice-body { flex: 1; min-width: 0; }
+.notice-body > strong { display: block; font-weight: 600; }
+.notice-body > p { margin: 2px 0 0; color: var(--muted); font-size: 0.875rem; }
+.notice-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
+.notice-actions form { margin: 0; }
+.notice-warn { border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); background: color-mix(in srgb, var(--warn) 6%, var(--surface)); }
+.notice-warn > .i, .notice-warn .notice-body > strong { color: var(--warn); }
+.notice-bad { border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); background: color-mix(in srgb, var(--bad) 6%, var(--surface)); }
+.notice-bad > .i, .notice-bad .notice-body > strong { color: var(--bad); }
+
+/* A licence, insurance or inspection date. */
+.paper { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.paper .i { width: 14px; height: 14px; }
+.paper-due { color: var(--warn); font-weight: 500; }
+.paper-lapsed { color: var(--bad); font-weight: 600; }
+
 /* ---------- KPIs ---------- */
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 16px; margin-bottom: 24px; }
 .kpi {
@@ -759,6 +778,8 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .callout { padding: 10px 14px; border-radius: var(--radius-sm); margin: 14px 0 0; }
 .callout-good { background: var(--good-soft); color: var(--good); }
 .callout-warn { background: var(--warn-soft); color: var(--warn); }
+.callout-bad { background: var(--bad-soft); color: var(--bad); }
+.card-actions { margin: 14px 0 0; }
 .callout-info { background: var(--info-soft); border-color: transparent; }
 .person { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
 .assign > summary { list-style: none; display: inline-flex; margin-bottom: 10px; }
@@ -1030,6 +1051,8 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .kpi { padding: 16px; }
   .kpi-n { font-size: 1.5rem; }
+  .notice { flex-wrap: wrap; }
+  .notice-actions { width: 100%; padding-left: 28px; }
   .row-2, .row-3, .facts-2, .facts-3, .filter-grid, .wb-grid, .wb-sign, .check-grid { grid-template-columns: 1fr; }
   .map-filters label { flex: 1 1 100%; }
   .inv-head { flex-direction: column; }
@@ -1061,6 +1084,7 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
   .table-cards td[data-col="driver"] { text-align: right; }
   .table-cards td.num { grid-column: 1 / -1; text-align: left; font-size: 0.9em; }
   .table-cards td.num br { display: none; }
+  .table-cards td[data-label]::before { content: attr(data-label) " "; display: block; color: var(--muted); font-size: 0.75rem; }
   /* A tick box sits in the card's left margin. */
   .table-cards tr { position: relative; }
   .table-cards tr:has(td.pick input) { padding-left: 44px; }

@@ -319,6 +319,7 @@ func (s *Server) Handler() http.Handler {
 					r.Post("/drivers/{id}/edit", s.driverUpdate)
 					r.Post("/drivers/{id}/active", s.personActive)
 					r.Post("/drivers/{id}/reset", s.personReset)
+					r.Post("/drivers/{id}/licence-reminder", s.driverRemind)
 					r.Get("/vehicles/new", s.vehicleNew)
 					r.Post("/vehicles", s.vehicleCreate)
 					r.Get("/vehicles/{id}/edit", s.vehicleEdit)

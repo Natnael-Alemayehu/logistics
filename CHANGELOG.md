@@ -6,6 +6,16 @@ What changed in each release, newest first.
 
 ### Changed
 
+- **Drivers and vehicles redesigned, with their papers** (the redesign,
+  part 5). A driver has a licence expiry date, and a vehicle its insurance
+  and annual inspection (ቦሎ) dates. The office is alerted 30 days before
+  each, and critically once it has passed; recording the new date resolves
+  it. A driver whose licence has run out can't be given a trip. The drivers
+  page has tabs (on a trip, available, off duty), each driver's current
+  load and where their phone was last heard from; the vehicles page has the
+  fleet at a glance and "papers due in 30 days". A driver can be texted a
+  reminder to renew. The dates are in the company's export. Alerts can now
+  be about a vehicle.
 - **A shipment's documents and charges** (the redesign, part 4). Two
   tabs on a shipment's page. **Documents** keeps files with a load (the
   signed waybill, customs papers, invoices), up to 10 MB each, PDFs and

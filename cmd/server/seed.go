@@ -164,12 +164,14 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 		return err
 	}
 
+	// Papers' dates, so many days from now: one of each runs out soon.
+	in := func(days int) string { return time.Now().AddDate(0, 0, days).Format("2006-01-02") }
 	vehicles := []service.VehicleInput{
-		{PlateNumber: "3-A12345 AA", VehicleType: "heavy_truck", CapacityKg: 25000, Active: true},
-		{PlateNumber: "3-B54321 AA", VehicleType: "trailer", CapacityKg: 40000, Active: true},
-		{PlateNumber: "2-C77881 OR", VehicleType: "medium_truck", CapacityKg: 12000, Active: true},
-		{PlateNumber: "3-A99012 AA", VehicleType: "light_truck", CapacityKg: 6000, Active: true},
-		{PlateNumber: "3-B33210 AA", VehicleType: "refrigerated", CapacityKg: 8000, Active: true},
+		{PlateNumber: "3-A12345 AA", VehicleType: "heavy_truck", CapacityKg: 25000, Active: true, InsuranceExpires: in(210), InspectionDue: in(120)},
+		{PlateNumber: "3-B54321 AA", VehicleType: "trailer", CapacityKg: 40000, Active: true, InsuranceExpires: in(95), InspectionDue: in(260)},
+		{PlateNumber: "2-C77881 OR", VehicleType: "medium_truck", CapacityKg: 12000, Active: true, InsuranceExpires: in(300), InspectionDue: in(75)},
+		{PlateNumber: "3-A99012 AA", VehicleType: "light_truck", CapacityKg: 6000, Active: true, InsuranceExpires: in(150), InspectionDue: in(190)},
+		{PlateNumber: "3-B33210 AA", VehicleType: "refrigerated", CapacityKg: 8000, Active: true, InsuranceExpires: in(240), InspectionDue: in(6)},
 	}
 	var vehicleIDs []pgtype.UUID
 	for _, v := range vehicles {
@@ -184,13 +186,16 @@ func seed(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log zerol
 	if err != nil {
 		return err
 	}
-	driverInputs := []struct{ name, phone string }{
-		{"Abebe Kebede", "0912345601"}, {"Tigist Haile", "0912345602"}, {"Mulugeta Alemu", "0912345603"},
-		{"Hana Girma", "0912345604"}, {"Yonas Tadesse", "0912345605"},
+	driverInputs := []struct {
+		name, phone string
+		licence     int
+	}{
+		{"Abebe Kebede", "0912345601", 900}, {"Tigist Haile", "0912345602", 420}, {"Mulugeta Alemu", "0912345603", 610},
+		{"Hana Girma", "0912345604", 1100}, {"Yonas Tadesse", "0912345605", 14},
 	}
 	var drivers []db.User
 	for i, d := range driverInputs {
-		acct, err := svc.Users.CreateDriver(ctx, admin, service.PersonInput{FullName: d.name, Phone: d.phone, VehicleID: vehicleIDs[i].String()}, ci)
+		acct, err := svc.Users.CreateDriver(ctx, admin, service.PersonInput{FullName: d.name, Phone: d.phone, VehicleID: vehicleIDs[i].String(), LicenceExpires: in(d.licence)}, ci)
 		if err != nil {
 			return fmt.Errorf("driver %s: %w", d.name, err)
 		}

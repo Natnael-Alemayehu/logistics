@@ -1,32 +1,88 @@
-{{define "content"}}{{$d := .Data}}
+{{define "content"}}{{$d := .Data}}{{$c := $d.Counts}}
 <div class="page-head">
-  <div><h1>Vehicles</h1></div>
-  <div class="actions">{{if .Me.CanManageFleet}}<a class="btn btn-primary" href="/app/vehicles/new">+ Add a vehicle</a>{{end}}</div>
+  <div>
+    <h1>Vehicles</h1>
+    <p class="muted">{{index $c "all"}} {{if eq (index $c "all") 1}}vehicle{{else}}vehicles{{end}}{{if $d.CapacityKg}} · {{kg $d.CapacityKg}} of capacity in service{{end}}</p>
+  </div>
+  <div class="actions">{{if .Me.CanManageFleet}}<a class="btn btn-primary" href="/app/vehicles/new">{{icon "plus"}}Add vehicle</a>{{end}}</div>
+</div>
+
+{{if index $c "all"}}
+<section class="kpis" aria-label="The fleet at a glance">
+  <a class="kpi" href="/app/vehicles?tab=road"><span class="kpi-n">{{index $c "road"}}</span><span class="kpi-l">On the road</span>{{icon "truck"}}</a>
+  <a class="kpi" href="/app/vehicles?tab=available"><span class="kpi-n">{{index $c "available"}}</span><span class="kpi-l">Available</span>{{icon "circle-check"}}</a>
+  <a class="kpi" href="/app/vehicles?tab=out"><span class="kpi-n">{{index $c "out"}}</span><span class="kpi-l">Out of service</span>{{icon "wrench"}}</a>
+  <a class="kpi {{if index $c "papers"}}kpi-warn{{end}}" href="/app/vehicles?tab=papers"><span class="kpi-n">{{index $c "papers"}}</span><span class="kpi-l">Papers due in 30 days</span>{{icon "calendar-clock"}}</a>
+</section>
+{{end}}
+
+{{with $d.Due}}{{$first := index . 0}}{{$r := $first.Row}}
+<div class="notice {{if eq $first.Paper.State "lapsed"}}notice-bad{{else}}notice-warn{{end}}" role="status">
+  {{icon "calendar-clock"}}
+  <div class="notice-body">
+    <strong>{{$first.What}} for <span class="mono">{{$r.PlateNumber}}</span> {{if eq $first.Paper.State "lapsed"}}ran out on{{else if eq $first.What "Insurance"}}runs out on{{else}}is due on{{end}} {{$first.Paper.Text}}</strong>
+    <p>{{if $r.OnRoad}}It is on the road now{{with $r.DriverNames}} with {{.}}{{end}}. {{end}}{{if gt (len .) 1}}{{sub (len .) 1}} more {{if eq (len .) 2}}date is{{else}}dates are{{end}} close: {{range $i, $x := .}}{{if $i}}{{if gt $i 1}}, {{end}}<a href="/app/vehicles/{{uuid $x.Row.ID}}">{{$x.Row.PlateNumber}}</a> ({{$x.What}}){{end}}{{end}}.{{else}}Record the new date once it's renewed.{{end}}</p>
+  </div>
+  {{if $.Me.CanManageFleet}}<div class="notice-actions"><a class="btn btn-sm" href="/app/vehicles/{{uuid $r.ID}}/edit">Record the new date</a></div>{{end}}
+</div>
+{{end}}
+
+<nav class="tabs" aria-label="Vehicle groups">
+  <a href="/app/vehicles{{with $d.Search}}?q={{.}}{{end}}" {{if not $d.Tab}}aria-current="page"{{end}}>All <span class="badge">{{index $c "all"}}</span></a>
+  <a href="/app/vehicles?tab=road{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "road"}}aria-current="page"{{end}}>On the road <span class="badge">{{index $c "road"}}</span></a>
+  {{with index $c "booked"}}<a href="/app/vehicles?tab=booked{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "booked"}}aria-current="page"{{end}}>Waiting to leave <span class="badge">{{.}}</span></a>{{end}}
+  <a href="/app/vehicles?tab=available{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "available"}}aria-current="page"{{end}}>Available <span class="badge">{{index $c "available"}}</span></a>
+  <a href="/app/vehicles?tab=out{{with $d.Search}}&amp;q={{.}}{{end}}" {{if eq $d.Tab "out"}}aria-current="page"{{end}}>Out of service <span class="badge">{{index $c "out"}}</span></a>
+  {{if eq $d.Tab "papers"}}<a href="/app/vehicles?tab=papers" aria-current="page">Papers due <span class="badge">{{index $c "papers"}}</span></a>{{end}}
+</nav>
+
+<section class="card card-flush">
+<div class="list-toolbar">
+  <form method="get" action="/app/vehicles" class="list-search" role="search">
+    {{with $d.Tab}}<input type="hidden" name="tab" value="{{.}}">{{end}}
+    <label class="search-field"><span class="sr-only">Search vehicles</span>{{icon "search"}}<input type="search" name="q" value="{{$d.Search}}" placeholder="Search plate or driver"></label>
+  </form>
 </div>
 {{if $d.Vehicles}}
-<div class="card card-flush">
 <div class="table-wrap">
-<table class="table rows-link">
-  <thead><tr><th>Plate</th><th>Type</th><th class="num">Capacity</th><th>Usual drivers</th><th class="num">Active shipments</th></tr></thead>
+<table class="table rows-link table-cards">
+  <thead><tr><th>Plate</th><th>Vehicle</th><th class="num">Capacity</th><th>Status</th><th>Usual driver</th><th>Insurance to</th><th>Inspection (ቦሎ) due</th><th class="row-menu"><span class="sr-only">Actions</span></th></tr></thead>
   <tbody>
   {{range $d.Vehicles}}
   <tr data-href="/app/vehicles/{{uuid .ID}}" {{if not .IsActive}}class="is-muted"{{end}}>
-    <td><a href="/app/vehicles/{{uuid .ID}}"><strong class="mono">{{.PlateNumber}}</strong></a>{{if not .IsActive}} <span class="badge">Out of service</span>{{end}}</td>
+    <td><a class="mono" href="/app/vehicles/{{uuid .ID}}"><strong>{{mark $d.Search .PlateNumber}}</strong></a></td>
     <td>{{with .VehicleType}}{{vehicleType .}}{{else}}<span class="muted">—</span>{{end}}</td>
     <td class="num">{{if hasNum .CapacityKg}}{{kg .CapacityKg}}{{else}}—{{end}}</td>
-    <td>{{with .DriverNames}}{{.}}{{else}}<span class="muted">—</span>{{end}}</td>
-    <td class="num">{{.ActiveShipments}}</td>
+    <td>{{if eq .Group "road"}}<span class="badge s-in_transit">On the road</span>
+      {{else if eq .Group "booked"}}<span class="badge s-assigned">Waiting to leave</span>
+      {{else if eq .Group "available"}}<span class="badge s-delivered">Available</span>
+      {{else}}<span class="badge">Out of service</span>{{end}}</td>
+    <td>{{with .DriverNames}}{{mark $d.Search .}}{{else}}<span class="muted">Not assigned</span>{{end}}</td>
+    <td data-label="Insurance to">{{template "paper" .Insurance}}</td>
+    <td data-label="Inspection (ቦሎ) due">{{template "paper" .Inspection}}</td>
+    <td class="row-menu">
+      <details class="pop pop-right">
+        <summary class="icon-btn" aria-label="Actions for {{.PlateNumber}}">{{icon "ellipsis-vertical"}}</summary>
+        <div class="pop-panel menu-panel">
+          <a href="/app/vehicles/{{uuid .ID}}">{{icon "truck"}}Open</a>
+          {{if $.Me.CanManageFleet}}<a href="/app/vehicles/{{uuid .ID}}/edit">{{icon "pencil"}}Edit</a>{{end}}
+        </div>
+      </details>
+    </td>
   </tr>
   {{end}}
   </tbody>
 </table>
 </div>
-</div>
+<div class="card-foot list-foot"><span>{{len $d.Vehicles}} {{if eq (len $d.Vehicles) 1}}vehicle{{else}}vehicles{{end}}</span><span class="muted">Dates turn orange 30 days before they're due</span></div>
 {{else}}
-<div class="card empty">
-  <h2>No vehicles yet</h2>
+<div class="empty">
+  {{if $d.Search}}<h2>No vehicles match “{{$d.Search}}”</h2><p class="muted"><a href="/app/vehicles">Clear the search</a></p>
+  {{else if $d.Tab}}<h2>Nothing here</h2><p class="muted">No vehicle is in this group right now.</p>
+  {{else}}<h2>No vehicles yet</h2>
   <p class="muted">Register your trucks so dispatchers can put the right one on each shipment and customers see a plate number on the waybill.</p>
-  {{if .Me.CanManageFleet}}<p><a class="btn btn-primary" href="/app/vehicles/new">+ Add a vehicle</a></p>{{end}}
+  {{if .Me.CanManageFleet}}<p><a class="btn btn-primary" href="/app/vehicles/new">{{icon "plus"}}Add a vehicle</a></p>{{end}}{{end}}
 </div>
 {{end}}
+</section>
 {{end}}

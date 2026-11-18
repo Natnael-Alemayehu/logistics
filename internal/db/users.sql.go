@@ -52,7 +52,7 @@ INSERT INTO users (
     tenant_id, role, full_name, phone, email, password_hash, pin_hash,
     is_active, password_reset_required, vehicle_id
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at, licence_expires_on
 `
 
 type CreateUserParams struct {
@@ -104,12 +104,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.AppVibrate,
 		&i.AnonymisedAt,
 		&i.AlertsSeenAt,
+		&i.LicenceExpiresOn,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at, licence_expires_on FROM users
 WHERE lower(email) = lower($1)
 `
 
@@ -140,12 +141,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.AppVibrate,
 		&i.AnonymisedAt,
 		&i.AlertsSeenAt,
+		&i.LicenceExpiresOn,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at, licence_expires_on FROM users
 WHERE id = $1 AND tenant_id = $2
 `
 
@@ -181,12 +183,13 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User,
 		&i.AppVibrate,
 		&i.AnonymisedAt,
 		&i.AlertsSeenAt,
+		&i.LicenceExpiresOn,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at, licence_expires_on FROM users
 WHERE phone = $1
 `
 
@@ -217,6 +220,7 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phone *string) (User, erro
 		&i.AppVibrate,
 		&i.AnonymisedAt,
 		&i.AlertsSeenAt,
+		&i.LicenceExpiresOn,
 	)
 	return i, err
 }
@@ -225,7 +229,7 @@ const incrementFailedLoginAttempts = `-- name: IncrementFailedLoginAttempts :one
 UPDATE users
 SET failed_login_attempts = failed_login_attempts + 1
 WHERE id = $1
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at, licence_expires_on
 `
 
 func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -255,6 +259,7 @@ func (q *Queries) IncrementFailedLoginAttempts(ctx context.Context, id pgtype.UU
 		&i.AppVibrate,
 		&i.AnonymisedAt,
 		&i.AlertsSeenAt,
+		&i.LicenceExpiresOn,
 	)
 	return i, err
 }
@@ -305,7 +310,7 @@ func (q *Queries) ListAllUsersForPlatform(ctx context.Context, tenantID pgtype.U
 }
 
 const listDriversWithStatus = `-- name: ListDriversWithStatus :many
-SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at,
+SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at, u.licence_expires_on,
        v.plate_number AS vehicle_plate,
        sm.last_sync_at, sm.battery_level, sm.tracking_paused, sm.app_version, sm.storage_used_kb,
        COALESCE(sm.power_saving, false)::bool AS power_saving,
@@ -322,10 +327,25 @@ SELECT u.id, u.full_name, u.phone, u.is_active, u.vehicle_id, u.created_at,
           AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue'))::bigint AS active_shipments,
        (SELECT COUNT(*) FROM shipments s
         WHERE s.driver_id = u.id AND s.status = 'delivered'
-          AND s.actual_delivery >= date_trunc('month', NOW()))::bigint AS delivered_this_month
+          AND s.actual_delivery >= date_trunc('month', NOW()))::bigint AS delivered_this_month,
+       -- The load they carry now: one on the road before one waiting.
+       COALESCE(cur.tracking_number, '')::text AS current_tracking,
+       COALESCE(cur.status, '')::text AS current_status,
+       cur.id AS current_shipment_id,
+       COALESCE(ST_Y(dp.coordinates), 0)::float8 AS position_lat,
+       COALESCE(ST_X(dp.coordinates), 0)::float8 AS position_lng,
+       dp.recorded_at AS position_at
 FROM users u
 LEFT JOIN vehicles v ON v.id = u.vehicle_id
 LEFT JOIN sync_metadata sm ON sm.driver_id = u.id
+LEFT JOIN driver_positions dp ON dp.driver_id = u.id AND dp.tenant_id = u.tenant_id
+LEFT JOIN LATERAL (
+    SELECT s.id, s.tracking_number, s.status FROM shipments s
+    WHERE s.driver_id = u.id AND s.tenant_id = u.tenant_id
+      AND s.status IN ('assigned', 'in_transit', 'delayed', 'arrived', 'issue')
+    ORDER BY s.status = 'assigned', s.updated_at DESC
+    LIMIT 1
+) cur ON true
 WHERE u.tenant_id = $1
   AND u.role = 'driver'
   AND (NOT $2::bool OR u.is_active)
@@ -350,6 +370,7 @@ type ListDriversWithStatusRow struct {
 	IsActive           bool               `db:"is_active" json:"is_active"`
 	VehicleID          pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
 	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	LicenceExpiresOn   pgtype.Date        `db:"licence_expires_on" json:"licence_expires_on"`
 	VehiclePlate       *string            `db:"vehicle_plate" json:"vehicle_plate"`
 	LastSyncAt         pgtype.Timestamptz `db:"last_sync_at" json:"last_sync_at"`
 	BatteryLevel       *int32             `db:"battery_level" json:"battery_level"`
@@ -360,10 +381,17 @@ type ListDriversWithStatusRow struct {
 	OnDuty             bool               `db:"on_duty" json:"on_duty"`
 	ActiveShipments    int64              `db:"active_shipments" json:"active_shipments"`
 	DeliveredThisMonth int64              `db:"delivered_this_month" json:"delivered_this_month"`
+	CurrentTracking    string             `db:"current_tracking" json:"current_tracking"`
+	CurrentStatus      string             `db:"current_status" json:"current_status"`
+	CurrentShipmentID  pgtype.UUID        `db:"current_shipment_id" json:"current_shipment_id"`
+	PositionLat        float64            `db:"position_lat" json:"position_lat"`
+	PositionLng        float64            `db:"position_lng" json:"position_lng"`
+	PositionAt         pgtype.Timestamptz `db:"position_at" json:"position_at"`
 }
 
 // The drivers page and the assignment picker: who is on duty, how loaded they
-// are, and when their device last talked to the server.
+// are, what they carry now, where and when their phone was last heard from,
+// and when their licence runs out.
 func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWithStatusParams) ([]ListDriversWithStatusRow, error) {
 	rows, err := q.db.Query(ctx, listDriversWithStatus,
 		arg.TenantID,
@@ -385,6 +413,7 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 			&i.IsActive,
 			&i.VehicleID,
 			&i.CreatedAt,
+			&i.LicenceExpiresOn,
 			&i.VehiclePlate,
 			&i.LastSyncAt,
 			&i.BatteryLevel,
@@ -395,6 +424,12 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 			&i.OnDuty,
 			&i.ActiveShipments,
 			&i.DeliveredThisMonth,
+			&i.CurrentTracking,
+			&i.CurrentStatus,
+			&i.CurrentShipmentID,
+			&i.PositionLat,
+			&i.PositionLng,
+			&i.PositionAt,
 		); err != nil {
 			return nil, err
 		}
@@ -407,7 +442,7 @@ func (q *Queries) ListDriversWithStatus(ctx context.Context, arg ListDriversWith
 }
 
 const listUsersByTenant = `-- name: ListUsersByTenant :many
-SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at FROM users
+SELECT id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at, licence_expires_on FROM users
 WHERE tenant_id = $1 AND role <> 'driver'
 ORDER BY is_active DESC, full_name
 LIMIT $2 OFFSET $3
@@ -452,6 +487,7 @@ func (q *Queries) ListUsersByTenant(ctx context.Context, arg ListUsersByTenantPa
 			&i.AppVibrate,
 			&i.AnonymisedAt,
 			&i.AlertsSeenAt,
+			&i.LicenceExpiresOn,
 		); err != nil {
 			return nil, err
 		}
@@ -518,6 +554,22 @@ func (q *Queries) SetDriverAppSettings(ctx context.Context, arg SetDriverAppSett
 		arg.ID,
 		arg.TenantID,
 	)
+	return err
+}
+
+const setDriverLicence = `-- name: SetDriverLicence :exec
+UPDATE users SET licence_expires_on = $1
+WHERE id = $2 AND tenant_id = $3 AND role = 'driver'
+`
+
+type SetDriverLicenceParams struct {
+	LicenceExpiresOn pgtype.Date `db:"licence_expires_on" json:"licence_expires_on"`
+	ID               pgtype.UUID `db:"id" json:"id"`
+	TenantID         pgtype.UUID `db:"tenant_id" json:"tenant_id"`
+}
+
+func (q *Queries) SetDriverLicence(ctx context.Context, arg SetDriverLicenceParams) error {
+	_, err := q.db.Exec(ctx, setDriverLicence, arg.LicenceExpiresOn, arg.ID, arg.TenantID)
 	return err
 }
 
@@ -608,7 +660,7 @@ SET full_name = $3,
     email_verified_at = CASE WHEN email IS NOT DISTINCT FROM $5 THEN email_verified_at END,
     updated_at = NOW()
 WHERE id = $1 AND tenant_id = $2
-RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at
+RETURNING id, tenant_id, role, full_name, phone, email, password_hash, pin_hash, is_active, created_at, updated_at, failed_login_attempts, locked_until, password_reset_required, vehicle_id, last_login_at, email_verified_at, alert_emails, language, app_battery_saver, app_vibrate, anonymised_at, alerts_seen_at, licence_expires_on
 `
 
 type UpdateUserProfileParams struct {
@@ -653,6 +705,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.AppVibrate,
 		&i.AnonymisedAt,
 		&i.AlertsSeenAt,
+		&i.LicenceExpiresOn,
 	)
 	return i, err
 }

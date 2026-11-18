@@ -1077,6 +1077,13 @@ the requirement, what Kiflet does instead, and why.
   are emailed about, rather than one setting per company.
 - **History (AC-033.5)**: alerts are kept 90 days, not 30, the same as GPS
   points, so an alert can be read alongside the route it was about.
+- **Papers (not in the requirements)**: a driver's licence and a vehicle's
+  insurance and annual inspection (ቦሎ) each have an expiry date. The office
+  is alerted 30 days before, and critically once it has passed; recording
+  the new date resolves the alert. A driver whose licence has run out can't
+  be given a trip (FR-007 is stricter here): driving without one is an
+  offence, and the company shouldn't send them. Lapsed vehicle papers only
+  warn, since a renewal is often under way when the date passes.
 
 ### Customers
 

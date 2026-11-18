@@ -2,16 +2,18 @@
 -- An open alert for the same subject and type already covers this one, and
 -- an alert of the same episode was raised before, even if dismissed since:
 -- the unique indexes turn either duplicate into a no-op and no row returns.
-INSERT INTO alerts (tenant_id, shipment_id, driver_id, alert_type, severity, message, episode)
-VALUES ($1, $2, $3, $4, $5, $6, sqlc.narg(episode))
+INSERT INTO alerts (tenant_id, shipment_id, driver_id, vehicle_id, alert_type, severity, message, episode)
+VALUES ($1, $2, $3, sqlc.narg(vehicle_id), $4, $5, $6, sqlc.narg(episode))
 ON CONFLICT DO NOTHING
 RETURNING *;
 
 -- name: ListAlerts :many
-SELECT a.*, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone
+SELECT a.*, s.tracking_number, s.destination_city, s.customer_name, s.customer_phone, d.full_name AS driver_name, d.phone AS driver_phone,
+       vh.plate_number AS vehicle_plate
 FROM alerts a
 LEFT JOIN shipments s ON s.id = a.shipment_id
 LEFT JOIN users d ON d.id = a.driver_id
+LEFT JOIN vehicles vh ON vh.id = a.vehicle_id
 WHERE a.tenant_id = sqlc.arg(tenant_id)
   AND (NOT sqlc.arg(open_only)::bool OR a.acknowledged_at IS NULL)
   AND (cardinality(sqlc.arg(severities)::text[]) = 0 OR a.severity = ANY(sqlc.arg(severities)::text[]))
@@ -84,3 +86,11 @@ WHERE a.shipment_id = s.id
   AND (s.status NOT IN ('pending', 'assigned')
        OR s.planned_pickup_at IS NULL
        OR a.episode IS DISTINCT FROM floor(extract(epoch FROM s.planned_pickup_at))::bigint::text);
+
+-- name: AcknowledgePapersAlerts :exec
+-- Papers renewed: what was open about the old date is resolved.
+UPDATE alerts
+SET acknowledged_at = NOW(), read_at = COALESCE(read_at, NOW())
+WHERE tenant_id = sqlc.arg(tenant_id) AND alert_type = sqlc.arg(alert_type) AND acknowledged_at IS NULL
+  AND (driver_id = sqlc.narg(driver_id) OR vehicle_id = sqlc.narg(vehicle_id))
+  AND episode IS DISTINCT FROM sqlc.narg(keep_episode);

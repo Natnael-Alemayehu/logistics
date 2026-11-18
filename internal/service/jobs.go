@@ -103,6 +103,7 @@ func (j *Jobs) once(ctx context.Context, retention, usage bool) (ran bool, err e
 	run("billing", j.billing.Run)
 	if usage {
 		run("plan_limits", j.billing.CheckUsage)
+		run("papers_check", j.CheckPapers)
 	}
 	if retention {
 		run("retention", j.Retention)

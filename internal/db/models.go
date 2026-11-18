@@ -21,6 +21,7 @@ type Alert struct {
 	AcknowledgedAt pgtype.Timestamptz `db:"acknowledged_at" json:"acknowledged_at"`
 	AcknowledgedBy pgtype.UUID        `db:"acknowledged_by" json:"acknowledged_by"`
 	Episode        *string            `db:"episode" json:"episode"`
+	VehicleID      pgtype.UUID        `db:"vehicle_id" json:"vehicle_id"`
 }
 
 type ApiKey struct {
@@ -476,17 +477,20 @@ type User struct {
 	AppVibrate            bool               `db:"app_vibrate" json:"app_vibrate"`
 	AnonymisedAt          pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
 	AlertsSeenAt          pgtype.Timestamptz `db:"alerts_seen_at" json:"alerts_seen_at"`
+	LicenceExpiresOn      pgtype.Date        `db:"licence_expires_on" json:"licence_expires_on"`
 }
 
 type Vehicle struct {
-	ID          pgtype.UUID        `db:"id" json:"id"`
-	TenantID    pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
-	PlateNumber string             `db:"plate_number" json:"plate_number"`
-	VehicleType *string            `db:"vehicle_type" json:"vehicle_type"`
-	IsActive    bool               `db:"is_active" json:"is_active"`
-	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CapacityKg  pgtype.Numeric     `db:"capacity_kg" json:"capacity_kg"`
+	ID                 pgtype.UUID        `db:"id" json:"id"`
+	TenantID           pgtype.UUID        `db:"tenant_id" json:"tenant_id"`
+	PlateNumber        string             `db:"plate_number" json:"plate_number"`
+	VehicleType        *string            `db:"vehicle_type" json:"vehicle_type"`
+	IsActive           bool               `db:"is_active" json:"is_active"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CapacityKg         pgtype.Numeric     `db:"capacity_kg" json:"capacity_kg"`
+	InsuranceExpiresOn pgtype.Date        `db:"insurance_expires_on" json:"insurance_expires_on"`
+	InspectionDueOn    pgtype.Date        `db:"inspection_due_on" json:"inspection_due_on"`
 }
 
 type VerificationCode struct {

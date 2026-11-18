@@ -21,6 +21,8 @@ func personInput(r *http.Request) service.PersonInput {
 		Email:     r.PostFormValue("email"),
 		Role:      r.PostFormValue("role"),
 		VehicleID: r.PostFormValue("vehicle_id"),
+
+		LicenceExpires: r.PostFormValue("licence_expires_on"),
 	}
 }
 
@@ -36,26 +38,6 @@ func personPath(u db.User) string {
 // ---------------------------------------------------------------------------
 // Drivers (FR-004)
 // ---------------------------------------------------------------------------
-
-func (s *Server) driverList(w http.ResponseWriter, r *http.Request) {
-	p := principal(r)
-	q := r.URL.Query()
-	showInactive := q.Get("inactive") != ""
-	drivers, err := s.svc.Users.Drivers(r.Context(), p.TenantID, !showInactive, strings.TrimSpace(q.Get("q")))
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	usage, err := s.svc.Tenants.Usage(r.Context(), p.TenantID)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	v := s.view(w, r, "Drivers", "drivers", map[string]any{
-		"Drivers": drivers, "ShowInactive": showInactive, "Usage": usage,
-	})
-	s.render(w, r, http.StatusOK, "app/drivers", v)
-}
 
 func (s *Server) driverDetail(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
@@ -185,7 +167,17 @@ func personFormValues(u db.User) url.Values {
 		"email":      {deref(u.Email)},
 		"role":       {u.Role},
 		"vehicle_id": {uuidOrEmpty(u.VehicleID)},
+
+		"licence_expires_on": {formDay(u.LicenceExpiresOn)},
 	}
+}
+
+// formDay is a date as a date input holds it.
+func formDay(d pgtype.Date) string {
+	if !d.Valid {
+		return ""
+	}
+	return d.Time.Format("2006-01-02")
 }
 
 func uuidOrEmpty(u pgtype.UUID) string {
@@ -312,15 +304,6 @@ func (s *Server) personReset(w http.ResponseWriter, r *http.Request) {
 // Vehicles (FR-005)
 // ---------------------------------------------------------------------------
 
-func (s *Server) vehicleList(w http.ResponseWriter, r *http.Request) {
-	vehicles, err := s.svc.Vehicles.List(r.Context(), principal(r).TenantID)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	s.render(w, r, http.StatusOK, "app/vehicles", s.view(w, r, "Vehicles", "vehicles", map[string]any{"Vehicles": vehicles}))
-}
-
 func (s *Server) vehicleDetail(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
 	id, err := pathID(r, "id")
@@ -360,6 +343,9 @@ func vehicleInput(r *http.Request) service.VehicleInput {
 		VehicleType: r.PostFormValue("vehicle_type"),
 		CapacityKg:  capacity,
 		Active:      r.PostFormValue("active") != "",
+
+		InsuranceExpires: r.PostFormValue("insurance_expires_on"),
+		InspectionDue:    r.PostFormValue("inspection_due_on"),
 	}
 }
 
@@ -398,6 +384,9 @@ func (s *Server) vehicleEdit(w http.ResponseWriter, r *http.Request) {
 		"plate_number": {vh.PlateNumber},
 		"vehicle_type": {deref(vh.VehicleType)},
 		"capacity_kg":  {numStr(toFloat(vh.CapacityKg))},
+
+		"insurance_expires_on": {formDay(vh.InsuranceExpiresOn)},
+		"inspection_due_on":    {formDay(vh.InspectionDueOn)},
 	}
 	if vh.IsActive {
 		v.Form.Set("active", "on")

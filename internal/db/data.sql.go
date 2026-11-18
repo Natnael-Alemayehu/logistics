@@ -100,7 +100,7 @@ func (q *Queries) AnonymiseSupportAuthor(ctx context.Context, arg AnonymiseSuppo
 const anonymiseUser = `-- name: AnonymiseUser :one
 UPDATE users
 SET full_name = $1, phone = NULL, email = NULL, password_hash = NULL, pin_hash = NULL,
-    email_verified_at = NULL, alert_emails = '{}', language = NULL, vehicle_id = NULL,
+    email_verified_at = NULL, alert_emails = '{}', language = NULL, vehicle_id = NULL, licence_expires_on = NULL,
     anonymised_at = NOW(), updated_at = NOW()
 WHERE id = $2 AND tenant_id = $3 AND NOT is_active AND anonymised_at IS NULL
 RETURNING id
@@ -345,7 +345,8 @@ func (q *Queries) ExportPODs(ctx context.Context, tenantID pgtype.UUID) ([]Expor
 
 const exportPeople = `-- name: ExportPeople :many
 SELECT u.full_name, u.role, COALESCE(u.phone, '')::text AS phone, COALESCE(u.email, '')::text AS email,
-       u.is_active, COALESCE(v.plate_number, '')::text AS vehicle_plate, u.created_at, u.last_login_at, u.anonymised_at
+       u.is_active, COALESCE(v.plate_number, '')::text AS vehicle_plate, u.created_at, u.last_login_at, u.anonymised_at,
+       u.licence_expires_on
 FROM users u
 LEFT JOIN vehicles v ON v.id = u.vehicle_id
 WHERE u.tenant_id = $1
@@ -353,15 +354,16 @@ ORDER BY u.role = 'driver', u.full_name
 `
 
 type ExportPeopleRow struct {
-	FullName     string             `db:"full_name" json:"full_name"`
-	Role         string             `db:"role" json:"role"`
-	Phone        string             `db:"phone" json:"phone"`
-	Email        string             `db:"email" json:"email"`
-	IsActive     bool               `db:"is_active" json:"is_active"`
-	VehiclePlate string             `db:"vehicle_plate" json:"vehicle_plate"`
-	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	LastLoginAt  pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
-	AnonymisedAt pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
+	FullName         string             `db:"full_name" json:"full_name"`
+	Role             string             `db:"role" json:"role"`
+	Phone            string             `db:"phone" json:"phone"`
+	Email            string             `db:"email" json:"email"`
+	IsActive         bool               `db:"is_active" json:"is_active"`
+	VehiclePlate     string             `db:"vehicle_plate" json:"vehicle_plate"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	LastLoginAt      pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
+	AnonymisedAt     pgtype.Timestamptz `db:"anonymised_at" json:"anonymised_at"`
+	LicenceExpiresOn pgtype.Date        `db:"licence_expires_on" json:"licence_expires_on"`
 }
 
 func (q *Queries) ExportPeople(ctx context.Context, tenantID pgtype.UUID) ([]ExportPeopleRow, error) {
@@ -383,6 +385,7 @@ func (q *Queries) ExportPeople(ctx context.Context, tenantID pgtype.UUID) ([]Exp
 			&i.CreatedAt,
 			&i.LastLoginAt,
 			&i.AnonymisedAt,
+			&i.LicenceExpiresOn,
 		); err != nil {
 			return nil, err
 		}
@@ -555,18 +558,21 @@ func (q *Queries) ExportShipments(ctx context.Context, tenantID pgtype.UUID) ([]
 }
 
 const exportVehicles = `-- name: ExportVehicles :many
-SELECT plate_number, vehicle_type, COALESCE(capacity_kg, 0)::float8 AS capacity_kg, is_active, created_at
+SELECT plate_number, vehicle_type, COALESCE(capacity_kg, 0)::float8 AS capacity_kg, is_active, created_at,
+       insurance_expires_on, inspection_due_on
 FROM vehicles
 WHERE tenant_id = $1
 ORDER BY plate_number
 `
 
 type ExportVehiclesRow struct {
-	PlateNumber string             `db:"plate_number" json:"plate_number"`
-	VehicleType *string            `db:"vehicle_type" json:"vehicle_type"`
-	CapacityKg  float64            `db:"capacity_kg" json:"capacity_kg"`
-	IsActive    bool               `db:"is_active" json:"is_active"`
-	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	PlateNumber        string             `db:"plate_number" json:"plate_number"`
+	VehicleType        *string            `db:"vehicle_type" json:"vehicle_type"`
+	CapacityKg         float64            `db:"capacity_kg" json:"capacity_kg"`
+	IsActive           bool               `db:"is_active" json:"is_active"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	InsuranceExpiresOn pgtype.Date        `db:"insurance_expires_on" json:"insurance_expires_on"`
+	InspectionDueOn    pgtype.Date        `db:"inspection_due_on" json:"inspection_due_on"`
 }
 
 func (q *Queries) ExportVehicles(ctx context.Context, tenantID pgtype.UUID) ([]ExportVehiclesRow, error) {
@@ -584,6 +590,8 @@ func (q *Queries) ExportVehicles(ctx context.Context, tenantID pgtype.UUID) ([]E
 			&i.CapacityKg,
 			&i.IsActive,
 			&i.CreatedAt,
+			&i.InsuranceExpiresOn,
+			&i.InspectionDueOn,
 		); err != nil {
 			return nil, err
 		}
