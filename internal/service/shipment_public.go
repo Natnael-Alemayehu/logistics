@@ -37,6 +37,11 @@ type PublicTracking struct {
 	Steps          []TrackingStep
 	Timeline       []PublicEvent
 	Confirmed      bool
+	// KmLeft is roughly how far the truck has still to drive, by road, from
+	// where it was last seen; 0 when that isn't known.
+	KmLeft int
+	// ConfirmByText: the receiver is texted a link to confirm the delivery.
+	ConfirmByText bool
 	// Lang is the language the labels are in: the one asked for, or the
 	// one the company writes to its customers in.
 	Lang string
@@ -55,6 +60,7 @@ type TrackingStep struct {
 	Label   string
 	Done    bool
 	Current bool
+	At      *time.Time // when it was reached, if it was
 }
 
 // PublicEvent is one line of the public timeline.
@@ -95,6 +101,7 @@ func (s *ShipmentService) Track(ctx context.Context, number, lang string) (*Publ
 		ETA:            timePtr(sh.EstimatedDelivery),
 		DeliveredAt:    timePtr(sh.ActualDelivery),
 		Confirmed:      sh.CustomerConfirmedAt.Valid,
+		ConfirmByText:  tenant.SmsOnDelivered,
 		Lang:           lang,
 	}
 	// The map shows towns, not the customer's gate.
@@ -115,6 +122,9 @@ func (s *ShipmentService) Track(ctx context.Context, number, lang string) (*Publ
 		})
 		if err == nil {
 			t.LastSeen = coarsePosition(lang, pos.Latitude, pos.Longitude, pos.RecordedAt.Time)
+			if t.DestLat != 0 {
+				t.KmLeft = int(math.Round(geo.RoadKM(pos.Latitude, pos.Longitude, t.DestLat, t.DestLng)))
+			}
 		}
 	}
 
@@ -124,8 +134,28 @@ func (s *ShipmentService) Track(ctx context.Context, number, lang string) (*Publ
 	if err != nil {
 		return nil, err
 	}
+	reach := func(step int, at time.Time) {
+		if step < len(t.Steps) && t.Steps[step].Done && t.Steps[step].At == nil {
+			t.Steps[step].At = &at
+		}
+	}
 	for _, e := range events {
 		pe := PublicEvent{At: e.OccurredAt.Time}
+		switch e.EventType {
+		case "created":
+			reach(0, pe.At)
+		case "assigned":
+			reach(1, pe.At)
+		case "status_changed", "status_updated":
+			switch deref(e.ToStatus) {
+			case model.StatusInTransit:
+				reach(2, pe.At)
+			case model.StatusArrived:
+				reach(3, pe.At)
+			case model.StatusDelivered:
+				reach(4, pe.At)
+			}
+		}
 		switch e.EventType {
 		case "created":
 			pe.Label = text.T(lang, "event.booked")

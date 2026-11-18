@@ -257,9 +257,14 @@ or isn't a phone number at all.
 ## 7. The customer
 
 1. Open the tracking link from an SMS, or enter the number at `/track`. The
-   page shows the status steps, due time, a coarse last-known position ("45 km
-   from Adama") and public history. It never shows phone numbers or the
-   driver's name.
+   page opens with the carrier's name, the status and whether it is on
+   time, then the expected time, the distance left by road and a coarse
+   last-known position ("45 km from Adama"). The status steps show when
+   each was reached. Beside the map and public history are the delivery's
+   towns, what happens on arrival (when the company texts on delivery),
+   a button to call the company, and a box to track another shipment. It
+   never shows phone numbers other than the company's, or the driver's
+   name.
 2. `/track/phone`: enter the customer's phone, read the 6-digit code in the
    server terminal, and see all of their shipments.
 3. Open the confirmation link from the delivery SMS. Confirm, or report a

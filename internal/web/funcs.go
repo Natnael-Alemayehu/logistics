@@ -113,6 +113,7 @@ func (s *Server) funcs() template.FuncMap {
 		"santim":    santim,
 		"paper":     s.paper,
 		"day":       service.FormatDay,
+		"contains":  strings.Contains,
 		"clock": func(v any) string {
 			t, ok := toTime(v)
 			if !ok {

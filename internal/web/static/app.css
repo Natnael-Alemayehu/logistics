@@ -984,7 +984,13 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 /* ---------- public pages ---------- */
 .public-top { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 0 max(24px, calc((100% - 1152px) / 2)); background: var(--surface); border-bottom: 1px solid var(--border); }
 .public-nav { display: flex; gap: 6px; align-items: center; font-size: 0.875rem; font-weight: 500; }
-.public-nav a:not(.btn) { padding: 6px 10px; border-radius: var(--radius-sm); color: var(--text); }
+.public-nav a:not(.btn) { padding: 6px 10px; border-radius: var(--radius-sm); color: var(--text); white-space: nowrap; }
+@media (max-width: 480px) {
+  .public-top { padding: 0 12px; gap: 6px; }
+  .public-top .brand span { display: none; }
+  .public-nav { gap: 2px; }
+  .public-nav a:not(.btn) { padding: 6px 8px; }
+}
 .public-nav a:not(.btn):hover { background: var(--surface-2); text-decoration: none; }
 .public-nav a[hreflang] { border: 1px solid var(--border-strong); box-shadow: var(--shadow-xs); }
 .public-main { max-width: 1152px; margin: 0 auto; padding: 24px 24px 56px; }
@@ -1020,6 +1026,42 @@ table[data-hide~="due"] [data-col="due"] { display: none; }
 .progress li.done::after { background: var(--accent); }
 .progress li.current { font-weight: 700; color: var(--accent-text); }
 .progress li.current::before { box-shadow: 0 0 0 4px var(--accent-soft); }
+.progress li small { display: block; margin-top: 2px; font-size: 0.72rem; font-weight: 400; }
+
+/* The tracking page, after D-Tracking: the carrier, the status, the facts
+   that matter, then the map and updates beside the delivery's details. */
+.track.track-d { max-width: 1080px; }
+.track-carrier { display: flex; gap: 10px; align-items: center; margin: 0 0 18px; }
+.track-carrier > span:last-child { display: flex; flex-direction: column; line-height: 1.3; }
+.track-hero { margin: 0 0 16px; }
+.track-hero > p:first-child { margin: 0 0 4px; font-size: 0.875rem; }
+.track-hero h1 { margin: 0; font-size: 1.6rem; line-height: 1.25; }
+.track-to { color: var(--muted); font-weight: 500; }
+.track-flags { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.track-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; margin: 0 0 20px; }
+.track-facts > div { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.track-facts dt { color: var(--muted); font-size: 0.8125rem; }
+.track-facts dd { margin: 4px 0 0; font-size: 1.05rem; font-weight: 600; }
+.track-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; margin-top: 8px; }
+.track-main, .track-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.track-main .card, .track-side .card { margin: 0; }
+.track-side h2, .track-main h2 { font-size: 1rem; margin: 0 0 8px; }
+.track-main .card-foot p { margin: 0; }
+.track-main .card-foot p + p { margin-top: 4px; }
+.track-side .facts > div { grid-template-columns: 6.5rem minmax(0, 1fr); }
+.track-flags:empty { display: none; }
+.track-another { display: flex; gap: 8px; margin: 0 0 8px; }
+
+/* Signing in, after D-SignIn. */
+.auth-d h1 { margin-bottom: 4px; }
+.segmented-block { display: flex; width: 100%; }
+.segmented-block label { flex: 1; text-align: center; }
+.auth-foot { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.auth-foot p { margin: 0; line-height: 1.5; }
+.auth-foot .i { width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px; }
+.auth-foot .track-another { margin-top: 8px; }
+.track-another label { flex: 1; }
+@media (max-width: 860px) { .track-grid { grid-template-columns: 1fr; } }
 .ship-cards { list-style: none; padding: 0; margin: 0; }
 .ship-cards .card { padding: 0; margin-bottom: 10px; }
 .ship-card { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 14px 16px; color: var(--text); }

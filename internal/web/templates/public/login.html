@@ -1,13 +1,18 @@
 {{define "bodyclass"}}narrow{{end}}
-{{define "content"}}{{$e := .Errors}}
-<section class="card auth">
-  <h1>Sign in</h1>
-  <p class="muted">For office staff. Drivers use the <a href="/driver/">driver app</a>.</p>
+{{define "content"}}{{$e := .Errors}}{{$id := field .Form "identifier" ""}}{{$email := contains $id "@"}}
+<section class="card auth auth-d">
+  <h1>Sign in to {{.App.Name}}</h1>
+  <p class="muted">For dispatchers and company owners</p>
   {{template "form-error" .}}
-  <form method="post" action="/login" class="stack">
+  <form method="post" action="/login" class="stack" data-login>
     <input type="hidden" name="next" value="{{.Data.Next}}">
-    <label>Email or mobile number
-      <input name="identifier" value="{{field .Form "identifier" ""}}" autocomplete="username" required autofocus {{if index $e "identifier"}}aria-invalid="true"{{end}}>
+    <fieldset class="segmented segmented-block" data-login-kind>
+      <legend class="sr-only">Sign in with</legend>
+      <label><input type="radio" name="with" value="phone" {{if not $email}}checked{{end}}> Phone</label>
+      <label><input type="radio" name="with" value="email" {{if $email}}checked{{end}}> Email</label>
+    </fieldset>
+    <label><span data-login-label>{{if $email}}Email{{else}}Phone number{{end}}</span>
+      <input name="identifier" value="{{$id}}" {{if $email}}type="email" inputmode="email" placeholder="you@company.et"{{else}}type="text" inputmode="tel" placeholder="09… or +251…"{{end}} autocomplete="username" required autofocus {{if index $e "identifier"}}aria-invalid="true"{{end}}>
       {{template "field-error" (index $e "identifier")}}
     </label>
     <label>Password
@@ -18,6 +23,10 @@
     <button class="btn btn-primary btn-block" type="submit">Sign in</button>
   </form>
   <p class="small"><a href="/forgot">Forgot your password?</a></p>
-  <p class="small">New to {{.App.Name}}? <a href="/signup">Start a free trial</a></p>
+  <div class="auth-foot">
+    <p class="small muted">{{icon "truck"}}Are you a driver? Open <a class="mono" href="/driver/">{{bareURL .App.PublicURL}}/driver</a> on your phone.</p>
+    <p class="small muted">{{icon "building-2"}}New to {{.App.Name}}? <a href="/signup">Set up your company</a> with a free trial.</p>
+    <p class="small muted">{{icon "package"}}Waiting for a load? <a href="/track">Track a shipment</a>.</p>
+  </div>
 </section>
 {{end}}

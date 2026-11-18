@@ -127,6 +127,22 @@
   document.addEventListener("change", (e) => {
     if (e.target.matches("[data-autosubmit]")) e.target.form?.submit();
 
+    // Signing in with a phone or an email changes only how the one field
+    // is labelled and which keyboard a phone shows.
+    if (e.target.matches("[data-login-kind] input")) {
+      const form = e.target.closest("[data-login]");
+      const box = form?.querySelector('[name="identifier"]');
+      const label = form?.querySelector("[data-login-label]");
+      if (box && label) {
+        const email = e.target.value === "email";
+        box.type = email ? "email" : "text";
+        box.inputMode = email ? "email" : "tel";
+        box.placeholder = email ? "you@company.et" : "09… or +251…";
+        label.textContent = email ? "Email" : "Phone number";
+        box.focus();
+      }
+    }
+
     // The settings page previews the customer's text in the language chosen.
     if (e.target.matches("[data-preview-language]")) {
       $$("[data-sms-preview]").forEach((p) => { p.hidden = p.dataset.smsPreview !== e.target.value; });

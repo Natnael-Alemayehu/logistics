@@ -1,47 +1,94 @@
 {{define "head"}}<link rel="stylesheet" href="{{asset "vendor/leaflet/leaflet.css"}}">{{end}}
 {{define "scripts"}}<script src="{{asset "vendor/leaflet/leaflet.js"}}" defer></script><script src="{{asset "map.js"}}" defer></script>{{end}}
 {{define "content"}}{{$t := .Data}}
-<section class="track">
-  <header class="track-head">
-    <p class="muted small">{{$t.CompanyName}}</p>
-    <h1 class="mono">{{$t.TrackingNumber}}</h1>
-    <p class="track-status"><span class="badge s-{{if eq $t.Status "issue"}}delayed{{else}}{{$t.Status}}{{end}} badge-lg">{{$t.StatusLabel}}</span></p>
-    <p class="track-route"><strong>{{$t.Origin}}</strong> → <strong>{{$t.Destination}}</strong></p>
-    {{if $t.DeliveredAt}}
-      <p>{{$.T "track.delivered" ($.When $t.DeliveredAt)}}{{if $t.Confirmed}} · {{$.T "track.confirmed"}}{{end}}</p>
-    {{else if eq $t.Status "cancelled"}}
+<section class="track track-d">
+  <p class="track-carrier"><span class="avatar avatar-sm" aria-hidden="true">{{initials $t.CompanyName}}</span><span><strong>{{$t.CompanyName}}</strong><span class="muted small">{{$.T "track.tracked_with" .App.Name}}</span></span></p>
+
+  <header class="track-hero">
+    <p class="mono muted">{{$t.TrackingNumber}}</p>
+    <h1>{{$t.StatusLabel}} <span class="track-to">· {{$t.Origin}} → {{$t.Destination}}</span></h1>
+    <p class="track-flags">
+      {{if $t.Late}}<span class="badge s-delayed">{{$.T "track.late"}}</span>{{else if and $t.ETA (not $t.DeliveredAt) (ne $t.Status "cancelled")}}<span class="badge s-delivered">{{$.T "track.on_time"}}</span>{{end}}
+      {{if $t.Confirmed}}<span class="badge s-delivered">{{$.T "track.confirmed"}}</span>{{end}}
+    </p>
+    {{if eq $t.Status "cancelled"}}
       <p class="muted">{{$.T "track.cancelled"}}{{with $t.CompanyPhone}} {{$.TH "track.cancelled_call_html" (telURL .) .}}{{end}}</p>
-    {{else if $t.ETA}}
-      <p>{{$.T "track.expected" ($.When $t.ETA)}}{{if $t.Late}} · <span class="text-warn">{{$.T "track.late"}}</span>{{end}}</p>
     {{end}}
   </header>
 
   {{if ne $t.Status "cancelled"}}
+  <dl class="track-facts">
+    {{if $t.DeliveredAt}}<div><dt>{{$.T "step.delivered"}}</dt><dd>{{$.When $t.DeliveredAt}}</dd></div>
+    {{else if $t.ETA}}<div><dt>{{$.T "track.expected_label"}}</dt><dd>{{$.When $t.ETA}}</dd></div>{{end}}
+    {{if $t.KmLeft}}<div><dt>{{$.T "track.km_left"}}</dt><dd>{{$.T "track.km" $t.KmLeft}}</dd></div>{{end}}
+    {{with $t.LastSeen}}<div><dt>{{$.T "track.last_seen"}}</dt><dd>{{.Near}} <span class="muted small">· {{$.Ago .At}}</span></dd></div>{{end}}
+  </dl>
+
   <ol class="progress" aria-label="{{$.T "track.progress"}}">
-    {{range $t.Steps}}<li class="{{if .Done}}done{{end}} {{if .Current}}current{{end}}" {{if .Current}}aria-current="step"{{end}}><span>{{.Label}}</span></li>{{end}}
+    {{range $t.Steps}}<li class="{{if .Done}}done{{end}} {{if .Current}}current{{end}}" {{if .Current}}aria-current="step"{{end}}><span>{{.Label}}</span>{{with .At}}<small class="muted">{{$.When .}}</small>{{end}}</li>{{end}}
   </ol>
   {{end}}
 
-  <div class="card card-flush">
-    <div class="map map-mid" data-map="track" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-source="track-map"></div>
-    <script type="application/json" id="track-map">{"origin":{"lat":{{$t.OriginLat}},"lng":{{$t.OriginLng}},"label":{{$t.Origin}}},"destination":{"lat":{{$t.DestLat}},"lng":{{$t.DestLng}},"label":{{$t.Destination}}}{{with $t.LastSeen}},"current":{"lat":{{.Lat}},"lng":{{.Lng}},"label":{{$.T "track.map_last_seen" .Near}}}{{end}}}</script>
-    {{with $t.LastSeen}}<p class="card-foot small">{{$.TH "track.last_seen_html" .Near ($.Ago .At)}}</p>{{end}}
-  </div>
+  <div class="track-grid">
+    <div class="track-main">
+      <div class="card card-flush">
+        <div class="map map-mid" data-map="track" data-tiles="{{.App.TileURL}}" data-credit="{{.App.TileCredit}}" data-source="track-map"></div>
+        <script type="application/json" id="track-map">{"origin":{"lat":{{$t.OriginLat}},"lng":{{$t.OriginLng}},"label":{{$t.Origin}}},"destination":{"lat":{{$t.DestLat}},"lng":{{$t.DestLng}},"label":{{$t.Destination}}}{{with $t.LastSeen}},"current":{"lat":{{.Lat}},"lng":{{.Lng}},"label":{{$.T "track.map_last_seen" .Near}}}{{end}}}</script>
+        <div class="card-foot small">
+          {{with $t.LastSeen}}<p>{{$.TH "track.last_seen_html" .Near ($.Ago .At)}}</p>{{end}}
+          <p class="muted">{{$.T "track.map_rough"}}</p>
+        </div>
+      </div>
 
-  <section class="card">
-    <h2>{{$.T "track.updates"}}</h2>
-    <ol class="timeline">
-      {{range $t.Timeline}}
-      <li class="tl"><div class="tl-dot"></div><div class="tl-body">
-        <p class="tl-title">{{.Label}}</p>
-        {{with .Detail}}<p class="tl-detail">{{.}}</p>{{end}}
-        <p class="tl-meta"><time datetime="{{rfc3339 .At}}">{{$.When .At}}</time></p>
-      </div></li>
+      <section class="card">
+        <h2>{{$.T "track.updates"}}</h2>
+        <ol class="timeline">
+          {{range $t.Timeline}}
+          <li class="tl"><div class="tl-dot"></div><div class="tl-body">
+            <p class="tl-title">{{.Label}}</p>
+            {{with .Detail}}<p class="tl-detail">{{.}}</p>{{end}}
+            <p class="tl-meta"><time datetime="{{rfc3339 .At}}">{{$.When .At}}</time></p>
+          </div></li>
+          {{end}}
+        </ol>
+      </section>
+    </div>
+
+    <aside class="track-side">
+      <section class="card">
+        <h2>{{$.T "track.delivery"}}</h2>
+        <dl class="facts">
+          <div><dt>{{$.T "track.from"}}</dt><dd>{{$t.Origin}}</dd></div>
+          <div><dt>{{$.T "track.to"}}</dt><dd>{{$t.Destination}}</dd></div>
+          {{if and $t.ETA (not $t.DeliveredAt)}}<div><dt>{{$.T "track.expected_label"}}</dt><dd>{{$.When $t.ETA}}</dd></div>{{end}}
+          <div><dt>{{$.T "track.carrier"}}</dt><dd>{{$t.CompanyName}}</dd></div>
+        </dl>
+      </section>
+
+      {{if and $t.ConfirmByText (not $t.DeliveredAt) (ne $t.Status "cancelled")}}
+      <section class="card">
+        <h2>{{$.T "track.when_arrives"}}</h2>
+        <p class="small muted">{{$.T "track.when_arrives_body"}}</p>
+      </section>
       {{end}}
-    </ol>
-  </section>
 
-  {{with $t.CompanyPhone}}<p class="center">{{$.TH "track.questions_html" $t.CompanyName (telURL .) .}}</p>{{end}}
-  <p class="center small"><a href="/track">{{$.T "track.another"}}</a> · <a href="/track/phone">{{$.T "track.all_mine"}}</a></p>
+      {{with $t.CompanyPhone}}
+      <section class="card">
+        <h2>{{$.T "track.questions"}}</h2>
+        <p class="small muted">{{$.T "track.answers" $t.CompanyName}}</p>
+        <p><a class="btn btn-block" href="{{telURL .}}">{{icon "phone"}}{{$.T "track.call" .}}</a></p>
+      </section>
+      {{end}}
+
+      <section class="card">
+        <h2>{{$.T "track.another"}}</h2>
+        <form method="post" action="/track" class="track-another">
+          <label><span class="sr-only">{{$.T "form.number"}}</span><input name="number" class="mono" autocomplete="off" placeholder="ET-…" required></label>
+          <button class="btn btn-primary" type="submit">{{$.T "form.track"}}</button>
+        </form>
+        <p class="small"><a href="/track/phone">{{$.T "track.all_mine"}}</a></p>
+      </section>
+    </aside>
+  </div>
 </section>
 {{end}}
